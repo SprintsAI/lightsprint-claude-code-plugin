@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "lightsprint",
+  "description": "Sync Claude Code tasks to Lightsprint kanban board for team visibility",
+  "owner": {
+    "name": "Lightsprint"
+  },
+  "plugins": [
+    {
+      "name": "lightsprint",
+      "description": "Sync Claude Code tasks to Lightsprint kanban board for team visibility",
+      "version": "0.1.0",
+      "author": {
+        "name": "Lightsprint"
+      },
+      "source": {
+        "source": "url",
+        "url": "https://github.com/SprintsAI/lightsprint-claude-code-plugin.git"
+      },
+      "category": "productivity",
+      "homepage": "https://github.com/SprintsAI/lightsprint-claude-code-plugin"
+    }
+  ]
+}
