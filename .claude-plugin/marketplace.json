@@ -13,12 +13,7 @@
       "author": {
         "name": "Lightsprint"
       },
-      "source": {
-        "source": "url",
-        "url": "https://github.com/SprintsAI/lightsprint-claude-code-plugin.git"
-      },
-      "category": "productivity",
-      "homepage": "https://github.com/SprintsAI/lightsprint-claude-code-plugin"
+      "source": "./"
     }
   ]
 }

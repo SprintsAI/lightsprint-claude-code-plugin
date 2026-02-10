@@ -11,7 +11,10 @@ if ! command -v claude &>/dev/null; then
 fi
 
 echo "Adding Lightsprint marketplace..."
-claude plugin marketplace add "$REPO" 2>/dev/null || true
+claude plugin marketplace add "$REPO" || {
+  echo "Error: Failed to add Lightsprint marketplace" >&2
+  exit 1
+}
 
 echo "Installing lightsprint plugin..."
 claude plugin install lightsprint
