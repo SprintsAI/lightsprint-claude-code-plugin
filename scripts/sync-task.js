@@ -7,10 +7,11 @@
  *
  * On TaskCreate: creates a task in Lightsprint and stores the ID mapping.
  * On TaskUpdate: patches the corresponding Lightsprint task.
+ * On Task (subagent): posts a comment to the active task with subagent details.
  */
 
 import { apiRequest, getProjectId } from './lib/client.js';
-import { setMapping, getMapping } from './lib/task-map.js';
+import { setMapping, getMapping, setActiveTask, getActiveTask, clearActiveTask } from './lib/task-map.js';
 import { ccToLsStatus } from './lib/status-mapper.js';
 import { getConfig } from './lib/config.js';
 import { appendFileSync, mkdirSync, existsSync } from 'fs';
@@ -32,7 +33,7 @@ function log(level, message, data) {
 }
 
 async function main() {
-	const action = process.argv[2]; // "create" or "update"
+	const action = process.argv[2]; // "create", "update", or "subagent"
 
 	// Check config exists before reading stdin
 	if (!getConfig()) {
@@ -60,6 +61,8 @@ async function main() {
 			await handleCreate(tool_input, tool_response, input.session_id);
 		} else if (action === 'update') {
 			await handleUpdate(tool_input, tool_response);
+		} else if (action === 'subagent') {
+			await handleSubagent(tool_input, tool_response);
 		}
 	} catch (err) {
 		log('error', `sync-task ${action} failed`, { error: err.message });
@@ -128,6 +131,13 @@ async function handleUpdate(toolInput, toolResponse) {
 		return;
 	}
 
+	// Track active task
+	if (toolInput.status === 'in_progress') {
+		setActiveTask(lsTaskId);
+	} else if (toolInput.status === 'completed' || toolInput.status === 'deleted') {
+		clearActiveTask();
+	}
+
 	// Handle deletion
 	if (toolInput.status === 'deleted') {
 		try {
@@ -168,6 +178,26 @@ async function handleUpdate(toolInput, toolResponse) {
 	});
 
 	log('info', 'Updated LS task', { ccTaskId, lsTaskId, fields: Object.keys(patch) });
+}
+
+async function handleSubagent(toolInput, toolResponse) {
+	const lsTaskId = getActiveTask();
+	if (!lsTaskId) {
+		log('info', 'No active task for subagent event, skipping');
+		return;
+	}
+
+	const agentType = toolInput?.subagent_type || 'unknown';
+	const description = toolInput?.description || '';
+
+	const body = `🤖 Spawned **${agentType}** subagent: ${description}`;
+
+	await apiRequest(`/api/tasks/${lsTaskId}/comments`, {
+		method: 'POST',
+		body: JSON.stringify({ body })
+	});
+
+	log('info', 'Posted subagent comment', { lsTaskId, agentType, description });
 }
 
 main();

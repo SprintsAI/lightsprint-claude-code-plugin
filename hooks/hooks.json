@@ -16,6 +16,14 @@
           "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/sync-task.js update",
           "timeout": 15000
         }]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [{
+          "type": "command",
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/sync-task.js subagent",
+          "timeout": 15000
+        }]
       }
     ]
   }
