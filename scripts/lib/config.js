@@ -37,18 +37,31 @@ function writeConfigFile(config) {
 	writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
 }
 
-function promptApiKey() {
+function promptSetup() {
 	try {
-		const result = execSync(
+		const key = execSync(
 			`osascript -e 'text returned of (display dialog "Enter your Lightsprint project API key:" default answer "ls_pk_" with title "Lightsprint Plugin Setup")'`,
 			{ encoding: 'utf-8', timeout: 60000 }
 		).trim();
-		if (result && result.startsWith('ls_pk_')) {
-			const config = readConfigFile();
-			config.apiKey = result;
-			writeConfigFile(config);
-			return result;
+		if (!key || !key.startsWith('ls_pk_')) return null;
+
+		let baseUrl = '';
+		try {
+			baseUrl = execSync(
+				`osascript -e 'text returned of (display dialog "Enter your Lightsprint base URL:" default answer "https://lightsprint.ai" with title "Lightsprint Plugin Setup")'`,
+				{ encoding: 'utf-8', timeout: 60000 }
+			).trim();
+		} catch {
+			// User cancelled — use default
 		}
+
+		const config = readConfigFile();
+		config.apiKey = key;
+		if (baseUrl && baseUrl !== 'https://lightsprint.ai') {
+			config.baseUrl = baseUrl;
+		}
+		writeConfigFile(config);
+		return { apiKey: key, baseUrl: baseUrl || null };
 	} catch {
 		// User cancelled or osascript not available
 	}
@@ -60,24 +73,33 @@ function promptApiKey() {
  * @returns {{ apiKey: string, baseUrl: string } | null}
  */
 export function getConfig() {
-	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || 'https://lightsprint.ai';
+	const defaultBaseUrl = 'https://lightsprint.ai';
 
 	// 1. Environment variable
 	const envKey = process.env.LIGHTSPRINT_API_KEY;
 	if (envKey) {
-		return { apiKey: envKey, baseUrl };
+		return {
+			apiKey: envKey,
+			baseUrl: process.env.LIGHTSPRINT_BASE_URL || defaultBaseUrl
+		};
 	}
 
 	// 2. Config file
 	const config = readConfigFile();
 	if (config.apiKey) {
-		return { apiKey: config.apiKey, baseUrl };
+		return {
+			apiKey: config.apiKey,
+			baseUrl: process.env.LIGHTSPRINT_BASE_URL || config.baseUrl || defaultBaseUrl
+		};
 	}
 
 	// 3. macOS prompt
-	const prompted = promptApiKey();
+	const prompted = promptSetup();
 	if (prompted) {
-		return { apiKey: prompted, baseUrl };
+		return {
+			apiKey: prompted.apiKey,
+			baseUrl: process.env.LIGHTSPRINT_BASE_URL || prompted.baseUrl || defaultBaseUrl
+		};
 	}
 
 	return null;

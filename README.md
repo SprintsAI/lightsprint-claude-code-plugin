@@ -289,6 +289,16 @@ The plugin requires the Lightsprint backend to have project API key support. If 
 
 ---
 
+## Uninstalling
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/uninstall.sh | bash
+```
+
+This removes the plugin from Claude Code, removes the marketplace entry, and deletes all local data (`~/.lightsprint/`).
+
+---
+
 ## Troubleshooting
 
 ### Tasks not appearing on the board
