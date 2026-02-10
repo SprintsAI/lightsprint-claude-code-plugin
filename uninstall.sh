@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="SprintsAI/lightsprint-claude-code-plugin"
+MARKETPLACE_NAME="lightsprint"
+PLUGIN_NAME="lightsprint"
 
 echo "Uninstalling Lightsprint plugin for Claude Code..."
 
@@ -11,10 +12,10 @@ if ! command -v claude &>/dev/null; then
 fi
 
 echo "Removing lightsprint plugin..."
-claude plugin uninstall lightsprint 2>/dev/null || true
+claude plugin uninstall "$PLUGIN_NAME" 2>/dev/null || true
 
 echo "Removing Lightsprint marketplace..."
-claude plugin marketplace remove "$REPO" 2>/dev/null || true
+claude plugin marketplace remove "$MARKETPLACE_NAME" 2>/dev/null || true
 
 echo "Cleaning up local data..."
 rm -rf ~/.lightsprint
