@@ -60,38 +60,20 @@ claude --plugin-dir ./lightsprint-claude-code-plugin
 
 ## Authentication
 
-The plugin uses **per-folder OAuth** — each project folder has its own authorization linked to a Lightsprint project.
+The installer opens your browser, you pick a Lightsprint project, and tokens are saved locally. Tokens refresh automatically — you only authorize once per project.
 
-### How it works
+### Where tokens apply
 
-1. `install.sh` opens your browser to `lightsprint.ai/authorize-cli`
-2. You select which Lightsprint project to connect
-3. OAuth tokens are returned to a local callback server
-4. Tokens are stored in `~/.lightsprint/projects.json`, keyed by folder path
+Authorization is linked to the folder you ran `install.sh` from. The plugin resolves tokens by:
 
-```json
-{
-  "/path/to/your/project": {
-    "accessToken": "...",
-    "refreshToken": "...",
-    "expiresAt": 1700000000000,
-    "projectId": "abc123",
-    "projectName": "My Project"
-  }
-}
-```
+1. Walking up from the current directory (covers monorepos and subdirectories)
+2. Falling back to the git main worktree (covers `git worktree` checkouts)
 
-### Token refresh
-
-Tokens refresh automatically. Before each API call, the plugin checks expiry and refreshes if needed. If a refresh fails, re-run `install.sh` to re-authorize.
-
-### Monorepo support
-
-Token lookup walks up from the current working directory, so a single authorization at the repo root covers all subdirectories.
+So a single `install.sh` at your repo root works for all subdirectories and worktrees.
 
 ### Multiple projects
 
-Run `install.sh` from different project folders to connect each one to a different Lightsprint project. Each folder's tokens are stored independently.
+Run `install.sh` from different project folders to connect each one to a different Lightsprint project.
 
 ### Optional: Custom base URL
 

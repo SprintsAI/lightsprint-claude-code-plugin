@@ -2,14 +2,15 @@
  * Configuration loader for Lightsprint plugin.
  *
  * Per-folder auth resolution:
- * 1. Look up process.cwd() in ~/.lightsprint/projects.json
- * 2. Walk up parent directories for monorepo support
+ * 1. Walk up from process.cwd() in ~/.lightsprint/projects.json
+ * 2. Fall back to git main worktree path (supports git worktrees)
  * 3. Error if no match found (user must run install.sh)
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
+import { execSync } from 'child_process';
 
 const CONFIG_DIR = join(homedir(), '.lightsprint');
 const PROJECTS_FILE = join(CONFIG_DIR, 'projects.json');
@@ -37,8 +38,25 @@ export function writeProjectsFile(data) {
 }
 
 /**
+ * Try to resolve the git main worktree path.
+ * Returns null if not in a git repo or git is unavailable.
+ */
+function getGitMainWorktree() {
+	try {
+		return execSync('git worktree list --porcelain', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] })
+			.split('\n')
+			.find(line => line.startsWith('worktree '))
+			?.replace('worktree ', '') || null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Find the project config for the current working directory.
- * Walks up parent directories to support monorepos.
+ * Resolution order:
+ * 1. Walk up from cwd to find a matching folder
+ * 2. If in a git worktree, try the main worktree path
  *
  * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string } | null}
  */
@@ -53,6 +71,12 @@ function findProjectConfig() {
 		const parent = dirname(dir);
 		if (parent === dir) break; // reached root
 		dir = parent;
+	}
+
+	// Fall back to the git main worktree (supports git worktrees)
+	const mainWorktree = getGitMainWorktree();
+	if (mainWorktree && projects[mainWorktree]) {
+		return { ...projects[mainWorktree], folder: mainWorktree };
 	}
 
 	return null;
