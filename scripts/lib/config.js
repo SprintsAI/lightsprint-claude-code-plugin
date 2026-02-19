@@ -1,119 +1,89 @@
 /**
  * Configuration loader for Lightsprint plugin.
  *
- * Resolution order:
- * 1. LIGHTSPRINT_API_KEY environment variable
- * 2. ~/.lightsprint/config.json
- * 3. macOS osascript dialog prompt (saves to config.json)
+ * Per-folder auth resolution:
+ * 1. Look up process.cwd() in ~/.lightsprint/projects.json
+ * 2. Walk up parent directories for monorepo support
+ * 3. Error if no match found (user must run install.sh)
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { homedir } from 'os';
-import { execSync } from 'child_process';
 
 const CONFIG_DIR = join(homedir(), '.lightsprint');
-const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
+const PROJECTS_FILE = join(CONFIG_DIR, 'projects.json');
 
-function ensureConfigDir() {
+export function ensureConfigDir() {
 	if (!existsSync(CONFIG_DIR)) {
 		mkdirSync(CONFIG_DIR, { recursive: true });
 	}
 }
 
-function readConfigFile() {
+export function readProjectsFile() {
 	try {
-		if (existsSync(CONFIG_FILE)) {
-			return JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'));
+		if (existsSync(PROJECTS_FILE)) {
+			return JSON.parse(readFileSync(PROJECTS_FILE, 'utf-8'));
 		}
 	} catch {
-		// Corrupted config, ignore
+		// Corrupted file, ignore
 	}
 	return {};
 }
 
-function writeConfigFile(config) {
+export function writeProjectsFile(data) {
 	ensureConfigDir();
-	writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+	writeFileSync(PROJECTS_FILE, JSON.stringify(data, null, 2));
 }
 
-function promptSetup() {
-	try {
-		const key = execSync(
-			`osascript -e 'text returned of (display dialog "Enter your Lightsprint project API key:" default answer "ls_pk_" with title "Lightsprint Plugin Setup")'`,
-			{ encoding: 'utf-8', timeout: 60000 }
-		).trim();
-		if (!key || !key.startsWith('ls_pk_')) return null;
+/**
+ * Find the project config for the current working directory.
+ * Walks up parent directories to support monorepos.
+ *
+ * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string } | null}
+ */
+function findProjectConfig() {
+	const projects = readProjectsFile();
+	let dir = process.cwd();
 
-		let baseUrl = '';
-		try {
-			baseUrl = execSync(
-				`osascript -e 'text returned of (display dialog "Enter your Lightsprint base URL:" default answer "https://lightsprint.ai" with title "Lightsprint Plugin Setup")'`,
-				{ encoding: 'utf-8', timeout: 60000 }
-			).trim();
-		} catch {
-			// User cancelled — use default
+	while (true) {
+		if (projects[dir]) {
+			return { ...projects[dir], folder: dir };
 		}
-
-		const config = readConfigFile();
-		config.apiKey = key;
-		if (baseUrl && baseUrl !== 'https://lightsprint.ai') {
-			config.baseUrl = baseUrl;
-		}
-		writeConfigFile(config);
-		return { apiKey: key, baseUrl: baseUrl || null };
-	} catch {
-		// User cancelled or osascript not available
+		const parent = dirname(dir);
+		if (parent === dir) break; // reached root
+		dir = parent;
 	}
+
 	return null;
 }
 
 /**
- * Get the Lightsprint API key.
- * @returns {{ apiKey: string, baseUrl: string } | null}
+ * Get the Lightsprint config for the current folder.
+ * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string } | null}
  */
 export function getConfig() {
 	const defaultBaseUrl = 'https://lightsprint.ai';
+	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || defaultBaseUrl;
 
-	// 1. Environment variable
-	const envKey = process.env.LIGHTSPRINT_API_KEY;
-	if (envKey) {
-		return {
-			apiKey: envKey,
-			baseUrl: process.env.LIGHTSPRINT_BASE_URL || defaultBaseUrl
-		};
-	}
+	const project = findProjectConfig();
+	if (!project) return null;
 
-	// 2. Config file
-	const config = readConfigFile();
-	if (config.apiKey) {
-		return {
-			apiKey: config.apiKey,
-			baseUrl: process.env.LIGHTSPRINT_BASE_URL || config.baseUrl || defaultBaseUrl
-		};
-	}
-
-	// 3. macOS prompt
-	const prompted = promptSetup();
-	if (prompted) {
-		return {
-			apiKey: prompted.apiKey,
-			baseUrl: process.env.LIGHTSPRINT_BASE_URL || prompted.baseUrl || defaultBaseUrl
-		};
-	}
-
-	return null;
+	return {
+		...project,
+		baseUrl
+	};
 }
 
 /**
  * Get config or exit with error message.
- * @returns {{ apiKey: string, baseUrl: string }}
+ * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string }}
  */
 export function requireConfig() {
 	const config = getConfig();
 	if (!config) {
-		console.error('Lightsprint API key not configured.');
-		console.error('Set LIGHTSPRINT_API_KEY environment variable or run a Lightsprint skill to configure.');
+		console.error('Lightsprint not connected for this folder.');
+		console.error('Run install.sh in your project folder to connect.');
 		process.exit(1);
 	}
 	return config;

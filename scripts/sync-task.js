@@ -37,7 +37,7 @@ async function main() {
 
 	// Check config exists before reading stdin
 	if (!getConfig()) {
-		log('warn', 'No API key configured, skipping sync');
+		log('warn', 'No project configured for this folder, skipping sync');
 		process.exit(0);
 	}
 
