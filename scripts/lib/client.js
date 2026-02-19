@@ -9,7 +9,12 @@ import { requireConfig, readProjectsFile, writeProjectsFile } from './config.js'
 let _config = null;
 
 async function config() {
-	if (!_config) _config = await requireConfig();
+	if (!_config) {
+		_config = await requireConfig();
+		if (!_config) {
+			throw new Error('Lightsprint is not connected for this folder.');
+		}
+	}
 	return _config;
 }
 

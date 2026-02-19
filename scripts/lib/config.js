@@ -84,6 +84,7 @@ function findProjectConfig() {
 
 /**
  * Get the Lightsprint config for the current folder.
+ * Returns null for both unconfigured and skipped folders (hooks should skip silently).
  * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string } | null}
  */
 export function getConfig() {
@@ -91,7 +92,7 @@ export function getConfig() {
 	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || defaultBaseUrl;
 
 	const project = findProjectConfig();
-	if (!project) return null;
+	if (!project || project.skipped) return null;
 
 	return {
 		...project,
@@ -102,14 +103,27 @@ export function getConfig() {
 /**
  * Get config or trigger on-demand OAuth.
  * Only call from interactive contexts (skills/CLI), not hooks.
- * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string }>}
+ * Returns null if the user previously skipped this folder.
+ * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string } | null>}
  */
 export async function requireConfig() {
+	// Check for skipped folders before calling getConfig (which hides them)
+	const project = findProjectConfig();
+	if (project?.skipped) {
+		console.log('Lightsprint is not connected for this folder (previously skipped).');
+		return null;
+	}
+
 	const existing = getConfig();
 	if (existing) return existing;
 
 	// No config for this folder — trigger OAuth
 	const { authenticate } = await import('./auth.js');
 	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || 'https://lightsprint.ai';
-	return await authenticate(baseUrl);
+	const result = await authenticate(baseUrl);
+
+	// User skipped during OAuth flow
+	if (result.skipped) return null;
+
+	return result;
 }
