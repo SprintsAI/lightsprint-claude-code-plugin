@@ -4,6 +4,7 @@ set -euo pipefail
 REPO="SprintsAI/lightsprint-claude-code-plugin"
 MARKETPLACE_NAME="lightsprint"
 PLUGIN_NAME="lightsprint"
+PLUGIN_DIR="$HOME/.claude/plugins/marketplaces/lightsprint"
 
 echo "Installing Lightsprint for Claude Code..."
 
@@ -35,6 +36,49 @@ claude plugin install "$PLUGIN_NAME" || {
 }
 
 echo ""
-echo "Done! Lightsprint plugin installed."
-echo "Use any /lightsprint: command (e.g. /lightsprint:kanban) to connect your project."
+echo "Plugin installed successfully."
+echo ""
+
+# ─── Interactive project connection ───────────────────────────────────────
+
+# Detect current folder info
+CURRENT_DIR="$(pwd)"
+
+# Try to detect git repo
+REPO_FULL_NAME=""
+if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+  REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
+  if [[ -n "$REMOTE_URL" ]]; then
+    # Extract owner/repo from SSH or HTTPS URL
+    REPO_FULL_NAME=$(echo "$REMOTE_URL" | sed -E 's#.*github\.com[:/]([^/]+/[^/.]+?)(\.git)?$#\1#')
+    # Verify extraction worked (should contain a slash)
+    if [[ "$REPO_FULL_NAME" != *"/"* ]]; then
+      REPO_FULL_NAME=""
+    fi
+  fi
+fi
+
+echo "─────────────────────────────────────────"
+echo "  Connect this folder to a project on Lightsprint?"
+echo "─────────────────────────────────────────"
+echo ""
+echo "  Folder: $CURRENT_DIR"
+if [[ -n "$REPO_FULL_NAME" ]]; then
+  echo "  Repo:   $REPO_FULL_NAME"
+fi
+echo ""
+
+read -rp "Connect? (Y/n) " CONFIRM
+CONFIRM="${CONFIRM:-Y}"
+
+if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
+  echo ""
+  node "$PLUGIN_DIR/scripts/ls-cli.js" connect
+else
+  echo ""
+  echo "Skipped. You can connect later by using any /lightsprint: command."
+fi
+
+echo ""
+echo "Done!"
 echo ""

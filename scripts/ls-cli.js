@@ -16,6 +16,7 @@
 import { apiRequest, getProjectId, getProjectInfo } from './lib/client.js';
 import { setMapping } from './lib/task-map.js';
 import { lsToCcStatus } from './lib/status-mapper.js';
+import { authenticate } from './lib/auth.js';
 
 const [,, command, ...args] = process.argv;
 
@@ -29,9 +30,10 @@ async function main() {
 		case 'kanban': return await cmdKanban();
 		case 'comment': return await cmdComment(args);
 		case 'whoami': return await cmdWhoami();
+		case 'connect': return await cmdConnect();
 		default:
 			console.log('Usage: ls-cli.js <command> [args]');
-			console.log('Commands: tasks, create, update, get, claim, kanban, comment, whoami');
+			console.log('Commands: tasks, create, update, get, claim, kanban, comment, whoami, connect');
 			process.exit(1);
 	}
 }
@@ -350,6 +352,13 @@ async function cmdWhoami() {
 	if (info.project.fullName) console.log(`Repository: ${info.project.fullName}`);
 	console.log(`Project ID: ${info.project.id}`);
 	console.log(`Scopes: ${info.scopes.join(', ')}`);
+}
+
+// ─── connect ─────────────────────────────────────────────────────────────
+
+async function cmdConnect() {
+	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || 'https://lightsprint.ai';
+	await authenticate(baseUrl);
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────
