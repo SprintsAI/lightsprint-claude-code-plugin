@@ -49,13 +49,14 @@ REPO_FULL_NAME=""
 if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
   REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
   if [[ -n "$REMOTE_URL" ]]; then
-    # Extract owner/repo from SSH or HTTPS URL
-    # Strip trailing .git, then extract the last two path components
-    CLEANED=$(echo "$REMOTE_URL" | sed 's/\.git$//')
-    REPO_FULL_NAME=$(echo "$CLEANED" | sed -E 's#.*github\.com[:/](.+/.+)$#\1#')
-    # Verify extraction worked (should contain a slash)
-    if [[ "$REPO_FULL_NAME" != *"/"* ]]; then
-      REPO_FULL_NAME=""
+    # Extract owner/repo from SSH or HTTPS URL using pure bash (no sed)
+    CLEANED="${REMOTE_URL%.git}"
+    # Handle HTTPS (github.com/) and SSH (github.com:)
+    CLEANED="${CLEANED##*github.com/}"
+    CLEANED="${CLEANED##*github.com:}"
+    # Should be "owner/repo" now
+    if [[ "$CLEANED" == *"/"* && "$CLEANED" != "$REMOTE_URL" ]]; then
+      REPO_FULL_NAME="$CLEANED"
     fi
   fi
 fi
