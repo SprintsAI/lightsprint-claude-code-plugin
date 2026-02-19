@@ -50,7 +50,9 @@ if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null
   REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
   if [[ -n "$REMOTE_URL" ]]; then
     # Extract owner/repo from SSH or HTTPS URL
-    REPO_FULL_NAME=$(echo "$REMOTE_URL" | sed -E 's#.*github\.com[:/]([^/]+/[^/.]+?)(\.git)?$#\1#')
+    # Strip trailing .git, then extract the last two path components
+    CLEANED=$(echo "$REMOTE_URL" | sed 's/\.git$//')
+    REPO_FULL_NAME=$(echo "$CLEANED" | sed -E 's#.*github\.com[:/](.+/.+)$#\1#')
     # Verify extraction worked (should contain a slash)
     if [[ "$REPO_FULL_NAME" != *"/"* ]]; then
       REPO_FULL_NAME=""
