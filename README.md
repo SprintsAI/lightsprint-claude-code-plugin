@@ -10,11 +10,19 @@ Sync Claude Code tasks to your Lightsprint kanban board for team visibility. Whe
 
 ## Quick Start
 
+Install the plugin (one time):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh | bash
 ```
 
-The installer opens your browser to authorize with Lightsprint, then installs the plugin automatically. That's it — task sync is active from here.
+Then use any `/lightsprint:` command — the plugin opens your browser to connect on first use:
+
+```
+/lightsprint:kanban
+```
+
+That's it. Each new project folder auto-prompts for authorization when you first use a command there.
 
 ---
 
@@ -26,22 +34,11 @@ The installer opens your browser to authorize with Lightsprint, then installs th
 curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh | bash
 ```
 
-This will:
-1. Open your browser to authorize with your Lightsprint project
-2. Store OAuth tokens locally for the current folder
-3. Install the plugin into Claude Code (hooks + skills)
-
 ### From GitHub (manual)
 
 ```bash
 claude plugin marketplace add SprintsAI/lightsprint-claude-code-plugin
 claude plugin install lightsprint
-```
-
-Then run `install.sh` separately to authorize:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh | bash
 ```
 
 ### From a local directory (development)
@@ -60,20 +57,21 @@ claude --plugin-dir ./lightsprint-claude-code-plugin
 
 ## Authentication
 
-The installer opens your browser, you pick a Lightsprint project, and tokens are saved locally. Tokens refresh automatically — you only authorize once per project.
+Authentication is **on-demand** — the first time you use a `/lightsprint:` command in an unconnected folder, the plugin opens your browser to authorize. You pick a Lightsprint project, and tokens are saved locally. Tokens refresh automatically.
 
-### Where tokens apply
+### Token resolution
 
-Authorization is linked to the folder you ran `install.sh` from. The plugin resolves tokens by:
+The plugin resolves tokens by:
 
 1. Walking up from the current directory (covers monorepos and subdirectories)
 2. Falling back to the git main worktree (covers `git worktree` checkouts)
+3. If no token found, opening the browser to authorize
 
-So a single `install.sh` at your repo root works for all subdirectories and worktrees.
+A single authorization at your repo root works for all subdirectories and worktrees. Hooks silently skip if no authorization exists (they never prompt).
 
 ### Multiple projects
 
-Run `install.sh` from different project folders to connect each one to a different Lightsprint project.
+Each folder can connect to a different Lightsprint project. The plugin prompts automatically when you use a command in a new folder.
 
 ### Optional: Custom base URL
 
@@ -151,7 +149,8 @@ lightsprint-claude-code-plugin/
 │   ├── sync-task.js            # Hook handler — reads stdin, syncs to LS API
 │   ├── ls-cli.js               # CLI for skills — tasks, create, update, get, claim, kanban, comment
 │   └── lib/
-│       ├── config.js           # Per-folder OAuth token resolution
+│       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
+│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
 │       ├── client.js           # HTTP client with automatic token refresh
 │       ├── task-map.js         # CC↔LS task ID mapping
 │       └── status-mapper.js    # Status mapping logic
@@ -163,7 +162,7 @@ lightsprint-claude-code-plugin/
 │   ├── claim/SKILL.md          # /lightsprint:claim
 │   ├── kanban/SKILL.md         # /lightsprint:kanban
 │   └── comment/SKILL.md        # /lightsprint:comment
-├── install.sh                  # One-line installer with OAuth flow
+├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
 └── README.md
@@ -200,17 +199,9 @@ This removes the plugin from Claude Code and deletes the authorization for the c
 2. Verify authorization: `node scripts/ls-cli.js whoami`
 3. Ensure Node.js >= 18: `node --version`
 
-### "Lightsprint not connected for this folder"
-
-Run `install.sh` from the project folder to authorize:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh | bash
-```
-
 ### Token expired / refresh failed
 
-Re-run `install.sh` to re-authorize. The installer is idempotent and will overwrite the existing tokens for the current folder.
+Use any `/lightsprint:` command — the plugin will re-prompt for authorization if the refresh token has expired.
 
 ### Stale task mappings
 

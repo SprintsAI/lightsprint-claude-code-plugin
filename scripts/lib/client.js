@@ -8,8 +8,8 @@ import { requireConfig, readProjectsFile, writeProjectsFile } from './config.js'
 
 let _config = null;
 
-function config() {
-	if (!_config) _config = requireConfig();
+async function config() {
+	if (!_config) _config = await requireConfig();
 	return _config;
 }
 
@@ -19,7 +19,7 @@ function config() {
  * @returns {boolean} true if refresh succeeded
  */
 async function refreshTokenIfNeeded() {
-	const cfg = config();
+	const cfg = await config();
 
 	// Check if token expires within 5 minutes
 	const fiveMinutes = 5 * 60 * 1000;
@@ -77,7 +77,7 @@ async function refreshTokenIfNeeded() {
  * @returns {Promise<any>} Parsed JSON response
  */
 export async function apiRequest(path, options = {}) {
-	const cfg = config();
+	const cfg = await config();
 
 	// Refresh token if needed
 	const refreshed = await refreshTokenIfNeeded();
@@ -122,7 +122,7 @@ export async function getProjectInfo() {
  */
 export async function getProjectId() {
 	// Use the projectId from config first (faster, no API call)
-	const cfg = config();
+	const cfg = await config();
 	if (cfg.projectId) return cfg.projectId;
 
 	const info = await getProjectInfo();

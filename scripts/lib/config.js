@@ -4,7 +4,7 @@
  * Per-folder auth resolution:
  * 1. Walk up from process.cwd() in ~/.lightsprint/projects.json
  * 2. Fall back to git main worktree path (supports git worktrees)
- * 3. Error if no match found (user must run install.sh)
+ * 3. If no match found, trigger browser-based OAuth (interactive only)
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
@@ -100,15 +100,16 @@ export function getConfig() {
 }
 
 /**
- * Get config or exit with error message.
- * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string }}
+ * Get config or trigger on-demand OAuth.
+ * Only call from interactive contexts (skills/CLI), not hooks.
+ * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string }>}
  */
-export function requireConfig() {
-	const config = getConfig();
-	if (!config) {
-		console.error('Lightsprint not connected for this folder.');
-		console.error('Run install.sh in your project folder to connect.');
-		process.exit(1);
-	}
-	return config;
+export async function requireConfig() {
+	const existing = getConfig();
+	if (existing) return existing;
+
+	// No config for this folder — trigger OAuth
+	const { authenticate } = await import('./auth.js');
+	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || 'https://lightsprint.ai';
+	return await authenticate(baseUrl);
 }
