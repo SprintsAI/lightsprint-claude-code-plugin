@@ -151,7 +151,8 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai') {
 		refreshToken: result.refreshToken,
 		expiresAt: Date.now() + (parseInt(result.expiresIn) * 1000),
 		projectId: result.projectId,
-		projectName: result.project
+		projectName: result.project,
+		baseUrl
 	};
 
 	const projects = readProjectsFile();

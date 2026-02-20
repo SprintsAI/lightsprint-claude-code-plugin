@@ -89,10 +89,12 @@ function findProjectConfig() {
  */
 export function getConfig() {
 	const defaultBaseUrl = 'https://lightsprint.ai';
-	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || defaultBaseUrl;
 
 	const project = findProjectConfig();
 	if (!project || project.skipped) return null;
+
+	// Env var overrides stored baseUrl, which overrides default
+	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || project.baseUrl || defaultBaseUrl;
 
 	return {
 		...project,

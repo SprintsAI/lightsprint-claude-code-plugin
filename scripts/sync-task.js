@@ -21,6 +21,10 @@ import { homedir } from 'os';
 const LOG_DIR = join(homedir(), '.lightsprint');
 const LOG_FILE = join(LOG_DIR, 'sync.log');
 
+function output(json) {
+	process.stdout.write(JSON.stringify(json));
+}
+
 function log(level, message, data) {
 	try {
 		if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true });
@@ -63,6 +67,10 @@ async function main() {
 			await handleUpdate(tool_input, tool_response);
 		} else if (action === 'subagent') {
 			await handleSubagent(tool_input, tool_response);
+		} else if (action === 'list') {
+			await handleList();
+		} else if (action === 'get') {
+			await handleGet(tool_input);
 		}
 	} catch (err) {
 		log('error', `sync-task ${action} failed`, { error: err.message });
@@ -178,6 +186,72 @@ async function handleUpdate(toolInput, toolResponse) {
 	});
 
 	log('info', 'Updated LS task', { ccTaskId, lsTaskId, fields: Object.keys(patch) });
+}
+
+async function handleList() {
+	const projectId = await getProjectId();
+	const data = await apiRequest(`/api/projects/${projectId}/tasks?limit=20`);
+	const tasks = data.tasks || [];
+
+	if (tasks.length === 0) {
+		output({ systemMessage: '[Lightsprint] No tasks on the board.' });
+		return;
+	}
+
+	const lines = [`[Lightsprint] ${tasks.length} task(s)${data.totalCount > tasks.length ? ` of ${data.totalCount} total` : ''}:`];
+	for (const task of tasks) {
+		const status = task.projectStatus || 'unknown';
+		const assignee = task.assignee ? ` [${task.assignee}]` : '';
+		const complexity = task.complexity && task.complexity !== 'unknown' ? ` (${task.complexity})` : '';
+		const desc = task.description ? ' — ' + task.description.slice(0, 80).replace(/\n/g, ' ') + (task.description.length > 80 ? '...' : '') : '';
+		lines.push(`  ${task.id}  [${status}]${assignee}${complexity}  ${task.title}${desc}`);
+	}
+
+	output({ systemMessage: lines.join('\n') });
+	log('info', 'Listed LS tasks', { count: tasks.length });
+}
+
+async function handleGet(toolInput) {
+	const ccTaskId = toolInput?.taskId;
+	if (!ccTaskId) {
+		log('warn', 'No taskId in tool_input for get');
+		return;
+	}
+
+	const lsTaskId = getMapping(String(ccTaskId));
+	if (!lsTaskId) {
+		log('info', 'No LS mapping for CC task on get', { ccTaskId });
+		return;
+	}
+
+	const data = await apiRequest(`/api/tasks/${lsTaskId}`);
+	const task = data.task;
+	if (!task) {
+		log('warn', 'LS task not found', { lsTaskId });
+		return;
+	}
+
+	const lines = [`[Lightsprint] Task: ${task.title}`];
+	lines.push(`  ID: ${task.id}`);
+	lines.push(`  Status: ${task.projectStatus || 'unknown'}`);
+	if (task.assignee) lines.push(`  Assignee: ${task.assignee}`);
+	if (task.complexity && task.complexity !== 'unknown') lines.push(`  Complexity: ${task.complexity}`);
+	if (task.description) lines.push(`  Description: ${task.description.slice(0, 200).replace(/\n/g, ' ')}${task.description.length > 200 ? '...' : ''}`);
+	if (task.todoList && task.todoList.length > 0) {
+		lines.push('  Todo:');
+		for (const item of task.todoList) {
+			lines.push(`    ${item.completed ? '[x]' : '[ ]'} ${item.text}`);
+		}
+	}
+	if (task.relatedFiles && task.relatedFiles.length > 0) {
+		lines.push('  Related files:');
+		for (const f of task.relatedFiles) {
+			lines.push(`    - ${typeof f === 'string' ? f : f.path}`);
+		}
+	}
+
+	output({ systemMessage: lines.join('\n') });
+	log('info', 'Fetched LS task details', { ccTaskId, lsTaskId });
 }
 
 async function handleSubagent(toolInput, toolResponse) {
