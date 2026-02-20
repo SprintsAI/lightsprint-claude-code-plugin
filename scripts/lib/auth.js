@@ -61,13 +61,14 @@ function openBrowser(url) {
  */
 function waitForCallback(port, timeoutMs = 120000) {
 	return new Promise((resolve, reject) => {
+		const sockets = new Set();
 		const server = createServer((req, res) => {
 			const url = new URL(req.url, 'http://localhost');
 			if (url.pathname === '/callback') {
 				if (url.searchParams.get('skipped') === 'true') {
-					res.writeHead(200, { 'Content-Type': 'text/html' });
+					res.writeHead(200, { 'Content-Type': 'text/html', 'Connection': 'close' });
 					res.end('<html><body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1>Skipped</h1><p>Lightsprint won\'t be connected for this folder. You can close this tab.</p></div></body></html>');
-					server.close();
+					closeServer();
 					resolve({ skipped: true });
 					return;
 				}
@@ -78,12 +79,23 @@ function waitForCallback(port, timeoutMs = 120000) {
 					project: url.searchParams.get('project'),
 					projectId: url.searchParams.get('project_id')
 				};
-				res.writeHead(200, { 'Content-Type': 'text/html' });
+				res.writeHead(200, { 'Content-Type': 'text/html', 'Connection': 'close' });
 				res.end('<html><body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1>Authorized!</h1><p>You can close this tab and return to your terminal.</p></div></body></html>');
-				server.close();
+				closeServer();
 				resolve(result);
 			}
 		});
+
+		server.on('connection', (socket) => {
+			sockets.add(socket);
+			socket.on('close', () => sockets.delete(socket));
+		});
+
+		function closeServer() {
+			// Destroy lingering keep-alive sockets so the server shuts down immediately
+			for (const socket of sockets) socket.destroy();
+			server.close();
+		}
 
 		server.listen(port);
 
