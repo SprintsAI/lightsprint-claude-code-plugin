@@ -1,11 +1,11 @@
 {
   "name": "lightsprint",
   "version": "0.1.0",
-  "description": "Sync Claude Code tasks to Lightsprint kanban board for team visibility",
+  "description": "Sync Claude Code tasks to Lightsprint project board for team visibility",
   "author": {
     "name": "Lightsprint",
     "url": "https://lightsprint.com"
   },
   "repository": "https://github.com/SprintsAI/lightsprint-claude-code-plugin",
-  "keywords": ["tasks", "kanban", "project-management", "team"]
+  "keywords": ["tasks", "project-management", "team"]
 }

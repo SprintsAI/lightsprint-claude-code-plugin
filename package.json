@@ -1,7 +1,7 @@
 {
   "name": "lightsprint-claude-code-plugin",
   "version": "0.1.0",
-  "description": "Sync Claude Code tasks to Lightsprint kanban board",
+  "description": "Sync Claude Code tasks to Lightsprint project board",
   "private": true,
   "type": "module",
   "engines": {

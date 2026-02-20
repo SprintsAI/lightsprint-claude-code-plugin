@@ -1,6 +1,6 @@
 # Lightsprint Claude Code Plugin
 
-Sync Claude Code tasks to your Lightsprint kanban board for team visibility. When agents create or update tasks, they automatically appear on your project board. Team members can see agent progress in real time without changing how they use Claude Code.
+Sync Claude Code tasks to your Lightsprint project board for team visibility. When agents create or update tasks, they automatically appear on your project board. Team members can see agent progress in real time without changing how they use Claude Code.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-p
 Then use any `/lightsprint:` command — the plugin opens your browser to connect on first use:
 
 ```
-/lightsprint:kanban
+/lightsprint:tasks
 ```
 
 That's it. Each new project folder auto-prompts for authorization when you first use a command there.
@@ -120,7 +120,6 @@ Hooks run asynchronously and never block the agent. Failures are logged to `~/.l
 | `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
-| `/lightsprint:kanban` | View the full kanban board with all columns |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
 
 ### Task ID mapping
@@ -147,7 +146,7 @@ lightsprint-claude-code-plugin/
 │   └── hooks.json              # PostToolUse hooks for TaskCreate/TaskUpdate/Task
 ├── scripts/
 │   ├── sync-task.js            # Hook handler — reads stdin, syncs to LS API
-│   ├── ls-cli.js               # CLI for skills — tasks, create, update, get, claim, kanban, comment
+│   ├── ls-cli.js               # CLI for skills — tasks, create, update, get, claim, comment
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
 │       ├── config.js           # Per-folder token resolution + on-demand auth trigger
@@ -160,7 +159,6 @@ lightsprint-claude-code-plugin/
 │   ├── update/SKILL.md         # /lightsprint:update
 │   ├── get/SKILL.md            # /lightsprint:get
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   ├── kanban/SKILL.md         # /lightsprint:kanban
 │   └── comment/SKILL.md        # /lightsprint:comment
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal

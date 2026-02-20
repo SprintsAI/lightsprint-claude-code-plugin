@@ -8,7 +8,6 @@
  *   update <taskId> [--title <text>] [--description <text>] [--status <status>] [--complexity <level>] [--assignee <name>]
  *   get <taskId>
  *   claim <taskId>
- *   kanban
  *   comment <taskId> <body>
  *   whoami
  */
@@ -27,13 +26,12 @@ async function main() {
 		case 'update': return await cmdUpdate(args);
 		case 'get': return await cmdGet(args);
 		case 'claim': return await cmdClaim(args);
-		case 'kanban': return await cmdKanban();
 		case 'comment': return await cmdComment(args);
 		case 'whoami': return await cmdWhoami();
 		case 'connect': return await cmdConnect();
 		default:
 			console.log('Usage: ls-cli.js <command> [args]');
-			console.log('Commands: tasks, create, update, get, claim, kanban, comment, whoami, connect');
+			console.log('Commands: tasks, create, update, get, claim, comment, whoami, connect');
 			process.exit(1);
 	}
 }
@@ -285,44 +283,6 @@ async function cmdClaim(args) {
 
 	console.log(`\nTo link this task in Claude Code, create a task with:`);
 	console.log(`  metadata: { lightsprint_task_id: "${task.id}" }`);
-}
-
-// ─── kanban ──────────────────────────────────────────────────────────────
-
-async function cmdKanban() {
-	const projectId = await getProjectId();
-	const data = await apiRequest(`/api/projects/${projectId}/kanban`);
-	const columns = data.columnsWithTasks || [];
-
-	if (columns.length === 0) {
-		console.log('No kanban columns found.');
-		return;
-	}
-
-	for (const col of columns) {
-		const tasks = col.tasks || [];
-		const count = tasks.length;
-		console.log(`\n--- ${col.name} (${count}) ---`);
-
-		if (count === 0) {
-			console.log('  (empty)');
-			continue;
-		}
-
-		for (const task of tasks) {
-			const assignee = task.assignee ? ` [${task.assignee}]` : '';
-			const complexity = task.complexity && task.complexity !== 'unknown' ? ` (${task.complexity})` : '';
-			console.log(`  ${task.id}${assignee}${complexity}  ${task.title}`);
-		}
-	}
-
-	// Show meta for lazy-loaded columns
-	if (data.todoColumnMeta?.hasMore) {
-		console.log(`\n  (Todo: showing ${data.todoColumnMeta.loadedCount} of ${data.todoColumnMeta.totalCount})`);
-	}
-	if (data.doneColumnMeta?.hasMore) {
-		console.log(`  (Done: showing ${data.doneColumnMeta.loadedCount} of ${data.doneColumnMeta.totalCount})`);
-	}
 }
 
 // ─── comment ─────────────────────────────────────────────────────────────

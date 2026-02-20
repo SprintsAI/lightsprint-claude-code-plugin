@@ -71,12 +71,19 @@ if [[ -n "$REPO_FULL_NAME" ]]; then
 fi
 echo ""
 
-read -rp "Connect? (Y/n) " CONFIRM
-CONFIRM="${CONFIRM:-Y}"
+if [[ -t 0 ]]; then
+  # Interactive terminal — prompt the user
+  read -rp "Connect? (Y/n) " CONFIRM
+  CONFIRM="${CONFIRM:-Y}"
+else
+  # Piped (curl | bash) — stdin is not a terminal, auto-connect
+  CONFIRM="Y"
+fi
 
 if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
   echo ""
-  node "$PLUGIN_DIR/scripts/ls-cli.js" connect
+  # Reattach stdin to the terminal so the OAuth callback server works
+  node "$PLUGIN_DIR/scripts/ls-cli.js" connect </dev/tty
 else
   echo ""
   echo "Skipped. You can connect later by using any /lightsprint: command."
