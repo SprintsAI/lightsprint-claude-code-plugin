@@ -61,32 +61,43 @@ if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null
   fi
 fi
 
-echo "─────────────────────────────────────────"
-echo "  Connect this folder to a project on Lightsprint?"
-echo "─────────────────────────────────────────"
-echo ""
-echo "  Folder: $CURRENT_DIR"
 if [[ -n "$REPO_FULL_NAME" ]]; then
+  echo "─────────────────────────────────────────"
+  echo "  Connect this folder to a project on Lightsprint?"
+  echo "─────────────────────────────────────────"
+  echo ""
+  echo "  Folder: $CURRENT_DIR"
   echo "  Repo:   $REPO_FULL_NAME"
-fi
-echo ""
-
-if [[ -t 0 ]]; then
-  # Interactive terminal — prompt the user
-  read -rp "Connect? (Y/n) " CONFIRM
-  CONFIRM="${CONFIRM:-Y}"
-else
-  # Piped (curl | bash) — stdin is not a terminal, auto-connect
-  CONFIRM="Y"
-fi
-
-if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
   echo ""
-  # Reattach stdin to the terminal so the OAuth callback server works
-  node "$PLUGIN_DIR/scripts/ls-cli.js" connect </dev/tty
+
+  if [[ -t 0 ]]; then
+    # Interactive terminal — prompt the user
+    read -rp "Connect? (Y/n) " CONFIRM
+    CONFIRM="${CONFIRM:-Y}"
+  else
+    # Piped (curl | bash) — stdin is not a terminal, auto-connect
+    CONFIRM="Y"
+  fi
+
+  if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
+    echo ""
+    # Reattach stdin to the terminal so the OAuth callback server works
+    node "$PLUGIN_DIR/scripts/ls-cli.js" connect </dev/tty
+  else
+    echo ""
+    echo "Skipped. You can connect later by using any /lightsprint: command."
+  fi
 else
+  echo "─────────────────────────────────────────"
+  echo "  No git repository detected"
+  echo "─────────────────────────────────────────"
   echo ""
-  echo "Skipped. You can connect later by using any /lightsprint: command."
+  echo "  To connect a project to Lightsprint, open Claude Code"
+  echo "  inside a git repository and run:"
+  echo ""
+  echo "    /lightsprint:tasks"
+  echo ""
+  echo "  This will trigger the OAuth flow and link that project."
 fi
 
 echo ""
