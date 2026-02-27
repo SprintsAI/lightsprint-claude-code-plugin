@@ -73,10 +73,20 @@ install_binary() {
 
     # Get latest release tag
     local TAG
-    TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | head -1 | cut -d'"' -f4) || {
+    local RELEASE_JSON
+    RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest") || {
       echo "Warning: Could not fetch latest release. Plan review hook will not be available." >&2
       return 1
     }
+    if command -v jq &>/dev/null; then
+      TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+    else
+      TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+    fi
+    if [[ -z "$TAG" || "$TAG" == "null" ]]; then
+      echo "Warning: Could not parse release tag. Plan review hook will not be available." >&2
+      return 1
+    fi
 
     # Determine plugin cache bin/ directory
     local VERSION PLUGIN_BIN_DIR
@@ -93,16 +103,28 @@ install_binary() {
     }
 
     # Verify checksum if available
-    if curl -fsSL -o /tmp/lightsprint-checksum.sha256 "$CHECKSUM_URL" 2>/dev/null; then
+    local TMP_CHECKSUM
+    TMP_CHECKSUM=$(mktemp)
+    if curl -fsSL -o "$TMP_CHECKSUM" "$CHECKSUM_URL" 2>/dev/null; then
       local EXPECTED ACTUAL
-      EXPECTED=$(cat /tmp/lightsprint-checksum.sha256 | awk '{print $1}')
-      ACTUAL=$(shasum -a 256 "$PLUGIN_BIN_DIR/$BINARY_NAME" | awk '{print $1}')
-      rm -f /tmp/lightsprint-checksum.sha256
+      EXPECTED=$(awk '{print $1}' "$TMP_CHECKSUM")
+      if command -v sha256sum &>/dev/null; then
+        ACTUAL=$(sha256sum "$PLUGIN_BIN_DIR/$BINARY_NAME" | awk '{print $1}')
+      elif command -v shasum &>/dev/null; then
+        ACTUAL=$(shasum -a 256 "$PLUGIN_BIN_DIR/$BINARY_NAME" | awk '{print $1}')
+      else
+        echo "Warning: No checksum tool found, skipping verification." >&2
+        rm -f "$TMP_CHECKSUM"
+        return 0
+      fi
+      rm -f "$TMP_CHECKSUM"
       if [[ "$EXPECTED" != "$ACTUAL" ]]; then
         echo "Error: Checksum verification failed!" >&2
         rm -f "$PLUGIN_BIN_DIR/$BINARY_NAME"
         return 1
       fi
+    else
+      rm -f "$TMP_CHECKSUM"
     fi
 
     chmod +x "$PLUGIN_BIN_DIR/$BINARY_NAME"

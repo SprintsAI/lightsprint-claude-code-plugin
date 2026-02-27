@@ -4,6 +4,7 @@
 # Save stdin to a temp file, then pass the file path as an argument
 # (avoids stdin issues entirely — works with both node and compiled binaries).
 STDIN_FILE=$(mktemp)
+trap 'rm -f "$STDIN_FILE"' EXIT
 cat > "$STDIN_FILE"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -14,6 +15,3 @@ if [[ ! -x "$BINARY" ]]; then
 fi
 
 "$BINARY" "$STDIN_FILE"
-RC=$?
-rm -f "$STDIN_FILE"
-exit $RC

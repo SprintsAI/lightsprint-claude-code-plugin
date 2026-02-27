@@ -96,7 +96,7 @@ echo ""
 # Confirm
 read -p "Ready to tag and release? (yes/no): " CONFIRM
 
-if [ "$CONFIRM" != "yes" ]; then
+if ! [[ "$CONFIRM" =~ ^[Yy]([Ee][Ss])?$ ]]; then
   echo -e "${YELLOW}Release cancelled${NC}"
   exit 0
 fi
