@@ -9,6 +9,48 @@
           "timeout": 345600000
         }]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "TaskCreate",
+        "hooks": [{
+          "type": "command",
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/sync-task.js create",
+          "timeout": 15000
+        }]
+      },
+      {
+        "matcher": "TaskUpdate",
+        "hooks": [{
+          "type": "command",
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/sync-task.js update",
+          "timeout": 15000
+        }]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [{
+          "type": "command",
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/sync-task.js subagent",
+          "timeout": 15000
+        }]
+      },
+      {
+        "matcher": "TaskList",
+        "hooks": [{
+          "type": "command",
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/sync-task.js list",
+          "timeout": 15000
+        }]
+      },
+      {
+        "matcher": "TaskGet",
+        "hooks": [{
+          "type": "command",
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/sync-task.js get",
+          "timeout": 15000
+        }]
+      }
     ]
   }
 }
