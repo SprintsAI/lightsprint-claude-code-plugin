@@ -1,9 +1,13 @@
 {
   "name": "lightsprint-claude-code-plugin",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "description": "Sync Claude Code tasks to Lightsprint project board",
   "private": true,
   "type": "module",
+  "scripts": {
+    "build": "bun build scripts/review-plan.js --compile --outfile lightsprint-plan-review",
+    "deploy:tag": "bash scripts/deploy-tag.sh"
+  },
   "engines": {
     "node": ">=18.0.0"
   }

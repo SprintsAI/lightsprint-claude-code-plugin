@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: bun-darwin-arm64
+            platform: darwin-arm64
+          - os: macos-13
+            target: bun-darwin-x64
+            platform: darwin-x64
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            platform: linux-x64
+          - os: ubuntu-latest
+            target: bun-linux-arm64
+            platform: linux-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Compile binary
+        run: |
+          bun build scripts/review-plan.js \
+            --compile \
+            --target=${{ matrix.target }} \
+            --outfile lightsprint-plan-review-${{ matrix.platform }}
+
+      - name: Generate checksum
+        run: |
+          shasum -a 256 lightsprint-plan-review-${{ matrix.platform }} > lightsprint-plan-review-${{ matrix.platform }}.sha256
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+          path: |
+            lightsprint-plan-review-${{ matrix.platform }}
+            lightsprint-plan-review-${{ matrix.platform }}.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            lightsprint-plan-review-*
+          generate_release_notes: true

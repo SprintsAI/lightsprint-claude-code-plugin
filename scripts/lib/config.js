@@ -60,9 +60,9 @@ function getGitMainWorktree() {
  *
  * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string } | null}
  */
-function findProjectConfig() {
+function findProjectConfig(startDir) {
 	const projects = readProjectsFile();
-	let dir = process.cwd();
+	let dir = startDir || process.cwd();
 
 	while (true) {
 		if (projects[dir]) {
@@ -87,10 +87,10 @@ function findProjectConfig() {
  * Returns null for both unconfigured and skipped folders (hooks should skip silently).
  * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string } | null}
  */
-export function getConfig() {
+export function getConfig(cwd) {
 	const defaultBaseUrl = 'https://lightsprint.ai';
 
-	const project = findProjectConfig();
+	const project = findProjectConfig(cwd);
 	if (!project || project.skipped) return null;
 
 	// Env var overrides stored baseUrl, which overrides default
