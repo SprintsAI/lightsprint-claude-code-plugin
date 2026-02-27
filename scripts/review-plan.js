@@ -27,7 +27,7 @@ import { exec } from 'child_process';
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { getConfig } from './lib/config.js';
+import { getConfig, getDefaultBaseUrl } from './lib/config.js';
 import { apiRequest, getProjectId, setConfig } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 
@@ -289,7 +289,7 @@ async function main() {
 		// No config for this folder — trigger OAuth in the browser
 		log('info', 'No project configured, triggering OAuth', { cwd: hookCwd });
 		try {
-			const defaultBaseUrl = process.env.LIGHTSPRINT_BASE_URL || 'https://lightsprint.ai';
+			const defaultBaseUrl = getDefaultBaseUrl();
 			const { authenticate } = await import('./lib/auth.js');
 			const authResult = await authenticate(defaultBaseUrl, { cwd: hookCwd, quiet: true });
 			if (!authResult || authResult.skipped || !authResult.accessToken) {

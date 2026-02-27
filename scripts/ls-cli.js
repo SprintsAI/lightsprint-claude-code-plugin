@@ -16,6 +16,7 @@ import { apiRequest, getProjectId, getProjectInfo } from './lib/client.js';
 import { setMapping } from './lib/task-map.js';
 import { lsToCcStatus } from './lib/status-mapper.js';
 import { authenticate } from './lib/auth.js';
+import { getDefaultBaseUrl } from './lib/config.js';
 
 const [,, command, ...args] = process.argv;
 
@@ -317,7 +318,7 @@ async function cmdWhoami() {
 // ─── connect ─────────────────────────────────────────────────────────────
 
 async function cmdConnect() {
-	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || 'https://lightsprint.ai';
+	const baseUrl = getDefaultBaseUrl();
 	await authenticate(baseUrl);
 }
 

@@ -19,6 +19,11 @@ for arg in "$@"; do
 done
 export LIGHTSPRINT_BASE_URL
 
+# Persist base URL so hooks can read it later (survives across sessions)
+LIGHTSPRINT_CONFIG_DIR="$HOME/.lightsprint"
+mkdir -p "$LIGHTSPRINT_CONFIG_DIR"
+printf '{"baseUrl":"%s"}\n' "$LIGHTSPRINT_BASE_URL" > "$LIGHTSPRINT_CONFIG_DIR/config.json"
+
 # Check prerequisites
 if ! command -v claude &>/dev/null; then
   echo "Error: claude CLI not found. Install it first: https://docs.anthropic.com/en/docs/claude-code" >&2

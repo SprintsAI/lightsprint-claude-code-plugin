@@ -14,11 +14,34 @@ import { execSync } from 'child_process';
 
 const CONFIG_DIR = join(homedir(), '.lightsprint');
 const PROJECTS_FILE = join(CONFIG_DIR, 'projects.json');
+const PLUGIN_CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 
 export function ensureConfigDir() {
 	if (!existsSync(CONFIG_DIR)) {
 		mkdirSync(CONFIG_DIR, { recursive: true });
 	}
+}
+
+/**
+ * Read the plugin-level config (e.g. baseUrl set during install).
+ * @returns {{ baseUrl?: string }}
+ */
+export function readPluginConfig() {
+	try {
+		if (existsSync(PLUGIN_CONFIG_FILE)) {
+			return JSON.parse(readFileSync(PLUGIN_CONFIG_FILE, 'utf-8'));
+		}
+	} catch {
+		// Corrupted file, ignore
+	}
+	return {};
+}
+
+/**
+ * Get the default base URL from env, plugin config, or hardcoded fallback.
+ */
+export function getDefaultBaseUrl() {
+	return process.env.LIGHTSPRINT_BASE_URL || readPluginConfig().baseUrl || 'https://lightsprint.ai';
 }
 
 export function readProjectsFile() {
@@ -88,13 +111,11 @@ function findProjectConfig(startDir) {
  * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string } | null}
  */
 export function getConfig(cwd) {
-	const defaultBaseUrl = 'https://lightsprint.ai';
-
 	const project = findProjectConfig(cwd);
 	if (!project || project.skipped) return null;
 
-	// Env var overrides stored baseUrl, which overrides default
-	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || project.baseUrl || defaultBaseUrl;
+	// Env var overrides stored baseUrl, which overrides plugin config, which overrides hardcoded default
+	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || project.baseUrl || getDefaultBaseUrl();
 
 	return {
 		...project,
@@ -121,7 +142,7 @@ export async function requireConfig() {
 
 	// No config for this folder — trigger OAuth
 	const { authenticate } = await import('./auth.js');
-	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || 'https://lightsprint.ai';
+	const baseUrl = getDefaultBaseUrl();
 	const result = await authenticate(baseUrl);
 
 	// User skipped during OAuth flow
