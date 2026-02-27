@@ -1,6 +1,6 @@
 # Lightsprint Claude Code Plugin
 
-Sync Claude Code tasks to your Lightsprint project board for team visibility. When agents create or update tasks, they automatically appear on your project board. Team members can see agent progress in real time without changing how they use Claude Code.
+Claude Code plugin for Lightsprint — plan review, task management skills, and project board integration.
 
 ## Prerequisites
 
@@ -87,30 +87,6 @@ Defaults to `https://lightsprint.ai`.
 
 ## How It Works
 
-### Transparent sync (hooks)
-
-The plugin registers `PostToolUse` hooks on `TaskCreate`, `TaskUpdate`, and `Task` (subagent). When an agent uses these tools, the hook fires automatically and syncs to Lightsprint:
-
-| Agent action | What happens on Lightsprint |
-|---|---|
-| `TaskCreate({subject: "Fix bug"})` | New task appears in **Todo** column |
-| `TaskUpdate({status: "in_progress"})` | Card moves to **In Progress** |
-| `TaskUpdate({status: "completed"})` | Card moves to **Done** |
-| `TaskUpdate({status: "deleted"})` | Task is deleted from the board |
-| `Task` (subagent spawned) | Comment posted on the active task |
-
-**Status mapping:**
-
-| Claude Code | Lightsprint |
-|---|---|
-| `pending` | `todo` |
-| `in_progress` | `in_progress` |
-| `completed` | `done` |
-
-Additional fields synced: `title`, `description`, `assignee`, `complexity`, `todoList`, `relatedFiles`.
-
-Hooks run asynchronously and never block the agent. Failures are logged to `~/.lightsprint/sync.log`.
-
 ### Skills (slash commands)
 
 | Command | Description |
@@ -121,10 +97,6 @@ Hooks run asynchronously and never block the agent. Failures are logged to `~/.l
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
-
-### Task ID mapping
-
-The plugin maintains a local mapping between Claude Code task IDs and Lightsprint task IDs in `~/.lightsprint/task-map.json`. This allows `TaskUpdate` hooks to find the corresponding Lightsprint task.
 
 ### Claiming tasks
 
@@ -143,9 +115,8 @@ lightsprint-claude-code-plugin/
 │   ├── plugin.json             # Plugin manifest
 │   └── marketplace.json        # Marketplace registry entry
 ├── hooks/
-│   └── hooks.json              # PostToolUse hooks for TaskCreate/TaskUpdate/Task
+│   └── hooks.json              # PermissionRequest hook for plan review
 ├── scripts/
-│   ├── sync-task.js            # Hook handler — reads stdin, syncs to LS API
 │   ├── ls-cli.js               # CLI for skills — tasks, create, update, get, claim, comment
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
@@ -173,9 +144,7 @@ Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
 | File | Purpose |
 |---|---|
 | `~/.lightsprint/projects.json` | Per-folder OAuth tokens (access + refresh + expiry + project ID) |
-| `~/.lightsprint/task-map.json` | Claude Code ↔ Lightsprint task ID mapping |
-| `~/.lightsprint/active-task.json` | Currently in-progress task (for subagent comments) |
-| `~/.lightsprint/sync.log` | Hook execution log |
+| `~/.lightsprint/active-task.json` | Currently in-progress task |
 
 ---
 
@@ -191,23 +160,9 @@ This removes the plugin from Claude Code and deletes the authorization for the c
 
 ## Troubleshooting
 
-### Tasks not appearing on the board
-
-1. Check the sync log: `cat ~/.lightsprint/sync.log`
-2. Verify authorization: `node scripts/ls-cli.js whoami`
-3. Ensure Node.js >= 18: `node --version`
-
 ### Token expired / refresh failed
 
 Use any `/lightsprint:` command — the plugin will re-prompt for authorization if the refresh token has expired.
-
-### Stale task mappings
-
-Task mappings in `~/.lightsprint/task-map.json` are session-scoped. If mappings become stale, delete the file:
-
-```bash
-rm ~/.lightsprint/task-map.json
-```
 
 ### Hook not firing
 

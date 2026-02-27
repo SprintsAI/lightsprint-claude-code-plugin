@@ -18,7 +18,6 @@
 ## Scripts
 - `scripts/review-plan.js` — Main hook handler. Reads plan from stdin, uploads to Lightsprint API, opens browser for review, waits for callback, returns allow/deny.
 - `scripts/review-plan-wrapper.sh` — Bash wrapper that saves stdin to temp file then pipes to node (workaround for node stdin issue).
-- `scripts/sync-task.js` — PostToolUse handler for TaskCreate/TaskUpdate/Task/TaskList/TaskGet. Syncs Claude Code tasks to Lightsprint.
 - `scripts/lib/config.js` — Config resolution. Uses `cwd` from hook stdin (not `process.cwd()`).
 - `scripts/lib/client.js` — Lightsprint API client.
 - `scripts/lib/plan-tracker.js` — Tracks active plan ID for versioning on resubmission.
