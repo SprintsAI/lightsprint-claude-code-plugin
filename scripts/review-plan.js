@@ -28,7 +28,7 @@ import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { getConfig } from './lib/config.js';
-import { apiRequest, getProjectId } from './lib/client.js';
+import { apiRequest, getProjectId, setConfig } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 
 const LOG_DIR = join(homedir(), '.lightsprint');
@@ -284,11 +284,28 @@ async function main() {
 	const hookCwd = input?.cwd || process.cwd();
 
 	// 2. Config guard (use cwd from stdin, not process.cwd())
-	const cfg = getConfig(hookCwd);
+	let cfg = getConfig(hookCwd);
 	if (!cfg) {
-		log('info', 'No project configured, allowing', { cwd: hookCwd });
-		outputAllow();
-		process.exit(0);
+		// No config for this folder — trigger OAuth in the browser
+		log('info', 'No project configured, triggering OAuth', { cwd: hookCwd });
+		try {
+			const defaultBaseUrl = process.env.LIGHTSPRINT_BASE_URL || 'https://lightsprint.ai';
+			const { authenticate } = await import('./lib/auth.js');
+			const authResult = await authenticate(defaultBaseUrl, { cwd: hookCwd, quiet: true });
+			if (!authResult || authResult.skipped || !authResult.accessToken) {
+				log('info', 'OAuth skipped or failed, allowing', { cwd: hookCwd });
+				outputAllow();
+				process.exit(0);
+			}
+			cfg = authResult;
+			// Inject fresh config into client module so apiRequest uses it
+			setConfig(cfg);
+			log('info', 'OAuth succeeded', { projectId: cfg.projectId, cwd: hookCwd });
+		} catch (err) {
+			log('error', 'OAuth failed', { error: err.message, cwd: hookCwd });
+			outputAllow();
+			process.exit(0);
+		}
 	}
 
 	log('info', 'Config resolved', { baseUrl: cfg.baseUrl, cwd: hookCwd });

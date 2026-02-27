@@ -128,7 +128,8 @@ function getGitRepoFullName() {
  * @param {string} [baseUrl='https://lightsprint.ai']
  * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string }>}
  */
-export async function authenticate(baseUrl = 'https://lightsprint.ai') {
+export async function authenticate(baseUrl = 'https://lightsprint.ai', options = {}) {
+	const { cwd, quiet } = options;
 	ensureConfigDir();
 
 	const port = await findFreePort();
@@ -139,18 +140,18 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai') {
 		authorizeUrl += `&repo=${encodeURIComponent(repoFullName)}`;
 	}
 
-	console.log('Opening browser to authorize with Lightsprint...');
+	if (!quiet) console.log('Opening browser to authorize with Lightsprint...');
 	openBrowser(authorizeUrl);
 
 	const result = await waitForCallback(port);
 
-	const folder = process.cwd();
+	const folder = cwd || process.cwd();
 
 	if (result.skipped) {
 		const projects = readProjectsFile();
 		projects[folder] = { skipped: true };
 		writeProjectsFile(projects);
-		console.log('Lightsprint skipped for this folder.');
+		if (!quiet) console.log('Lightsprint skipped for this folder.');
 		return { skipped: true, folder, baseUrl };
 	}
 
@@ -171,7 +172,7 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai') {
 	projects[folder] = entry;
 	writeProjectsFile(projects);
 
-	console.log(`Connected to project: ${result.project}`);
+	if (!quiet) console.log(`Connected to project: ${result.project}`);
 
 	return { ...entry, folder, baseUrl };
 }

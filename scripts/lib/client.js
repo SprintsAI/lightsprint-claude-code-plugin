@@ -8,6 +8,14 @@ import { requireConfig, readProjectsFile, writeProjectsFile } from './config.js'
 
 let _config = null;
 
+/**
+ * Inject config directly (e.g., after fresh OAuth in hook context).
+ * @param {object} cfg - Config object with accessToken, baseUrl, etc.
+ */
+export function setConfig(cfg) {
+	_config = cfg;
+}
+
 async function config() {
 	if (!_config) {
 		_config = await requireConfig();
