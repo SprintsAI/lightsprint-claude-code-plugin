@@ -132,7 +132,7 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai') {
 	ensureConfigDir();
 
 	const port = await findFreePort();
-	let authorizeUrl = `${baseUrl}/authorize-cli?port=${port}&scope=tasks:read+tasks:write+comments:write`;
+	let authorizeUrl = `${baseUrl}/authorize-cli?port=${port}&scope=tasks:read+tasks:write+comments:write+plans:read+plans:write`;
 
 	const repoFullName = getGitRepoFullName();
 	if (repoFullName) {

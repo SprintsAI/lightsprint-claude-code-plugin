@@ -39,13 +39,7 @@ function log(level, message, data) {
 async function main() {
 	const action = process.argv[2]; // "create", "update", or "subagent"
 
-	// Check config exists before reading stdin
-	if (!getConfig()) {
-		log('warn', 'No project configured for this folder, skipping sync');
-		process.exit(0);
-	}
-
-	// Read hook stdin
+	// Read hook stdin first (need cwd for config resolution)
 	let input;
 	try {
 		const chunks = [];
@@ -56,6 +50,14 @@ async function main() {
 	} catch (err) {
 		log('error', 'Failed to parse stdin', { error: err.message });
 		process.exit(0); // Don't block the agent
+	}
+
+	const hookCwd = input?.cwd || process.cwd();
+
+	// Check config exists using cwd from stdin
+	if (!getConfig(hookCwd)) {
+		log('warn', 'No project configured for this folder, skipping sync', { cwd: hookCwd });
+		process.exit(0);
 	}
 
 	const { tool_input, tool_response } = input;

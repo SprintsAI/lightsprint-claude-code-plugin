@@ -1,5 +1,15 @@
 {
   "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [{
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-plan-wrapper.sh",
+          "timeout": 345600000
+        }]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "TaskCreate",

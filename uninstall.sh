@@ -3,6 +3,8 @@ set -euo pipefail
 
 MARKETPLACE_NAME="lightsprint"
 PLUGIN_NAME="lightsprint"
+BINARY_NAME="lightsprint-plan-review"
+INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local}/bin"
 
 echo "Uninstalling Lightsprint plugin for Claude Code..."
 
@@ -16,6 +18,19 @@ claude plugin uninstall "$PLUGIN_NAME" 2>/dev/null || true
 
 echo "Removing Lightsprint marketplace..."
 claude plugin marketplace remove "$MARKETPLACE_NAME" 2>/dev/null || true
+
+# Remove cached plugin files
+CACHE_DIR="$HOME/.claude/plugins/cache/lightsprint"
+if [ -d "$CACHE_DIR" ]; then
+  rm -rf "$CACHE_DIR"
+  echo "Removed plugin cache: $CACHE_DIR"
+fi
+
+# Remove plan review binary
+if [ -f "$INSTALL_DIR/$BINARY_NAME" ]; then
+  rm -f "$INSTALL_DIR/$BINARY_NAME"
+  echo "Removed binary: $INSTALL_DIR/$BINARY_NAME"
+fi
 
 # Remove only the current folder's entry from projects.json
 FOLDER=$(pwd)
