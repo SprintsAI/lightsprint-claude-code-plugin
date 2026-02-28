@@ -34,7 +34,6 @@ import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracke
 
 const LOG_DIR = join(homedir(), '.lightsprint');
 const LOG_FILE = join(LOG_DIR, 'sync.log');
-const TRACE_FILE = '/tmp/lightsprint-review-e2e108.log';
 
 // Injected at build time via --define (enables version verification in logs)
 const BUILD_HASH = typeof __BUILD_HASH__ !== 'undefined' ? __BUILD_HASH__ : 'dev';
@@ -47,16 +46,6 @@ function log(level, message, data) {
 		appendFileSync(LOG_FILE, line);
 	} catch {
 		// Never crash on logging
-	}
-}
-
-function trace(message, data) {
-	try {
-		const ts = new Date().toISOString();
-		const line = `${ts} ${message}${data ? ' ' + JSON.stringify(data) : ''}\n`;
-		appendFileSync(TRACE_FILE, line);
-	} catch {
-		// Never crash on tracing
 	}
 }
 
@@ -101,19 +90,10 @@ function findFreePort() {
 }
 
 async function openBrowser(url) {
-	// #region agent log
-	log('debug', 'openBrowser called', { platform: process.platform, urlPreview: url?.substring(0, 80), cwd: process.cwd() });
-	// #endregion
 	try {
 		await open(url);
-		// #region agent log
-		log('debug', 'openBrowser succeeded', { strategy: 'open-pkg' });
-		// #endregion
 		return;
-	} catch (e) {
-		// #region agent log
-		log('debug', 'openBrowser open-pkg failed', { err: String(e) });
-		// #endregion
+	} catch {
 	}
 
 	// Fallback: spawn /usr/bin/open (macOS) or exec
@@ -125,16 +105,10 @@ async function openBrowser(url) {
 		} else {
 			exec(process.platform === 'linux' ? `xdg-open "${url}"` : `start "" "${url}"`);
 		}
-		// #region agent log
-		log('debug', 'openBrowser fallback ran');
-		// #endregion
 		return;
 	} catch {
 		// fall through
 	}
-	// #region agent log
-	log('debug', 'openBrowser no opener succeeded');
-	// #endregion
 	log('warn', 'Could not open browser, printing URL');
 }
 
@@ -271,9 +245,6 @@ function waitForCallback(port, timeoutMs = 345600000) {
 }
 
 async function main() {
-	// #region agent log
-	trace('main_enter', { buildHash: BUILD_HASH, pid: process.pid, argv: process.argv.slice(2), home: process.env.HOME, cwd: process.cwd() });
-	// #endregion
 	log('info', 'Hook invoked', { buildHash: BUILD_HASH, pid: process.pid, argv: process.argv.slice(2) });
 
 	// 1. Read input — from file argument (preferred) or stdin (fallback)
@@ -297,20 +268,17 @@ async function main() {
 		let toParse = rawStdin.trimEnd();
 		try {
 			input = JSON.parse(toParse);
-			trace('stdin_parsed_primary');
 		} catch (parseErr) {
 			// Claude Code may send plan content with unescaped newlines; repair the plan string only
 			if (/control character|Unexpected token/.test(parseErr.message) && /"plan"\s*:\s*"/.test(toParse)) {
 				toParse = toParse.replace(/"plan"\s*:\s*"([\s\S]*?)"(?=\s*[,}\]])/g, (_, plan) =>
 					`"plan":"${plan.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/"/g, '\\"')}"`);
 				input = JSON.parse(toParse);
-				trace('stdin_parsed_repaired');
 			} else {
 				throw parseErr;
 			}
 		}
 	} catch (err) {
-		trace('stdin_parse_failed', { error: err.message });
 		log('error', 'Failed to parse input', { error: err.message, stdinLength: rawStdin?.length, stdinPreview: rawStdin?.substring(0, 200) });
 		outputAllow();
 		process.exit(0);
@@ -448,12 +416,10 @@ async function main() {
 			outputAllow();
 		}
 	} catch (err) {
-		trace('main_failed', { error: err.message });
 		log('error', 'review-plan failed', { error: err.message });
 		outputAllow();
 	}
 
-	trace('main_exit');
 	process.exit(0);
 }
 
