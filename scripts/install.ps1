@@ -11,7 +11,7 @@ $repo = "SprintsAI/lightsprint-claude-code-plugin"
 $marketplaceName = "lightsprint"
 $pluginName = "lightsprint"
 $pluginDir = "$env:USERPROFILE\.claude\plugins\marketplaces\lightsprint"
-$binaryName = "ls-plan"
+$binaryName = "lightsprint"
 $installDir = "$env:LOCALAPPDATA\lightsprint"
 
 Write-Host "Installing Lightsprint for Claude Code..."
@@ -275,10 +275,10 @@ if ($repoFullName) {
 
     if ($confirm -match '^[Yy]$') {
         Write-Host ""
-        & node "$pluginDir\scripts\ls-cli.js" connect
+        & node "$pluginDir\scripts\lightsprint.js" connect
     } else {
         Write-Host ""
-        Write-Host "Skipped. You can connect later by using any /lightsprint: command."
+        Write-Host "Skipped. You can connect later with 'lightsprint connect' or any /lightsprint: command."
     }
 } else {
     Write-Host ([char]0x2500 * 41)

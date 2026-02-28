@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ls-cli.js — CLI for Lightsprint skills.
+ * lightsprint — CLI for Lightsprint skills.
  *
  * Commands:
  *   tasks [--status todo|in_progress|in_review|done] [--limit N]
@@ -12,15 +12,17 @@
  *   whoami
  */
 
+import { createHash } from 'crypto';
+import { existsSync, mkdirSync, chmodSync, copyFileSync, unlinkSync, writeFileSync, readFileSync } from 'fs';
+import { homedir, tmpdir } from 'os';
+import { join } from 'path';
 import { apiRequest, getProjectId, getProjectInfo } from './lib/client.js';
 import { setMapping } from './lib/task-map.js';
 import { lsToCcStatus } from './lib/status-mapper.js';
 import { authenticate } from './lib/auth.js';
 import { getDefaultBaseUrl } from './lib/config.js';
 
-const [,, command, ...args] = process.argv;
-
-async function main() {
+export async function cliMain(command, args, context = {}) {
 	// Handle help flags
 	if (!command || command === 'help' || command === '--help' || command === '-h') {
 		return showHelp();
@@ -35,9 +37,10 @@ async function main() {
 		case 'comment': return await cmdComment(args);
 		case 'whoami': return await cmdWhoami();
 		case 'connect': return await cmdConnect();
+		case 'upgrade': return await cmdUpgrade(context.version || 'dev');
 		default:
 			console.error(`Unknown command: ${command}`);
-			console.error(`Use 'ls-cli.js help' for usage information.`);
+			console.error(`Use 'lightsprint help' for usage information.`);
 			process.exit(1);
 	}
 }
@@ -48,8 +51,8 @@ function showHelp() {
 	console.log(`Lightsprint CLI — Manage tasks on your Lightsprint project board
 
 Usage:
-  ls-cli.js <command> [options]
-  ls-cli.js help          Show this help message
+  lightsprint <command> [options]
+  lightsprint help          Show this help message
 
 Commands:
 
@@ -59,7 +62,7 @@ Commands:
       --status <status>   Filter by status: todo, in_progress, in_review, done
       --limit <N>         Limit number of results (default: 20)
     Example:
-      ls-cli.js tasks --status in_progress --limit 10
+      lightsprint tasks --status in_progress --limit 10
 
   create <title> [options]
     Create a new task
@@ -68,7 +71,7 @@ Commands:
       --complexity <level>        trivial, low, medium, high, or critical
       --status <status>           todo, in_progress, in_review, or done (default: todo)
     Example:
-      ls-cli.js create "Fix login bug" --description "Users can't log in" --complexity high
+      lightsprint create "Fix login bug" --description "Users can't log in" --complexity high
 
   update <taskId> [options]
     Update an existing task
@@ -79,28 +82,34 @@ Commands:
       --complexity <level>        New complexity level
       --assignee <name>           Assign task to a team member
     Example:
-      ls-cli.js update abc123 --status done --assignee "John"
+      lightsprint update abc123 --status done --assignee "John"
 
   get <taskId>
     Show full details of a task including description, todo list, and related files
     Example:
-      ls-cli.js get abc123
+      lightsprint get abc123
 
   claim <taskId>
     Claim a task and set its status to in_progress
     Example:
-      ls-cli.js claim abc123
+      lightsprint claim abc123
 
   comment <taskId> <body>
     Add a comment to a task
     Example:
-      ls-cli.js comment abc123 "This is now complete"
+      lightsprint comment abc123 "This is now complete"
 
   whoami
     Display current project and authentication info
 
   connect
     Authenticate and connect to Lightsprint (run this first if not authenticated)
+
+  review-plan [input]
+    Review an implementation plan (typically invoked by Claude Code hooks)
+
+  upgrade
+    Download and install the latest version from GitHub releases
 
 Flags:
   --help, -h              Show this help message
@@ -157,7 +166,7 @@ async function cmdTasks(args) {
 
 async function cmdCreate(args) {
 	if (args.length === 0) {
-		console.error('Usage: ls-cli.js create <title> [--description <text>] [--complexity trivial|low|medium|high|critical] [--status todo|in_progress|in_review|done]');
+		console.error('Usage: lightsprint create <title> [--description <text>] [--complexity trivial|low|medium|high|critical] [--status todo|in_progress|in_review|done]');
 		process.exit(1);
 	}
 
@@ -216,7 +225,7 @@ async function cmdCreate(args) {
 async function cmdUpdate(args) {
 	const taskId = args[0];
 	if (!taskId || taskId.startsWith('--')) {
-		console.error('Usage: ls-cli.js update <taskId> [--title <text>] [--description <text>] [--status todo|in_progress|in_review|done] [--complexity trivial|low|medium|high|critical] [--assignee <name>]');
+		console.error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status todo|in_progress|in_review|done] [--complexity trivial|low|medium|high|critical] [--assignee <name>]');
 		process.exit(1);
 	}
 
@@ -268,7 +277,7 @@ async function cmdUpdate(args) {
 async function cmdGet(args) {
 	const taskId = args[0];
 	if (!taskId) {
-		console.error('Usage: ls-cli.js get <taskId>');
+		console.error('Usage: lightsprint get <taskId>');
 		process.exit(1);
 	}
 
@@ -310,7 +319,7 @@ async function cmdGet(args) {
 async function cmdClaim(args) {
 	const taskId = args[0];
 	if (!taskId) {
-		console.error('Usage: ls-cli.js claim <taskId>');
+		console.error('Usage: lightsprint claim <taskId>');
 		process.exit(1);
 	}
 
@@ -363,7 +372,7 @@ async function cmdComment(args) {
 	const body = args.slice(1).join(' ');
 
 	if (!taskId || !body) {
-		console.error('Usage: ls-cli.js comment <taskId> <body>');
+		console.error('Usage: lightsprint comment <taskId> <body>');
 		process.exit(1);
 	}
 
@@ -392,6 +401,108 @@ async function cmdConnect() {
 	await authenticate(baseUrl);
 }
 
+// ─── upgrade ─────────────────────────────────────────────────────────
+
+const UPGRADE_REPO = 'SprintsAI/lightsprint-claude-code-plugin';
+const UPGRADE_BINARY = 'lightsprint';
+
+async function cmdUpgrade(currentVersion) {
+	const platform = process.platform;  // darwin, linux, win32
+	const arch = process.arch;          // x64, arm64
+	const platformStr = `${platform}-${arch}`;
+	const assetName = platform === 'win32'
+		? `${UPGRADE_BINARY}-${platformStr}.exe`
+		: `${UPGRADE_BINARY}-${platformStr}`;
+
+	// Fetch latest release
+	console.log('Checking for updates...');
+	const res = await fetch(`https://api.github.com/repos/${UPGRADE_REPO}/releases/latest`, {
+		headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'lightsprint-cli' }
+	});
+	if (!res.ok) {
+		console.error(`Error: Failed to check for updates (HTTP ${res.status})`);
+		process.exit(1);
+	}
+	const release = await res.json();
+	const tag = release.tag_name;
+	const latestVersion = tag.replace(/^v/, '');
+
+	if (currentVersion === latestVersion) {
+		console.log(`Already up to date (v${currentVersion}).`);
+		return;
+	}
+
+	if (currentVersion !== 'dev') {
+		console.log(`Current version: v${currentVersion}`);
+	}
+	console.log(`Latest version:  v${latestVersion}`);
+	console.log(`Downloading ${assetName}...`);
+
+	// Download binary to temp file
+	const downloadUrl = `https://github.com/${UPGRADE_REPO}/releases/download/${tag}/${assetName}`;
+	const checksumUrl = `${downloadUrl}.sha256`;
+
+	const binRes = await fetch(downloadUrl);
+	if (!binRes.ok) {
+		console.error(`Error: Failed to download binary (HTTP ${binRes.status})`);
+		console.error(`URL: ${downloadUrl}`);
+		process.exit(1);
+	}
+	const binBuffer = Buffer.from(await binRes.arrayBuffer());
+
+	// Verify checksum
+	const csRes = await fetch(checksumUrl);
+	if (csRes.ok) {
+		const csText = await csRes.text();
+		const expected = csText.trim().split(/\s+/)[0];
+		const actual = createHash('sha256').update(binBuffer).digest('hex');
+		if (expected !== actual) {
+			console.error('Error: Checksum verification failed!');
+			console.error(`  Expected: ${expected}`);
+			console.error(`  Actual:   ${actual}`);
+			process.exit(1);
+		}
+	} else {
+		console.log('Warning: Checksum not available, skipping verification.');
+	}
+
+	// Write to temp file first
+	const tmpPath = join(tmpdir(), `${UPGRADE_BINARY}-${Date.now()}`);
+	writeFileSync(tmpPath, binBuffer);
+
+	// Determine install paths
+	const home = homedir();
+	const pluginBinDir = join(home, '.claude', 'plugins', 'cache', 'lightsprint', 'lightsprint', latestVersion, 'bin');
+	const isWindows = platform === 'win32';
+	const binaryFilename = isWindows ? `${UPGRADE_BINARY}.exe` : UPGRADE_BINARY;
+	const cliDir = isWindows
+		? join(process.env.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'lightsprint')
+		: join(process.env.XDG_DATA_HOME || join(home, '.local'), 'bin');
+
+	// Install to plugin cache
+	mkdirSync(pluginBinDir, { recursive: true });
+	const pluginDest = join(pluginBinDir, binaryFilename);
+	copyFileSync(tmpPath, pluginDest);
+	if (!isWindows) chmodSync(pluginDest, 0o755);
+	console.log(`Installed to ${pluginBinDir}/`);
+
+	// Install to CLI convenience path
+	try {
+		mkdirSync(cliDir, { recursive: true });
+		const cliDest = join(cliDir, binaryFilename);
+		copyFileSync(tmpPath, cliDest);
+		if (!isWindows) chmodSync(cliDest, 0o755);
+		console.log(`Updated ${cliDir}/${binaryFilename}`);
+	} catch {
+		// Non-fatal — plugin cache is the primary location
+	}
+
+	// Clean up temp file
+	try { unlinkSync(tmpPath); } catch {}
+
+	console.log(`\nUpgraded lightsprint v${currentVersion === 'dev' ? 'dev' : currentVersion} → v${latestVersion}`);
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────
 
 function statusToColumnName(status) {
@@ -404,7 +515,3 @@ function statusToColumnName(status) {
 	return map[status] || status;
 }
 
-main().catch(err => {
-	console.error(`Error: ${err.message}`);
-	process.exit(1);
-});

@@ -6,7 +6,7 @@ description: Update an existing Lightsprint task. Change its title, description,
 Run this command to update a Lightsprint task:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/ls-cli.js update $ARGUMENTS
+lightsprint update $ARGUMENTS
 ```
 
 Usage: `update <taskId> [--title <text>] [--description <text>] [--status todo|in_progress|in_review|done] [--complexity trivial|low|medium|high|critical] [--assignee <name>]`
