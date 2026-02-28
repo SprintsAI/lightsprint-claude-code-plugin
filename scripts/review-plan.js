@@ -288,9 +288,9 @@ function waitForCallback(port, timeoutMs = 345600000) {
 async function main() {
 	log('info', 'Hook invoked', { buildHash: BUILD_HASH, pid: process.pid, argv: process.argv.slice(2) });
 
-	// Handle help flags early (don't match no-arg case — hooks invoke without argv)
+	// Handle help flags, or no-arg interactive usage (TTY = user ran it directly)
 	const firstArg = process.argv[2];
-	if (firstArg === 'help' || firstArg === '--help' || firstArg === '-h') {
+	if (firstArg === 'help' || firstArg === '--help' || firstArg === '-h' || (!firstArg && process.stdin.isTTY)) {
 		return showHelp();
 	}
 

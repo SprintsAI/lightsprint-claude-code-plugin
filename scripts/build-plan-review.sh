@@ -5,5 +5,5 @@ HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "nobuild")
 echo "Building with hash: $HASH"
 exec bun build scripts/review-plan.js \
   --compile \
-  --outfile lightsprint-plan-review \
+  --outfile ls-plan \
   --define "__BUILD_HASH__=\"$HASH\""

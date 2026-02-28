@@ -57,29 +57,29 @@ jobs:
           bun build scripts/review-plan.js \
             --compile \
             --target=${{ matrix.target }} \
-            --outfile lightsprint-plan-review-${{ matrix.platform }} \
+            --outfile ls-plan-${{ matrix.platform }} \
             --define "__BUILD_HASH__=\"$HASH\""
           echo "Build completed successfully"
-          ls -lah lightsprint-plan-review-${{ matrix.platform }}
+          ls -lah ls-plan-${{ matrix.platform }}
 
       - name: Generate checksum
         run: |
           echo "Verifying binary exists..."
-          if [ ! -f "lightsprint-plan-review-${{ matrix.platform }}" ]; then
+          if [ ! -f "ls-plan-${{ matrix.platform }}" ]; then
             echo "ERROR: Binary not found!"
             exit 1
           fi
-          echo "Binary size: $(wc -c < lightsprint-plan-review-${{ matrix.platform }}) bytes"
-          shasum -a 256 lightsprint-plan-review-${{ matrix.platform }} > lightsprint-plan-review-${{ matrix.platform }}.sha256
-          cat lightsprint-plan-review-${{ matrix.platform }}.sha256
+          echo "Binary size: $(wc -c < ls-plan-${{ matrix.platform }}) bytes"
+          shasum -a 256 ls-plan-${{ matrix.platform }} > ls-plan-${{ matrix.platform }}.sha256
+          cat ls-plan-${{ matrix.platform }}.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.platform }}
           path: |
-            lightsprint-plan-review-${{ matrix.platform }}
-            lightsprint-plan-review-${{ matrix.platform }}.sha256
+            ls-plan-${{ matrix.platform }}
+            ls-plan-${{ matrix.platform }}.sha256
 
   release:
     needs: build
@@ -94,5 +94,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            lightsprint-plan-review-*
+            ls-plan-*
           generate_release_notes: true

@@ -3,7 +3,7 @@ set -euo pipefail
 
 MARKETPLACE_NAME="lightsprint"
 PLUGIN_NAME="lightsprint"
-BINARY_NAME="lightsprint-plan-review"
+BINARY_NAME="ls-plan"
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local}/bin"
 
 echo "Uninstalling Lightsprint plugin for Claude Code..."

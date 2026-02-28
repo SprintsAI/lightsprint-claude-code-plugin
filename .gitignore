@@ -1,5 +1,5 @@
-lightsprint-plan-review
-lightsprint-plan-review-*
+ls-plan
+ls-plan-*
 bin/
 node_modules/
 .DS_Store
