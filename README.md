@@ -34,24 +34,15 @@ That's it. Each new project folder auto-prompts for authorization when you first
 curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh | bash
 ```
 
-### From GitHub (manual)
+### Non-interactive install
+
+If you're installing from a non-interactive environment (e.g., Claude Code, CI, or a script), download the installer and pipe `yes` to auto-confirm all prompts:
 
 ```bash
-claude plugin marketplace add SprintsAI/lightsprint-claude-code-plugin
-claude plugin install lightsprint
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh)" <<< $'Y\nY'
 ```
 
-### From a local directory (development)
-
-```bash
-claude plugin install ./lightsprint-claude-code-plugin
-```
-
-Or test without installing:
-
-```bash
-claude --plugin-dir ./lightsprint-claude-code-plugin
-```
+The plugin will be installed but the project connection step will be skipped. You can connect later by running `/lightsprint:tasks` inside a git repository.
 
 ---
 
