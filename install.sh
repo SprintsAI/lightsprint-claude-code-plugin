@@ -180,6 +180,101 @@ if [[ "$LIGHTSPRINT_BASE_URL" != "https://lightsprint.ai" ]]; then
   echo "Base URL: $LIGHTSPRINT_BASE_URL"
 fi
 
+# ─── Check for conflicting ExitPlanMode hooks ────────────────────────────
+CONFLICTING_PLUGINS=()
+MARKETPLACES_DIR="$HOME/.claude/plugins/marketplaces"
+
+# Build list of already-disabled plugins from settings.json (marketplace names)
+DISABLED_MARKETPLACES=""
+SETTINGS_FILE="$HOME/.claude/settings.json"
+if [[ -f "$SETTINGS_FILE" ]] && command -v node &>/dev/null; then
+  DISABLED_MARKETPLACES=$(node -e "
+    const s = require('$SETTINGS_FILE');
+    const ep = s.enabledPlugins || {};
+    const disabled = Object.entries(ep)
+      .filter(([, v]) => v === false)
+      .map(([k]) => k.split('@').pop());
+    console.log(disabled.join('\n'));
+  " 2>/dev/null || true)
+fi
+
+if [[ -d "$MARKETPLACES_DIR" ]]; then
+  while IFS= read -r hooks_file; do
+    # Skip our own plugin
+    if [[ "$hooks_file" == *"/lightsprint/"* ]]; then
+      continue
+    fi
+    # Extract plugin name from marketplace path (first directory after marketplaces/)
+    plugin_name="${hooks_file#"$MARKETPLACES_DIR/"}"
+    plugin_name="${plugin_name%%/*}"
+    # Skip plugins that are already disabled
+    if echo "$DISABLED_MARKETPLACES" | grep -qx "$plugin_name" 2>/dev/null; then
+      continue
+    fi
+    CONFLICTING_PLUGINS+=("$plugin_name")
+  done < <(find "$MARKETPLACES_DIR" -name "hooks.json" -exec grep -l "ExitPlanMode" {} + 2>/dev/null || true)
+fi
+
+# Also check user-level settings.json for ExitPlanMode hooks
+if [[ -f "$SETTINGS_FILE" ]] && grep -q "ExitPlanMode" "$SETTINGS_FILE" 2>/dev/null; then
+  # Check if it's in the hooks section (not enabledPlugins)
+  if command -v node &>/dev/null; then
+    HAS_USER_HOOK=$(node -e "
+      const s = require('$SETTINGS_FILE');
+      const hooks = s.hooks || {};
+      const pr = hooks.PermissionRequest || [];
+      const match = pr.some(h => h.matcher === 'ExitPlanMode');
+      console.log(match ? 'yes' : 'no');
+    " 2>/dev/null || echo "no")
+    if [[ "$HAS_USER_HOOK" == "yes" ]]; then
+      CONFLICTING_PLUGINS+=("settings.json (user hook)")
+    fi
+  fi
+fi
+
+# Deduplicate
+UNIQUE_CONFLICTS=()
+for p in "${CONFLICTING_PLUGINS[@]+"${CONFLICTING_PLUGINS[@]}"}"; do
+  dup=false
+  for u in "${UNIQUE_CONFLICTS[@]+"${UNIQUE_CONFLICTS[@]}"}"; do
+    if [[ "$p" == "$u" ]]; then dup=true; break; fi
+  done
+  if ! $dup; then UNIQUE_CONFLICTS+=("$p"); fi
+done
+
+if [[ ${#UNIQUE_CONFLICTS[@]} -gt 0 ]]; then
+  echo ""
+  echo "─────────────────────────────────────────"
+  echo "  Other ExitPlanMode hooks detected:"
+  echo "─────────────────────────────────────────"
+  for p in "${UNIQUE_CONFLICTS[@]}"; do
+    echo "   - $p"
+  done
+  echo ""
+  echo "  Having multiple ExitPlanMode hooks means multiple review UIs"
+  echo "  will open each time you exit plan mode."
+  echo ""
+
+  if [[ -t 0 ]]; then
+    read -rp "Disable them? (Y/n) " DISABLE_CONFIRM
+    DISABLE_CONFIRM="${DISABLE_CONFIRM:-Y}"
+  else
+    DISABLE_CONFIRM="n"
+  fi
+
+  if [[ "$DISABLE_CONFIRM" =~ ^[Yy]$ ]]; then
+    for p in "${UNIQUE_CONFLICTS[@]}"; do
+      if [[ "$p" == "settings.json (user hook)" ]]; then
+        echo "  Note: Remove the ExitPlanMode hook from ~/.claude/settings.json manually."
+      else
+        echo "  Disabling $p..."
+        claude plugin disable "$p" 2>/dev/null || echo "  Warning: Could not disable $p"
+      fi
+    done
+    echo ""
+  fi
+fi
+
 # Check if INSTALL_DIR is in PATH
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
   echo ""

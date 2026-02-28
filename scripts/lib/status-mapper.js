@@ -1,15 +1,9 @@
 /**
- * Maps Claude Code task statuses to Lightsprint project statuses and vice versa.
+ * Maps Lightsprint project statuses to Claude Code task statuses.
  *
  * Claude Code: pending → in_progress → completed (+ deleted)
  * Lightsprint: todo → in_progress → in_review → done
  */
-
-const CC_TO_LS = {
-	'pending': 'todo',
-	'in_progress': 'in_progress',
-	'completed': 'done'
-};
 
 const LS_TO_CC = {
 	'todo': 'pending',
@@ -17,15 +11,6 @@ const LS_TO_CC = {
 	'in_review': 'in_progress',
 	'done': 'completed'
 };
-
-/**
- * Map a Claude Code status to a Lightsprint projectStatus.
- * @param {string} ccStatus
- * @returns {string | undefined}
- */
-export function ccToLsStatus(ccStatus) {
-	return CC_TO_LS[ccStatus];
-}
 
 /**
  * Map a Lightsprint projectStatus to a Claude Code status.
