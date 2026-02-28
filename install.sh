@@ -5,7 +5,7 @@ REPO="SprintsAI/lightsprint-claude-code-plugin"
 MARKETPLACE_NAME="lightsprint"
 PLUGIN_NAME="lightsprint"
 PLUGIN_DIR="$HOME/.claude/plugins/marketplaces/lightsprint"
-BINARY_NAME="ls-plan"
+BINARY_NAME="lightsprint"
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local}/bin"
 
 echo "Installing Lightsprint for Claude Code..."
@@ -44,7 +44,7 @@ install_binary() {
     mkdir -p "$PLUGIN_BIN_DIR"
     if command -v bun &>/dev/null; then
       echo "Compiling plan review binary from local source..."
-      (cd "$SRC_DIR" && HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "nobuild") && bun build scripts/review-plan.js --compile --outfile "$PLUGIN_BIN_DIR/$BINARY_NAME" --define "__BUILD_HASH__=\"$HASH\"") || {
+      (cd "$SRC_DIR" && HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "nobuild") && bun build scripts/lightsprint.js --compile --outfile "$PLUGIN_BIN_DIR/$BINARY_NAME" --define "__BUILD_HASH__=\"$HASH\"") || {
         echo "Warning: Failed to compile binary. Plan review hook will not be available." >&2
         return 1
       }
@@ -155,6 +155,9 @@ echo "Installing plugin..."
 if [[ -n "${LIGHTSPRINT_LOCAL_PATH:-}" ]]; then
   LIGHTSPRINT_LOCAL_PATH="$(cd "$LIGHTSPRINT_LOCAL_PATH" && pwd)"
   echo "Using local path: $LIGHTSPRINT_LOCAL_PATH"
+  # Remove root-level binary if it exists — it conflicts with plugin install
+  # which needs to mkdir a directory at cache/lightsprint/lightsprint
+  rm -f "$LIGHTSPRINT_LOCAL_PATH/$BINARY_NAME" 2>/dev/null || true
   mkdir -p "$(dirname "$PLUGIN_DIR")"
   ln -sfn "$LIGHTSPRINT_LOCAL_PATH" "$PLUGIN_DIR"
   echo "Adding marketplace from local symlink..."
@@ -318,10 +321,10 @@ if [[ -n "$REPO_FULL_NAME" ]]; then
 
   if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
     echo ""
-    node "$PLUGIN_DIR/scripts/ls-cli.js" connect </dev/tty
+    node "$PLUGIN_DIR/scripts/lightsprint.js" connect </dev/tty
   else
     echo ""
-    echo "Skipped. You can connect later by using any /lightsprint: command."
+    echo "Skipped. You can connect later with 'lightsprint connect' or any /lightsprint: command."
   fi
 else
   echo "─────────────────────────────────────────"

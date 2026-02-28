@@ -117,7 +117,10 @@ lightsprint-claude-code-plugin/
 ├── hooks/
 │   └── hooks.json              # PermissionRequest hook for plan review
 ├── scripts/
-│   ├── ls-cli.js               # CLI for skills — tasks, create, update, get, claim, comment
+│   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
+│   ├── review-plan.js          # Plan review handler (exports reviewPlanMain)
+│   ├── ls-cli.js               # Task management commands (exports cliMain)
+│   ├── compile.sh              # Build script for lightsprint binary
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
 │       ├── config.js           # Per-folder token resolution + on-demand auth trigger

@@ -205,17 +205,16 @@ function readPlanFromFile(cwd) {
  * @returns {Promise<{ decision: string, feedback: string }>}
  */
 function showHelp() {
-	const scriptName = process.argv[1] ? process.argv[1].split(/[\\/]/).pop() : 'review-plan.js';
-	console.log(`${scriptName} v${BUILD_VERSION} (${BUILD_HASH}) — built ${BUILD_TIME}
+	console.log(`lightsprint review-plan v${BUILD_VERSION} (${BUILD_HASH}) — built ${BUILD_TIME}
 
 Review implementation plans in the browser
 
 Usage:
-  ${scriptName} [input]
-  ${scriptName} help        Show this help message
+  lightsprint review-plan [input]
+  lightsprint review-plan help        Show this help message
 
-This tool is typically invoked automatically as a Claude Code hook when you call
-the ExitPlanMode action. It:
+This subcommand is typically invoked automatically as a Claude Code hook when you
+call the ExitPlanMode action. It:
 
   1. Reads plan content from stdin or a file
   2. Uploads the plan to your Lightsprint project board
@@ -229,18 +228,17 @@ Arguments:
   help, --help, -h        Show this help message
 
 Environment:
-  Requires authentication via 'ls-cli connect' or the
+  Requires authentication via 'lightsprint connect' or the
   lightsprint:connect skill in Claude Code
 
 Examples:
 
   # Typically invoked automatically by Claude Code hooks
   # But can be invoked manually with an input file:
-  ${scriptName} /tmp/hook-input.json
+  lightsprint review-plan /tmp/hook-input.json
 
   # Show help
-  ${scriptName} help
-  ${scriptName} --help
+  lightsprint review-plan help
 
 For more information on using Lightsprint with Claude Code, see:
   https://github.com/SprintsAI/lightsprint-claude-code-plugin
@@ -284,11 +282,11 @@ function waitForCallback(port, timeoutMs = 345600000) {
 	});
 }
 
-async function main() {
-	log('info', 'Hook invoked', { version: BUILD_VERSION, buildHash: BUILD_HASH, buildTime: BUILD_TIME, pid: process.pid, argv: process.argv.slice(2) });
+export async function reviewPlanMain(args) {
+	log('info', 'Hook invoked', { version: BUILD_VERSION, buildHash: BUILD_HASH, buildTime: BUILD_TIME, pid: process.pid, argv: args });
 
 	// Handle help flags, or no-arg interactive usage (TTY = user ran it directly)
-	const firstArg = process.argv[2];
+	const firstArg = args[0];
 	if (firstArg === 'help' || firstArg === '--help' || firstArg === '-h' || (!firstArg && process.stdin.isTTY)) {
 		return showHelp();
 	}
@@ -472,5 +470,3 @@ async function main() {
 
 	process.exit(0);
 }
-
-main();

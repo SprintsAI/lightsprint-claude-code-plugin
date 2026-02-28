@@ -6,7 +6,7 @@ description: Create a new task on the Lightsprint project board. Use to add work
 Run this command to create a new Lightsprint task:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/ls-cli.js create $ARGUMENTS
+lightsprint create $ARGUMENTS
 ```
 
 Usage: `create <title> [--description <text>] [--complexity trivial|low|medium|high|critical] [--status todo|in_progress|in_review|done]`

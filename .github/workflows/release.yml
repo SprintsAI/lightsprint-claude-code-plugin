@@ -30,31 +30,31 @@ jobs:
           DEFINES="--define __BUILD_HASH__=\"\\\"$HASH\\\"\" --define __BUILD_VERSION__=\"\\\"$VERSION\\\"\" --define __BUILD_TIME__=\"\\\"$BUILD_TIME\\\"\""
 
           # macOS ARM64
-          eval bun build scripts/review-plan.js --compile --target=bun-darwin-arm64 --outfile ls-plan-darwin-arm64 $DEFINES
-          sha256sum ls-plan-darwin-arm64 > ls-plan-darwin-arm64.sha256
+          eval bun build scripts/lightsprint.js --compile --target=bun-darwin-arm64 --outfile lightsprint-darwin-arm64 $DEFINES
+          sha256sum lightsprint-darwin-arm64 > lightsprint-darwin-arm64.sha256
 
           # macOS x64
-          eval bun build scripts/review-plan.js --compile --target=bun-darwin-x64 --outfile ls-plan-darwin-x64 $DEFINES
-          sha256sum ls-plan-darwin-x64 > ls-plan-darwin-x64.sha256
+          eval bun build scripts/lightsprint.js --compile --target=bun-darwin-x64 --outfile lightsprint-darwin-x64 $DEFINES
+          sha256sum lightsprint-darwin-x64 > lightsprint-darwin-x64.sha256
 
           # Linux x64
-          eval bun build scripts/review-plan.js --compile --target=bun-linux-x64 --outfile ls-plan-linux-x64 $DEFINES
-          sha256sum ls-plan-linux-x64 > ls-plan-linux-x64.sha256
+          eval bun build scripts/lightsprint.js --compile --target=bun-linux-x64 --outfile lightsprint-linux-x64 $DEFINES
+          sha256sum lightsprint-linux-x64 > lightsprint-linux-x64.sha256
 
           # Linux ARM64
-          eval bun build scripts/review-plan.js --compile --target=bun-linux-arm64 --outfile ls-plan-linux-arm64 $DEFINES
-          sha256sum ls-plan-linux-arm64 > ls-plan-linux-arm64.sha256
+          eval bun build scripts/lightsprint.js --compile --target=bun-linux-arm64 --outfile lightsprint-linux-arm64 $DEFINES
+          sha256sum lightsprint-linux-arm64 > lightsprint-linux-arm64.sha256
 
           # Windows x64
-          eval bun build scripts/review-plan.js --compile --target=bun-windows-x64 --outfile ls-plan-win32-x64.exe $DEFINES
-          sha256sum ls-plan-win32-x64.exe > ls-plan-win32-x64.exe.sha256
+          eval bun build scripts/lightsprint.js --compile --target=bun-windows-x64 --outfile lightsprint-win32-x64.exe $DEFINES
+          sha256sum lightsprint-win32-x64.exe > lightsprint-win32-x64.exe.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: binaries
           path: |
-            ls-plan-*
+            lightsprint-*
             !*.ts
 
   release:

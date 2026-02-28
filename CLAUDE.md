@@ -1,8 +1,14 @@
 # Lightsprint Claude Code Plugin
 
+## Unified CLI Binary (`lightsprint`)
+The `lightsprint` binary is the single entry point for all CLI functionality:
+- `lightsprint review-plan [input]` — Plan review hook handler (invoked by Claude Code hooks)
+- `lightsprint tasks|create|update|get|claim|comment|whoami|connect` — Task management commands (used by skills)
+- Entry point: `scripts/lightsprint.js` → imports from `scripts/review-plan.js` and `scripts/ls-cli.js`
+
 ## ExitPlanMode Hook (Plan Review)
 - **Event**: `PermissionRequest` with matcher `ExitPlanMode`
-- **Command**: `ls-plan` (compiled binary installed to PATH)
+- **Command**: `lightsprint review-plan` (compiled binary installed to PATH)
 - **Output format**: `{ hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow"|"deny", message?: "..." } } }`
 - **Blocking**: Yes, intentionally blocks until user reviews in browser (like plannotator)
 - **Plan content**: Available in `tool_input.plan` from stdin JSON
@@ -20,7 +26,9 @@
 - Remove session-specific instrumentation after verification to keep scripts production clean.
 
 ## Scripts
-- `scripts/review-plan.js` — Main hook handler. Reads plan from stdin, uploads to Lightsprint API, opens browser for review, waits for callback, returns allow/deny.
+- `scripts/lightsprint.js` — Unified CLI entry point. Routes subcommands to review-plan or CLI handlers.
+- `scripts/review-plan.js` — Plan review handler. Exports `reviewPlanMain(args)`.
+- `scripts/ls-cli.js` — Task management commands. Exports `cliMain(command, args)`.
 - `scripts/lib/config.js` — Config resolution. Uses `cwd` from hook stdin (not `process.cwd()`).
 - `scripts/lib/client.js` — Lightsprint API client.
 - `scripts/lib/plan-tracker.js` — Tracks active plan ID for versioning on resubmission.
@@ -30,6 +38,6 @@
 - `install.ps1` is production-only — no local dev mode (`LIGHTSPRINT_LOCAL_PATH`).
 
 ## Build & Deploy
-- `bun run build` — Compile binary with Bun (for distribution, not used in hooks)
+- `bun run build` — Compile `lightsprint` binary with Bun via `scripts/compile.sh`
 - `bun run deploy:tag` — Interactive semver tag + push to trigger GitHub Actions release
 - CI/CD: `.github/workflows/release.yml` — Cross-platform binary compilation on tag push

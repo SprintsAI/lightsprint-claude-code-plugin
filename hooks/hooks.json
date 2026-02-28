@@ -5,7 +5,7 @@
         "matcher": "ExitPlanMode",
         "hooks": [{
           "type": "command",
-          "command": "ls-plan",
+          "command": "lightsprint review-plan",
           "timeout": 345600
         }]
       }

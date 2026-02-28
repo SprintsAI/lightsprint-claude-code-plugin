@@ -6,7 +6,7 @@ description: Add a comment to a Lightsprint task. Use to leave notes or status u
 Run this command to add a comment to a Lightsprint task:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/ls-cli.js comment $ARGUMENTS
+lightsprint comment $ARGUMENTS
 ```
 
 Usage: `comment <taskId> <comment body>`
