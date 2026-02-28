@@ -1,3 +1,4 @@
 lightsprint-plan-review
 lightsprint-plan-review-*
 bin/
+node_modules/
