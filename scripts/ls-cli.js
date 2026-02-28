@@ -13,7 +13,7 @@
  */
 
 import { createHash } from 'crypto';
-import { existsSync, mkdirSync, chmodSync, copyFileSync, unlinkSync, writeFileSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
 import { apiRequest, getProjectId, getProjectInfo } from './lib/client.js';
@@ -420,12 +420,16 @@ async function cmdUpgrade(currentVersion) {
 		headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'lightsprint-cli' }
 	});
 	if (!res.ok) {
-		console.error(`Error: Failed to check for updates (HTTP ${res.status})`);
-		process.exit(1);
+		throw new Error(`Failed to check for updates (HTTP ${res.status})`);
 	}
 	const release = await res.json();
 	const tag = release.tag_name;
 	const latestVersion = tag.replace(/^v/, '');
+
+	// Validate version string to prevent path traversal
+	if (/[\\/]|\.\./.test(latestVersion)) {
+		throw new Error(`Invalid characters in version from release tag: ${tag}`);
+	}
 
 	if (currentVersion === latestVersion) {
 		console.log(`Already up to date (v${currentVersion}).`);
@@ -438,67 +442,65 @@ async function cmdUpgrade(currentVersion) {
 	console.log(`Latest version:  v${latestVersion}`);
 	console.log(`Downloading ${assetName}...`);
 
-	// Download binary to temp file
+	// Download binary
 	const downloadUrl = `https://github.com/${UPGRADE_REPO}/releases/download/${tag}/${assetName}`;
 	const checksumUrl = `${downloadUrl}.sha256`;
 
 	const binRes = await fetch(downloadUrl);
 	if (!binRes.ok) {
-		console.error(`Error: Failed to download binary (HTTP ${binRes.status})`);
-		console.error(`URL: ${downloadUrl}`);
-		process.exit(1);
+		throw new Error(`Failed to download binary from ${downloadUrl} (HTTP ${binRes.status})`);
 	}
 	const binBuffer = Buffer.from(await binRes.arrayBuffer());
 
-	// Verify checksum
+	// Verify checksum (mandatory)
 	const csRes = await fetch(checksumUrl);
-	if (csRes.ok) {
-		const csText = await csRes.text();
-		const expected = csText.trim().split(/\s+/)[0];
-		const actual = createHash('sha256').update(binBuffer).digest('hex');
-		if (expected !== actual) {
-			console.error('Error: Checksum verification failed!');
-			console.error(`  Expected: ${expected}`);
-			console.error(`  Actual:   ${actual}`);
-			process.exit(1);
-		}
-	} else {
-		console.log('Warning: Checksum not available, skipping verification.');
+	if (!csRes.ok) {
+		throw new Error(`Failed to download checksum from ${checksumUrl} (HTTP ${csRes.status}). Aborting upgrade for safety.`);
+	}
+	const csText = await csRes.text();
+	const expected = csText.trim().split(/\s+/)[0];
+	const actual = createHash('sha256').update(binBuffer).digest('hex');
+	if (expected !== actual) {
+		throw new Error(`Checksum verification failed!\n  Expected: ${expected}\n  Actual:   ${actual}`);
 	}
 
-	// Write to temp file first
-	const tmpPath = join(tmpdir(), `${UPGRADE_BINARY}-${Date.now()}`);
-	writeFileSync(tmpPath, binBuffer);
-
-	// Determine install paths
-	const home = homedir();
-	const pluginBinDir = join(home, '.claude', 'plugins', 'cache', 'lightsprint', 'lightsprint', latestVersion, 'bin');
-	const isWindows = platform === 'win32';
-	const binaryFilename = isWindows ? `${UPGRADE_BINARY}.exe` : UPGRADE_BINARY;
-	const cliDir = isWindows
-		? join(process.env.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'lightsprint')
-		: join(process.env.XDG_DATA_HOME || join(home, '.local'), 'bin');
-
-	// Install to plugin cache
-	mkdirSync(pluginBinDir, { recursive: true });
-	const pluginDest = join(pluginBinDir, binaryFilename);
-	copyFileSync(tmpPath, pluginDest);
-	if (!isWindows) chmodSync(pluginDest, 0o755);
-	console.log(`Installed to ${pluginBinDir}/`);
-
-	// Install to CLI convenience path
+	// Write to a secure temp directory
+	const tmpDir = mkdtempSync(join(tmpdir(), 'lightsprint-upgrade-'));
+	const tmpPath = join(tmpDir, assetName);
 	try {
-		mkdirSync(cliDir, { recursive: true });
-		const cliDest = join(cliDir, binaryFilename);
-		copyFileSync(tmpPath, cliDest);
-		if (!isWindows) chmodSync(cliDest, 0o755);
-		console.log(`Updated ${cliDir}/${binaryFilename}`);
-	} catch {
-		// Non-fatal — plugin cache is the primary location
-	}
+		writeFileSync(tmpPath, binBuffer, { mode: 0o755 });
 
-	// Clean up temp file
-	try { unlinkSync(tmpPath); } catch {}
+		// Determine install paths
+		const home = homedir();
+		const pluginBinDir = join(home, '.claude', 'plugins', 'cache', 'lightsprint', 'lightsprint', latestVersion, 'bin');
+		const isWindows = platform === 'win32';
+		const binaryFilename = isWindows ? `${UPGRADE_BINARY}.exe` : UPGRADE_BINARY;
+		const cliDir = isWindows
+			? join(process.env.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'lightsprint')
+			: join(process.env.XDG_DATA_HOME || join(home, '.local'), 'bin');
+
+		// Install to plugin cache
+		mkdirSync(pluginBinDir, { recursive: true });
+		const pluginDest = join(pluginBinDir, binaryFilename);
+		copyFileSync(tmpPath, pluginDest);
+		if (!isWindows) chmodSync(pluginDest, 0o755);
+		console.log(`Installed to ${pluginBinDir}/`);
+
+		// Install to CLI convenience path
+		try {
+			mkdirSync(cliDir, { recursive: true });
+			const cliDest = join(cliDir, binaryFilename);
+			copyFileSync(tmpPath, cliDest);
+			if (!isWindows) chmodSync(cliDest, 0o755);
+			console.log(`Updated ${cliDir}/${binaryFilename}`);
+		} catch (err) {
+			// Non-fatal — plugin cache is the primary location
+			console.warn(`Warning: Could not update convenience binary at ${cliDir}: ${err.message}`);
+		}
+	} finally {
+		// Clean up temp directory
+		try { rmSync(tmpDir, { recursive: true }); } catch {}
+	}
 
 	console.log(`\nUpgraded lightsprint v${currentVersion === 'dev' ? 'dev' : currentVersion} → v${latestVersion}`);
 }
