@@ -5,7 +5,7 @@ REPO="SprintsAI/lightsprint-claude-code-plugin"
 MARKETPLACE_NAME="lightsprint"
 PLUGIN_NAME="lightsprint"
 PLUGIN_DIR="$HOME/.claude/plugins/marketplaces/lightsprint"
-BINARY_NAME="lightsprint-plan-review"
+BINARY_NAME="ls-plan"
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local}/bin"
 
 echo "Installing Lightsprint for Claude Code..."
