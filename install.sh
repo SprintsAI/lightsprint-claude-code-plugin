@@ -44,7 +44,7 @@ install_binary() {
     mkdir -p "$PLUGIN_BIN_DIR"
     if command -v bun &>/dev/null; then
       echo "Compiling plan review binary from local source..."
-      (cd "$SRC_DIR" && bun build scripts/review-plan.js --compile --outfile "$PLUGIN_BIN_DIR/$BINARY_NAME") || {
+      (cd "$SRC_DIR" && HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "nobuild") && bun build scripts/review-plan.js --compile --outfile "$PLUGIN_BIN_DIR/$BINARY_NAME" --define "__BUILD_HASH__=\"$HASH\"") || {
         echo "Warning: Failed to compile binary. Plan review hook will not be available." >&2
         return 1
       }

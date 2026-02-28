@@ -5,10 +5,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build scripts/review-plan.js --compile --outfile lightsprint-plan-review",
+    "build": "bash scripts/build-plan-review.sh",
     "deploy:tag": "bash scripts/deploy-tag.sh"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "open": "^11.0.0"
   }
 }

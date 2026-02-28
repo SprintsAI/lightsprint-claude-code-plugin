@@ -23,7 +23,8 @@
 
 import { createServer } from 'http';
 import { createServer as createNetServer } from 'net';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
+import open from 'open';
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -33,6 +34,9 @@ import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracke
 
 const LOG_DIR = join(homedir(), '.lightsprint');
 const LOG_FILE = join(LOG_DIR, 'sync.log');
+
+// Injected at build time via --define (enables version verification in logs)
+const BUILD_HASH = typeof __BUILD_HASH__ !== 'undefined' ? __BUILD_HASH__ : 'dev';
 
 function log(level, message, data) {
 	try {
@@ -85,27 +89,27 @@ function findFreePort() {
 	});
 }
 
-function openBrowser(url) {
-	const commands = [
-		`open "${url}"`,          // macOS
-		`xdg-open "${url}"`,      // Linux
-		`start "" "${url}"`       // Windows
-	];
+async function openBrowser(url) {
+	try {
+		await open(url);
+		return;
+	} catch {
+	}
 
-	let opened = false;
-	for (const cmd of commands) {
-		try {
-			exec(cmd);
-			opened = true;
-			break;
-		} catch {
-			// Try next
+	// Fallback: spawn /usr/bin/open (macOS) or exec
+	const isMac = process.platform === 'darwin';
+	try {
+		if (isMac) {
+			const child = spawn('/usr/bin/open', [url], { detached: true, stdio: 'ignore' });
+			if (child) child.unref();
+		} else {
+			exec(process.platform === 'linux' ? `xdg-open "${url}"` : `start "" "${url}"`);
 		}
+		return;
+	} catch {
+		// fall through
 	}
-
-	if (!opened) {
-		log('warn', 'Could not open browser, printing URL');
-	}
+	log('warn', 'Could not open browser, printing URL');
 }
 
 /**
@@ -241,7 +245,7 @@ function waitForCallback(port, timeoutMs = 345600000) {
 }
 
 async function main() {
-	log('info', 'Hook invoked', { pid: process.pid, argv: process.argv.slice(2) });
+	log('info', 'Hook invoked', { buildHash: BUILD_HASH, pid: process.pid, argv: process.argv.slice(2) });
 
 	// 1. Read input — from file argument (preferred) or stdin (fallback)
 	let input;
@@ -261,7 +265,19 @@ async function main() {
 			rawStdin = Buffer.concat(chunks).toString();
 			log('info', 'Stdin received', { length: rawStdin.length, preview: rawStdin.substring(0, 200) });
 		}
-		input = JSON.parse(rawStdin);
+		let toParse = rawStdin.trimEnd();
+		try {
+			input = JSON.parse(toParse);
+		} catch (parseErr) {
+			// Claude Code may send plan content with unescaped newlines; repair the plan string only
+			if (/control character|Unexpected token/.test(parseErr.message) && /"plan"\s*:\s*"/.test(toParse)) {
+				toParse = toParse.replace(/"plan"\s*:\s*"([\s\S]*?)"(?=\s*[,}\]])/g, (_, plan) =>
+					`"plan":"${plan.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/"/g, '\\"')}"`);
+				input = JSON.parse(toParse);
+			} else {
+				throw parseErr;
+			}
+		}
 	} catch (err) {
 		log('error', 'Failed to parse input', { error: err.message, stdinLength: rawStdin?.length, stdinPreview: rawStdin?.substring(0, 200) });
 		outputAllow();
@@ -282,7 +298,6 @@ async function main() {
 	const transcriptPath = input?.transcript_path;
 	const sessionId = input?.session_id;
 	const hookCwd = input?.cwd || process.cwd();
-
 	// 2. Config guard (use cwd from stdin, not process.cwd())
 	let cfg = getConfig(hookCwd);
 	if (!cfg) {
@@ -381,9 +396,10 @@ async function main() {
 		const callbackUrl = `http://localhost:${port}/callback`;
 		const reviewUrl = `${cfg.baseUrl}/plans/${planId}?callback=${encodeURIComponent(callbackUrl)}`;
 
-		// 5. Open browser
+		// 5. Open browser (also print URL so user can open manually if browser doesn't pop)
 		log('info', 'Opening browser for plan review', { reviewUrl, port });
-		openBrowser(reviewUrl);
+		await openBrowser(reviewUrl);
+		process.stderr.write(`\n→ Review plan: ${reviewUrl}\n\n`);
 
 		// 6. Wait for callback
 		const { decision, feedback } = await waitForCallback(port);
