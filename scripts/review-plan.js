@@ -208,11 +208,12 @@ function readPlanFromFile(cwd) {
  * @returns {Promise<{ decision: string, feedback: string }>}
  */
 function showHelp() {
-	console.log(`ls-cli — Review implementation plans in the browser
+	const scriptName = process.argv[1] ? process.argv[1].split(/[\\/]/).pop() : 'review-plan.js';
+	console.log(`${scriptName} — Review implementation plans in the browser
 
 Usage:
-  ls-cli [input]
-  ls-cli help        Show this help message
+  ${scriptName} [input]
+  ${scriptName} help        Show this help message
 
 This tool is typically invoked automatically as a Claude Code hook when you call
 the ExitPlanMode action. It:
@@ -224,8 +225,8 @@ the ExitPlanMode action. It:
   5. Returns the decision back to Claude Code
 
 Arguments:
-  <input>                 (Optional) Path to a JSON file containing hook input
-                          Defaults to reading from stdin if not provided
+  <input>                 Path to a JSON file containing hook input
+                          (When invoked by hooks, input is always provided)
   help, --help, -h        Show this help message
 
 Environment:
@@ -236,11 +237,11 @@ Examples:
 
   # Typically invoked automatically by Claude Code hooks
   # But can be invoked manually with an input file:
-  ls-cli /tmp/hook-input.json
+  ${scriptName} /tmp/hook-input.json
 
   # Show help
-  ls-cli help
-  ls-cli --help
+  ${scriptName} help
+  ${scriptName} --help
 
 For more information on using Lightsprint with Claude Code, see:
   https://github.com/SprintsAI/lightsprint-claude-code-plugin
@@ -287,9 +288,9 @@ function waitForCallback(port, timeoutMs = 345600000) {
 async function main() {
 	log('info', 'Hook invoked', { buildHash: BUILD_HASH, pid: process.pid, argv: process.argv.slice(2) });
 
-	// Handle help flags early
+	// Handle help flags early (don't match no-arg case — hooks invoke without argv)
 	const firstArg = process.argv[2];
-	if (!firstArg || firstArg === 'help' || firstArg === '--help' || firstArg === '-h') {
+	if (firstArg === 'help' || firstArg === '--help' || firstArg === '-h') {
 		return showHelp();
 	}
 

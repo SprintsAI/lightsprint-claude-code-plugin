@@ -104,7 +104,6 @@ Commands:
 
 Flags:
   --help, -h              Show this help message
-  help                    Show this help message
 `);
 }
 
