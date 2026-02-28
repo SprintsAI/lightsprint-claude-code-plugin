@@ -20,7 +20,7 @@ import { apiRequest, getProjectId, getProjectInfo } from './lib/client.js';
 import { setMapping } from './lib/task-map.js';
 import { lsToCcStatus } from './lib/status-mapper.js';
 import { authenticate } from './lib/auth.js';
-import { getDefaultBaseUrl } from './lib/config.js';
+import { getConfig, getDefaultBaseUrl, readProjectsFile, writeProjectsFile } from './lib/config.js';
 
 export async function cliMain(command, args, context = {}) {
 	// Handle help flags
@@ -36,7 +36,9 @@ export async function cliMain(command, args, context = {}) {
 		case 'claim': return await cmdClaim(args);
 		case 'comment': return await cmdComment(args);
 		case 'whoami': return await cmdWhoami();
-		case 'connect': return await cmdConnect();
+		case 'status': return cmdStatus();
+		case 'connect': return await cmdConnect(args);
+		case 'disconnect': return await cmdDisconnect(args);
 		case 'upgrade': return await cmdUpgrade(context.version || 'dev');
 		default:
 			console.error(`Unknown command: ${command}`);
@@ -99,11 +101,22 @@ Commands:
     Example:
       lightsprint comment abc123 "This is now complete"
 
+  status
+    Show Lightsprint connection status for the current folder
+
   whoami
     Display current project and authentication info
 
-  connect
+  connect [--base-url <url>]
     Authenticate and connect to Lightsprint (run this first if not authenticated)
+    Options:
+      --base-url <url>        Connect to a custom Lightsprint instance
+    Example:
+      lightsprint connect
+      lightsprint connect --base-url https://staging.lightsprint.ai
+
+  disconnect
+    Remove Lightsprint credentials for the current folder
 
   review-plan [input]
     Review an implementation plan (typically invoked by Claude Code hooks)
@@ -394,11 +407,78 @@ async function cmdWhoami() {
 	console.log(`Scopes: ${info.scopes.join(', ')}`);
 }
 
+// ─── status ──────────────────────────────────────────────────────────────
+
+function cmdStatus() {
+	const cwd = process.cwd();
+	const cfg = getConfig(cwd);
+
+	if (!cfg) {
+		console.log('Not connected to Lightsprint.\n');
+		console.log('To get started:\n');
+		console.log('  1. Run:  lightsprint connect');
+		console.log('  2. Authorize in the browser when prompted');
+		console.log('  3. Select the project to link to this folder\n');
+		console.log('For a custom instance:\n');
+		console.log('  lightsprint connect --base-url https://your-instance.lightsprint.ai');
+		return;
+	}
+
+	console.log(`Project:    ${cfg.projectName || 'unknown'}`);
+	console.log(`Project ID: ${cfg.projectId}`);
+	console.log(`Folder:     ${cfg.folder}`);
+	console.log(`Base URL:   ${cfg.baseUrl}`);
+
+	if (cfg.expiresAt) {
+		const remaining = cfg.expiresAt - Date.now();
+		if (remaining <= 0) {
+			console.log(`Token:      expired`);
+		} else {
+			const hours = Math.floor(remaining / 3600000);
+			const mins = Math.floor((remaining % 3600000) / 60000);
+			console.log(`Token:      valid (${hours}h ${mins}m remaining)`);
+		}
+	}
+}
+
 // ─── connect ─────────────────────────────────────────────────────────────
 
-async function cmdConnect() {
-	const baseUrl = getDefaultBaseUrl();
-	await authenticate(baseUrl);
+async function cmdConnect(args) {
+	let baseUrl = null;
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--base-url' && args[i + 1]) {
+			baseUrl = args[++i];
+		}
+	}
+	await authenticate(baseUrl || getDefaultBaseUrl());
+}
+
+// ─── disconnect ──────────────────────────────────────────────────────
+
+async function cmdDisconnect() {
+	const projects = readProjectsFile();
+	const cwd = process.cwd();
+
+	// Find matching entries: walk up from cwd (same logic as findProjectConfig)
+	const toRemove = [];
+	for (const [folder] of Object.entries(projects)) {
+		if (!cwd.startsWith(folder) && folder !== cwd) continue;
+		toRemove.push(folder);
+	}
+
+	if (toRemove.length === 0) {
+		console.log('No Lightsprint connection found for this folder.');
+		return;
+	}
+
+	for (const folder of toRemove) {
+		const entry = projects[folder];
+		const projectName = entry.projectName || entry.baseUrl || 'unknown';
+		delete projects[folder];
+		console.log(`Disconnected: ${projectName} (${folder})`);
+	}
+
+	writeProjectsFile(projects);
 }
 
 // ─── upgrade ─────────────────────────────────────────────────────────
