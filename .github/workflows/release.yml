@@ -39,6 +39,15 @@ jobs:
           echo "$HOME/.bun/bin" >> $GITHUB_PATH
           bun --version
 
+      - name: Verify Bun
+        run: |
+          echo "PATH: $PATH"
+          which bun
+          bun --version
+
+      - name: Install dependencies
+        run: bun install
+
       - name: Compile binary
         run: |
           echo "Platform: ${{ matrix.platform }}"
