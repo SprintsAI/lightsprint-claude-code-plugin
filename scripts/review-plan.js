@@ -207,6 +207,46 @@ function readPlanFromFile(cwd) {
  * @param {number} [timeoutMs=345600000] - 4 days default
  * @returns {Promise<{ decision: string, feedback: string }>}
  */
+function showHelp() {
+	console.log(`ls-cli — Review implementation plans in the browser
+
+Usage:
+  ls-cli [input]
+  ls-cli help        Show this help message
+
+This tool is typically invoked automatically as a Claude Code hook when you call
+the ExitPlanMode action. It:
+
+  1. Reads plan content from stdin or a file
+  2. Uploads the plan to your Lightsprint project board
+  3. Opens your browser for interactive review
+  4. Allows you to approve or reject the plan
+  5. Returns the decision back to Claude Code
+
+Arguments:
+  <input>                 (Optional) Path to a JSON file containing hook input
+                          Defaults to reading from stdin if not provided
+  help, --help, -h        Show this help message
+
+Environment:
+  Requires authentication via 'ls-cli connect' or the
+  lightsprint:connect skill in Claude Code
+
+Examples:
+
+  # Typically invoked automatically by Claude Code hooks
+  # But can be invoked manually with an input file:
+  ls-cli /tmp/hook-input.json
+
+  # Show help
+  ls-cli help
+  ls-cli --help
+
+For more information on using Lightsprint with Claude Code, see:
+  https://github.com/SprintsAI/lightsprint-claude-code-plugin
+`);
+}
+
 function waitForCallback(port, timeoutMs = 345600000) {
 	return new Promise((resolve, reject) => {
 		const sockets = new Set();
@@ -247,11 +287,17 @@ function waitForCallback(port, timeoutMs = 345600000) {
 async function main() {
 	log('info', 'Hook invoked', { buildHash: BUILD_HASH, pid: process.pid, argv: process.argv.slice(2) });
 
+	// Handle help flags early
+	const firstArg = process.argv[2];
+	if (!firstArg || firstArg === 'help' || firstArg === '--help' || firstArg === '-h') {
+		return showHelp();
+	}
+
 	// 1. Read input — from file argument (preferred) or stdin (fallback)
 	let input;
 	let rawStdin;
 	try {
-		const inputFile = process.argv[2];
+		const inputFile = firstArg;
 		if (inputFile) {
 			// Read from file path argument (avoids stdin issues with compiled binaries)
 			rawStdin = readFileSync(inputFile, 'utf-8');

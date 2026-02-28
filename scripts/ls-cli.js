@@ -21,6 +21,11 @@ import { getDefaultBaseUrl } from './lib/config.js';
 const [,, command, ...args] = process.argv;
 
 async function main() {
+	// Handle help flags
+	if (!command || command === 'help' || command === '--help' || command === '-h') {
+		return showHelp();
+	}
+
 	switch (command) {
 		case 'tasks': return await cmdTasks(args);
 		case 'create': return await cmdCreate(args);
@@ -31,10 +36,76 @@ async function main() {
 		case 'whoami': return await cmdWhoami();
 		case 'connect': return await cmdConnect();
 		default:
-			console.log('Usage: ls-cli.js <command> [args]');
-			console.log('Commands: tasks, create, update, get, claim, comment, whoami, connect');
+			console.error(`Unknown command: ${command}`);
+			console.error(`Use 'ls-cli.js help' for usage information.`);
 			process.exit(1);
 	}
+}
+
+// ─── help ────────────────────────────────────────────────────────────────
+
+function showHelp() {
+	console.log(`Lightsprint CLI — Manage tasks on your Lightsprint project board
+
+Usage:
+  ls-cli.js <command> [options]
+  ls-cli.js help          Show this help message
+
+Commands:
+
+  tasks [options]
+    List tasks from the project board
+    Options:
+      --status <status>   Filter by status: todo, in_progress, in_review, done
+      --limit <N>         Limit number of results (default: 20)
+    Example:
+      ls-cli.js tasks --status in_progress --limit 10
+
+  create <title> [options]
+    Create a new task
+    Options:
+      --description <text>        Task description
+      --complexity <level>        trivial, low, medium, high, or critical
+      --status <status>           todo, in_progress, in_review, or done (default: todo)
+    Example:
+      ls-cli.js create "Fix login bug" --description "Users can't log in" --complexity high
+
+  update <taskId> [options]
+    Update an existing task
+    Options:
+      --title <text>              New task title
+      --description <text>        New description
+      --status <status>           New status
+      --complexity <level>        New complexity level
+      --assignee <name>           Assign task to a team member
+    Example:
+      ls-cli.js update abc123 --status done --assignee "John"
+
+  get <taskId>
+    Show full details of a task including description, todo list, and related files
+    Example:
+      ls-cli.js get abc123
+
+  claim <taskId>
+    Claim a task and set its status to in_progress
+    Example:
+      ls-cli.js claim abc123
+
+  comment <taskId> <body>
+    Add a comment to a task
+    Example:
+      ls-cli.js comment abc123 "This is now complete"
+
+  whoami
+    Display current project and authentication info
+
+  connect
+    Authenticate and connect to Lightsprint (run this first if not authenticated)
+
+Flags:
+  --help, -h              Show this help message
+  help                    Show this help message
+`);
 }
 
 // ─── tasks ───────────────────────────────────────────────────────────────
