@@ -37,10 +37,12 @@ jobs:
 
       - name: Compile binary
         run: |
+          HASH=$(git rev-parse --short HEAD)
           bun build scripts/review-plan.js \
             --compile \
             --target=${{ matrix.target }} \
-            --outfile lightsprint-plan-review-${{ matrix.platform }}
+            --outfile lightsprint-plan-review-${{ matrix.platform }} \
+            --define "__BUILD_HASH__=\"$HASH\""
 
       - name: Generate checksum
         run: |
