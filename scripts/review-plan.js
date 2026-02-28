@@ -23,8 +23,7 @@
 
 import { createServer } from 'http';
 import { createServer as createNetServer } from 'net';
-import { exec, spawn } from 'child_process';
-import open from 'open';
+import { spawn } from 'child_process';
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -37,6 +36,8 @@ const LOG_FILE = join(LOG_DIR, 'sync.log');
 
 // Injected at build time via --define (enables version verification in logs)
 const BUILD_HASH = typeof __BUILD_HASH__ !== 'undefined' ? __BUILD_HASH__ : 'dev';
+const BUILD_VERSION = typeof __BUILD_VERSION__ !== 'undefined' ? __BUILD_VERSION__ : 'dev';
+const BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'unknown';
 
 function log(level, message, data) {
 	try {
@@ -90,26 +91,22 @@ function findFreePort() {
 }
 
 async function openBrowser(url) {
+	const platform = process.platform;
 	try {
-		await open(url);
-		return;
-	} catch {
-	}
-
-	// Fallback: spawn /usr/bin/open (macOS) or exec
-	const isMac = process.platform === 'darwin';
-	try {
-		if (isMac) {
-			const child = spawn('/usr/bin/open', [url], { detached: true, stdio: 'ignore' });
+		if (platform === 'darwin') {
+			const child = spawn('open', [url], { detached: true, stdio: 'ignore' });
 			if (child) child.unref();
-		} else {
-			exec(process.platform === 'linux' ? `xdg-open "${url}"` : `start "" "${url}"`);
+		} else if (platform === 'linux') {
+			const child = spawn('xdg-open', [url], { detached: true, stdio: 'ignore' });
+			if (child) child.unref();
+		} else if (platform === 'win32') {
+			const child = spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' });
+			if (child) child.unref();
 		}
 		return;
 	} catch {
-		// fall through
+		log('warn', 'Could not open browser');
 	}
-	log('warn', 'Could not open browser, printing URL');
 }
 
 /**
@@ -209,7 +206,9 @@ function readPlanFromFile(cwd) {
  */
 function showHelp() {
 	const scriptName = process.argv[1] ? process.argv[1].split(/[\\/]/).pop() : 'review-plan.js';
-	console.log(`${scriptName} — Review implementation plans in the browser
+	console.log(`${scriptName} v${BUILD_VERSION} (${BUILD_HASH}) — built ${BUILD_TIME}
+
+Review implementation plans in the browser
 
 Usage:
   ${scriptName} [input]
@@ -286,7 +285,7 @@ function waitForCallback(port, timeoutMs = 345600000) {
 }
 
 async function main() {
-	log('info', 'Hook invoked', { buildHash: BUILD_HASH, pid: process.pid, argv: process.argv.slice(2) });
+	log('info', 'Hook invoked', { version: BUILD_VERSION, buildHash: BUILD_HASH, buildTime: BUILD_TIME, pid: process.pid, argv: process.argv.slice(2) });
 
 	// Handle help flags, or no-arg interactive usage (TTY = user ran it directly)
 	const firstArg = process.argv[2];
@@ -305,11 +304,15 @@ async function main() {
 			log('info', 'Input read from file', { path: inputFile, length: rawStdin.length, preview: rawStdin.substring(0, 200) });
 		} else {
 			// Fallback: read from stdin
-			const chunks = [];
-			for await (const chunk of process.stdin) {
-				chunks.push(chunk);
+			if (typeof Bun !== 'undefined') {
+				rawStdin = await Bun.stdin.text();
+			} else {
+				const chunks = [];
+				for await (const chunk of process.stdin) {
+					chunks.push(chunk);
+				}
+				rawStdin = Buffer.concat(chunks).toString();
 			}
-			rawStdin = Buffer.concat(chunks).toString();
 			log('info', 'Stdin received', { length: rawStdin.length, preview: rawStdin.substring(0, 200) });
 		}
 		let toParse = rawStdin.trimEnd();

@@ -67,11 +67,15 @@ install_binary() {
 
     # Detect platform
     local OS ARCH PLATFORM
-    OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    case "$(uname -s)" in
+      Darwin) OS="darwin" ;;
+      Linux)  OS="linux" ;;
+      *)      echo "Error: Unsupported OS. For Windows, run: irm https://raw.githubusercontent.com/$REPO/main/scripts/install.ps1 | iex" >&2; return 1 ;;
+    esac
     ARCH="$(uname -m)"
     case "$ARCH" in
-      x86_64) ARCH="x64" ;;
-      aarch64|arm64) ARCH="arm64" ;;
+      x86_64|amd64) ARCH="x64" ;;
+      arm64|aarch64) ARCH="arm64" ;;
       *) echo "Error: Unsupported architecture: $ARCH" >&2; return 1 ;;
     esac
     PLATFORM="${OS}-${ARCH}"

@@ -10,89 +10,72 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - os: macos-latest
-            target: bun-darwin-arm64
-            platform: darwin-arm64
-          - os: macos-latest
-            target: bun-darwin-x64
-            platform: darwin-x64
-          - os: ubuntu-latest
-            target: bun-linux-x64
-            platform: linux-x64
-          - os: ubuntu-latest
-            target: bun-linux-arm64
-            platform: linux-arm64
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Bun
-        run: |
-          echo "Installing Bun 1.3.4..."
-          curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.4"
-          export PATH=$HOME/.bun/bin:$PATH
-          echo "$HOME/.bun/bin" >> $GITHUB_PATH
-          bun --version
-
-      - name: Verify Bun
-        run: |
-          echo "PATH: $PATH"
-          which bun
-          bun --version
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Install dependencies
         run: bun install
 
-      - name: Compile binary
+      - name: Compile binaries (cross-compile all targets)
         run: |
-          echo "Platform: ${{ matrix.platform }}"
-          echo "Target: ${{ matrix.target }}"
           HASH=$(git rev-parse --short HEAD)
-          echo "Build hash: $HASH"
-          bun build scripts/review-plan.js \
-            --compile \
-            --target=${{ matrix.target }} \
-            --outfile ls-plan-${{ matrix.platform }} \
-            --define "__BUILD_HASH__=\"$HASH\""
-          echo "Build completed successfully"
-          ls -lah ls-plan-${{ matrix.platform }}
+          VERSION=$(node -p "require('./package.json').version")
+          BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          DEFINES="--define __BUILD_HASH__=\"\\\"$HASH\\\"\" --define __BUILD_VERSION__=\"\\\"$VERSION\\\"\" --define __BUILD_TIME__=\"\\\"$BUILD_TIME\\\"\""
 
-      - name: Generate checksum
-        run: |
-          echo "Verifying binary exists..."
-          if [ ! -f "ls-plan-${{ matrix.platform }}" ]; then
-            echo "ERROR: Binary not found!"
-            exit 1
-          fi
-          echo "Binary size: $(wc -c < ls-plan-${{ matrix.platform }}) bytes"
-          shasum -a 256 ls-plan-${{ matrix.platform }} > ls-plan-${{ matrix.platform }}.sha256
-          cat ls-plan-${{ matrix.platform }}.sha256
+          # macOS ARM64
+          eval bun build scripts/review-plan.js --compile --target=bun-darwin-arm64 --outfile ls-plan-darwin-arm64 $DEFINES
+          sha256sum ls-plan-darwin-arm64 > ls-plan-darwin-arm64.sha256
+
+          # macOS x64
+          eval bun build scripts/review-plan.js --compile --target=bun-darwin-x64 --outfile ls-plan-darwin-x64 $DEFINES
+          sha256sum ls-plan-darwin-x64 > ls-plan-darwin-x64.sha256
+
+          # Linux x64
+          eval bun build scripts/review-plan.js --compile --target=bun-linux-x64 --outfile ls-plan-linux-x64 $DEFINES
+          sha256sum ls-plan-linux-x64 > ls-plan-linux-x64.sha256
+
+          # Linux ARM64
+          eval bun build scripts/review-plan.js --compile --target=bun-linux-arm64 --outfile ls-plan-linux-arm64 $DEFINES
+          sha256sum ls-plan-linux-arm64 > ls-plan-linux-arm64.sha256
+
+          # Windows x64
+          eval bun build scripts/review-plan.js --compile --target=bun-windows-x64 --outfile ls-plan-win32-x64.exe $DEFINES
+          sha256sum ls-plan-win32-x64.exe > ls-plan-win32-x64.exe.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ matrix.platform }}
+          name: binaries
           path: |
-            ls-plan-${{ matrix.platform }}
-            ls-plan-${{ matrix.platform }}.sha256
+            ls-plan-*
+            !*.ts
 
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
         with:
-          merge-multiple: true
+          name: binaries
+          path: artifacts
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            ls-plan-*
+          files: artifacts/*
           generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
