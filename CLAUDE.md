@@ -9,7 +9,7 @@ The `lightsprint` binary is the single entry point for all CLI functionality:
 ## ExitPlanMode Hook (Plan Review)
 - **Event**: `PermissionRequest` with matcher `ExitPlanMode`
 - **Command**: `lightsprint review-plan` (compiled binary installed to PATH)
-- **Output format**: `{ hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow"|"deny", message?: "..." } } }`
+- **Output format**: `{ hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow"|"deny", message?: "..." } } }` — allow never includes reviewer context (updatedInput not supported for allow)
 - **Blocking**: Yes, intentionally blocks until user reviews in browser (like plannotator)
 - **Plan content**: Available in `tool_input.plan` from stdin JSON
 
@@ -39,5 +39,5 @@ The `lightsprint` binary is the single entry point for all CLI functionality:
 
 ## Build & Deploy
 - `bun run build` — Compile `lightsprint` binary with Bun via `scripts/compile.sh`
-- `bun run deploy:tag` — Interactive semver tag + push to trigger GitHub Actions release + version bump PR
+- `bun run deploy:tag` — Bumps version, commits, then tags the bump commit + pushes to trigger GitHub Actions release
 - CI/CD: `.github/workflows/release.yml` — Cross-platform binary compilation on tag push

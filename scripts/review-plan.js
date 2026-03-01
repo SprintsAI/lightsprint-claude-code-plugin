@@ -55,7 +55,7 @@ function outputAllow() {
 		hookSpecificOutput: {
 			hookEventName: "PermissionRequest",
 			decision: {
-				behavior: "allow"
+				behavior: "allow",
 			}
 		}
 	};
@@ -248,14 +248,7 @@ For more information on using Lightsprint with Claude Code, see:
 function waitForCallback(port, timeoutMs = 345600000) {
 	return new Promise((resolve, reject) => {
 		const sockets = new Set();
-		const server = createServer((req, res) => {
-			const url = new URL(req.url, 'http://localhost');
-			if (url.pathname === '/callback') {
-				const decision = url.searchParams.get('decision') || 'allow';
-				const feedback = url.searchParams.get('feedback') || '';
-
-				res.writeHead(200, { 'Content-Type': 'text/html', 'Connection': 'close' });
-				res.end(`<!DOCTYPE html>
+		const responseHtml = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -280,9 +273,38 @@ h1{font-size:1.5rem;font-weight:700;letter-spacing:-0.01em;margin-bottom:8px;col
 <script>
 let s=3;const el=document.getElementById('t');const card=document.getElementById('card');
 const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.classList.add('fade-out');setTimeout(()=>{window.close();window.location.href='about:blank'},400)}},1000);
-</script></body></html>`);
-				closeServer();
-				resolve({ decision, feedback });
+</script></body></html>`;
+
+		const server = createServer((req, res) => {
+			const url = new URL(req.url, 'http://localhost');
+			if (url.pathname === '/callback') {
+				function respond(decision, feedback, chatContext) {
+					res.writeHead(200, { 'Content-Type': 'text/html', 'Connection': 'close' });
+					res.end(responseHtml);
+					closeServer();
+					resolve({ decision, feedback, chatContext });
+				}
+
+				if (req.method === 'POST') {
+					// Handle form POST from browser (application/x-www-form-urlencoded)
+					let body = '';
+					req.on('data', chunk => { body += chunk; });
+					req.on('end', () => {
+						const params = new URLSearchParams(body);
+						const decision = params.get('decision') || 'allow';
+						const feedback = params.get('feedback') || '';
+						let chatContext = [];
+						try {
+							chatContext = JSON.parse(params.get('chatContext') || '[]');
+						} catch { /* ignore parse errors */ }
+						respond(decision, feedback, chatContext);
+					});
+				} else {
+					// GET fallback (backward compatibility)
+					const decision = url.searchParams.get('decision') || 'allow';
+					const feedback = url.searchParams.get('feedback') || '';
+					respond(decision, feedback, []);
+				}
 			}
 		});
 
@@ -475,14 +497,25 @@ export async function reviewPlanMain(args) {
 		process.stderr.write(`\n→ Review plan: ${reviewUrl}\n\n`);
 
 		// 6. Wait for callback
-		const { decision, feedback } = await waitForCallback(port);
+		const { decision, feedback, chatContext } = await waitForCallback(port);
 
-		log('info', 'Received review decision', { decision, feedback });
+		log('info', 'Received review decision', { decision, feedback, chatContextCount: chatContext?.length });
+
+		// Format chat context into a readable summary
+		function formatChatContext(ctx) {
+			if (!ctx || ctx.length === 0) return '';
+			const chatLines = ctx
+				.filter(m => m.messageType === 'chat')
+				.map(m => `${m.senderName}: ${m.content}`)
+				.join('\n');
+			return chatLines ? '\n\n--- Reviewer Discussion ---\n' + chatLines : '';
+		}
 
 		// 7. Output decision
 		if (decision === 'deny' || decision === 'denied' || decision === 'reject') {
 			// Keep active plan for versioning on resubmission
-			outputDeny(feedback || 'Plan rejected by reviewer.');
+			const denyMessage = (feedback || 'Plan rejected by reviewer.') + formatChatContext(chatContext);
+			outputDeny(denyMessage);
 		} else {
 			// Plan approved — clear active plan for next cycle
 			clearActivePlan();
