@@ -39,5 +39,5 @@ The `lightsprint` binary is the single entry point for all CLI functionality:
 
 ## Build & Deploy
 - `bun run build` — Compile `lightsprint` binary with Bun via `scripts/compile.sh`
-- `bun run deploy:tag` — Interactive semver tag + push to trigger GitHub Actions release
+- `bun run deploy:tag` — Interactive semver tag + push to trigger GitHub Actions release + version bump PR
 - CI/CD: `.github/workflows/release.yml` — Cross-platform binary compilation on tag push

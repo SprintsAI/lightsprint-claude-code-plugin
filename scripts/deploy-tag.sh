@@ -114,6 +114,44 @@ echo -e "${GREEN}✓ Tag pushed successfully${NC}"
 echo ""
 echo -e "${GREEN}✓ Release initiated!${NC}"
 echo ""
+
+# --- Create version bump PR ---
+echo -e "${BLUE}Creating version bump PR...${NC}"
+
+# Strip leading 'v' for package.json version
+SEMVER="${NEW_VERSION#v}"
+BUMP_BRANCH="bump/$NEW_VERSION"
+
+# Create bump branch from current HEAD
+git checkout -b "$BUMP_BRANCH"
+
+# Update version in plugin.json and package.json
+node -e "
+const fs = require('fs');
+for (const file of ['.claude-plugin/plugin.json', 'package.json']) {
+  const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  pkg.version = '$SEMVER';
+  fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
+}
+"
+
+git add .claude-plugin/plugin.json package.json
+git commit -m "chore: bump version to $NEW_VERSION"
+git push -u origin "$BUMP_BRANCH"
+
+# Create PR
+gh pr create \
+  --title "chore: bump version to $NEW_VERSION" \
+  --body "Bump version to \`$SEMVER\` in \`plugin.json\` and \`package.json\` after the \`$NEW_VERSION\` release." \
+  --base main \
+  --head "$BUMP_BRANCH"
+
+echo -e "${GREEN}✓ Version bump PR created${NC}"
+
+# Return to original branch
+git checkout "$CURRENT_BRANCH"
+
+echo ""
 echo -e "${BLUE}Monitor the release:${NC}"
 echo "  GitHub Actions: https://github.com/$REPO/actions"
 echo "  Check status: gh run list --workflow=release.yml --limit=1"
@@ -121,5 +159,6 @@ echo ""
 echo -e "${YELLOW}What happens next:${NC}"
 echo "  • GitHub Actions compiles binaries for all platforms"
 echo "  • Binaries are uploaded to a GitHub release"
+echo "  • Merge the version bump PR to keep plugin.json and package.json in sync"
 echo "  • Users can install with: curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | bash"
 echo ""
