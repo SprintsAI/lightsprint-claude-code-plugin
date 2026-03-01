@@ -116,8 +116,12 @@ for (const file of ['.claude-plugin/plugin.json', 'package.json']) {
 "
 
 git add .claude-plugin/plugin.json package.json
-git commit -m "chore: bump version to $NEW_VERSION"
-echo -e "${GREEN}✓ Version bump committed${NC}"
+if git diff --cached --quiet; then
+  echo -e "${YELLOW}Version already at $SEMVER — skipping bump commit${NC}"
+else
+  git commit -m "chore: bump version to $NEW_VERSION"
+  echo -e "${GREEN}✓ Version bump committed${NC}"
+fi
 
 echo ""
 echo -e "${BLUE}Pushing bump commit to main...${NC}"
