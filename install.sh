@@ -258,12 +258,8 @@ if [[ ${#UNIQUE_CONFLICTS[@]} -gt 0 ]]; then
   echo "  will open each time you exit plan mode."
   echo ""
 
-  if [[ -t 0 ]]; then
-    read -rp "Disable them? (Y/n) " DISABLE_CONFIRM
-    DISABLE_CONFIRM="${DISABLE_CONFIRM:-Y}"
-  else
-    DISABLE_CONFIRM="n"
-  fi
+  read -rp "Disable them? (Y/n) " DISABLE_CONFIRM </dev/tty
+  DISABLE_CONFIRM="${DISABLE_CONFIRM:-Y}"
 
   if [[ "$DISABLE_CONFIRM" =~ ^[Yy]$ ]]; then
     for p in "${UNIQUE_CONFLICTS[@]}"; do
@@ -312,12 +308,8 @@ if [[ -n "$REPO_FULL_NAME" ]]; then
   echo "  Repo:   $REPO_FULL_NAME"
   echo ""
 
-  if [[ -t 0 ]]; then
-    read -rp "Connect? (Y/n) " CONFIRM
-    CONFIRM="${CONFIRM:-Y}"
-  else
-    CONFIRM="Y"
-  fi
+  read -rp "Connect? (Y/n) " CONFIRM </dev/tty
+  CONFIRM="${CONFIRM:-Y}"
 
   if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
     echo ""
