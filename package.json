@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "bash scripts/compile.sh",
+    "test": "bun test",
     "deploy:tag": "bash scripts/deploy-tag.sh"
   },
   "engines": {

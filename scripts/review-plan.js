@@ -50,7 +50,7 @@ function log(level, message, data) {
 	}
 }
 
-function outputAllow() {
+export function outputAllow() {
 	const result = {
 		hookSpecificOutput: {
 			hookEventName: "PermissionRequest",
@@ -64,7 +64,7 @@ function outputAllow() {
 	process.stdout.write(json);
 }
 
-function outputDeny(feedback) {
+export function outputDeny(feedback) {
 	const result = {
 		hookSpecificOutput: {
 			hookEventName: "PermissionRequest",
@@ -116,7 +116,7 @@ async function openBrowser(url) {
  * @param {string} cwd - Working directory to resolve relative paths
  * @returns {string|null} Plan content or null
  */
-function extractPlanFromTranscript(transcriptPath, cwd) {
+export function extractPlanFromTranscript(transcriptPath, cwd) {
 	try {
 		if (!transcriptPath || !existsSync(transcriptPath)) {
 			log('debug', 'No transcript path or file not found', { transcriptPath });
@@ -175,7 +175,7 @@ function extractPlanFromTranscript(transcriptPath, cwd) {
  * @param {string} cwd - Working directory
  * @returns {string|null} Plan content or null
  */
-function readPlanFromFile(cwd) {
+export function readPlanFromFile(cwd) {
 	const candidates = [
 		join(cwd, '.claude', 'plan.md'),
 		join(cwd, 'plan.md'),
@@ -245,7 +245,7 @@ For more information on using Lightsprint with Claude Code, see:
 `);
 }
 
-function waitForCallback(port, timeoutMs = 345600000) {
+export function waitForCallback(port, timeoutMs = 345600000) {
 	return new Promise((resolve, reject) => {
 		const sockets = new Set();
 		const responseHtml = `<!DOCTYPE html>
