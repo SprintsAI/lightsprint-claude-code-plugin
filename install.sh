@@ -301,11 +301,10 @@ fi
 
 if [[ -n "$REPO_FULL_NAME" ]]; then
   echo "─────────────────────────────────────────"
-  echo "  Connect this folder to a project on Lightsprint?"
+  echo "  Connect this repo to a project on Lightsprint?"
   echo "─────────────────────────────────────────"
   echo ""
-  echo "  Folder: $CURRENT_DIR"
-  echo "  Repo:   $REPO_FULL_NAME"
+  echo "  Repo: $REPO_FULL_NAME"
   echo ""
 
   read -rp "Connect? (Y/n) " CONFIRM </dev/tty

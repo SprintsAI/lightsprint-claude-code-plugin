@@ -1,10 +1,11 @@
 /**
  * Configuration loader for Lightsprint plugin.
  *
- * Per-folder auth resolution:
- * 1. Walk up from process.cwd() in ~/.lightsprint/projects.json
- * 2. Fall back to git main worktree path (supports git worktrees)
- * 3. If no match found, trigger browser-based OAuth (interactive only)
+ * Per-project auth resolution:
+ * 1. Git repo full name lookup (owner/repo) in ~/.lightsprint/projects.json
+ * 2. Walk up from cwd to find a matching folder path (legacy/non-git fallback)
+ * 3. Fall back to git main worktree path (legacy worktree fallback)
+ * 4. If no match found, trigger browser-based OAuth (interactive only)
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
@@ -61,12 +62,29 @@ export function writeProjectsFile(data) {
 }
 
 /**
+ * Try to extract the GitHub owner/repo from the git remote URL.
+ * @param {string} [cwd] - Working directory to run git in
+ * @returns {string|null} e.g. "owner/repo" or null
+ */
+export function getGitRepoFullName(cwd) {
+	try {
+		const remote = execSync('git remote get-url origin', { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+		// Match SSH (git@github.com:owner/repo.git) or HTTPS (https://github.com/owner/repo.git)
+		const match = remote.match(/github\.com[:/]([^/]+\/[^/.]+?)(?:\.git)?$/);
+		return match ? match[1] : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Try to resolve the git main worktree path.
  * Returns null if not in a git repo or git is unavailable.
+ * @param {string} [cwd] - Working directory to run git in
  */
-function getGitMainWorktree() {
+function getGitMainWorktree(cwd) {
 	try {
-		return execSync('git worktree list --porcelain', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] })
+		return execSync('git worktree list --porcelain', { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] })
 			.split('\n')
 			.find(line => line.startsWith('worktree '))
 			?.replace('worktree ', '') || null;
@@ -78,28 +96,37 @@ function getGitMainWorktree() {
 /**
  * Find the project config for the current working directory.
  * Resolution order:
- * 1. Walk up from cwd to find a matching folder
- * 2. If in a git worktree, try the main worktree path
+ * 1. Git repo full name lookup (owner/repo) — works across worktrees
+ * 2. Walk up from cwd to find a matching folder path (legacy/non-git fallback)
+ * 3. Git main worktree path (legacy worktree fallback)
  *
- * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string } | null}
+ * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, configKey: string } | null}
  */
 function findProjectConfig(startDir) {
 	const projects = readProjectsFile();
-	let dir = startDir || process.cwd();
+	const dir = startDir || process.cwd();
 
-	while (true) {
-		if (projects[dir]) {
-			return { ...projects[dir], folder: dir };
-		}
-		const parent = dirname(dir);
-		if (parent === dir) break; // reached root
-		dir = parent;
+	// 1. Repo full name lookup (e.g. "owner/repo")
+	const repoName = getGitRepoFullName(dir);
+	if (repoName && projects[repoName]) {
+		return { ...projects[repoName], folder: dir, configKey: repoName };
 	}
 
-	// Fall back to the git main worktree (supports git worktrees)
-	const mainWorktree = getGitMainWorktree();
+	// 2. Folder walk-up (legacy/non-git fallback)
+	let walkDir = dir;
+	while (true) {
+		if (projects[walkDir]) {
+			return { ...projects[walkDir], folder: walkDir, configKey: walkDir };
+		}
+		const parent = dirname(walkDir);
+		if (parent === walkDir) break; // reached root
+		walkDir = parent;
+	}
+
+	// 3. Git main worktree (legacy worktree fallback)
+	const mainWorktree = getGitMainWorktree(dir);
 	if (mainWorktree && projects[mainWorktree]) {
-		return { ...projects[mainWorktree], folder: mainWorktree };
+		return { ...projects[mainWorktree], folder: mainWorktree, configKey: mainWorktree };
 	}
 
 	return null;
@@ -108,7 +135,7 @@ function findProjectConfig(startDir) {
 /**
  * Get the Lightsprint config for the current folder.
  * Returns null for both unconfigured and skipped folders (hooks should skip silently).
- * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string } | null}
+ * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, configKey: string, baseUrl: string } | null}
  */
 export function getConfig(cwd) {
 	const project = findProjectConfig(cwd);
@@ -127,7 +154,7 @@ export function getConfig(cwd) {
  * Get config or trigger on-demand OAuth.
  * Only call from interactive contexts (skills/CLI), not hooks.
  * Returns null if the user previously skipped this folder.
- * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string } | null>}
+ * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, configKey: string, baseUrl: string } | null>}
  */
 export async function requireConfig() {
 	// Check for skipped folders before calling getConfig (which hides them)

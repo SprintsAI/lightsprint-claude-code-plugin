@@ -58,10 +58,10 @@ Commands:
   get <taskId>            Show full task details
   claim <taskId>          Claim a task (set to in_progress)
   comment <taskId> <body> Add a comment to a task
-  status                  Show connection status for this folder
+  status                  Show connection status for this repository
   whoami                  Show project/auth info
   connect [--base-url]    Authenticate and connect to Lightsprint
-  disconnect              Remove Lightsprint credentials for this folder
+  disconnect              Remove Lightsprint credentials for this repository
   upgrade                 Upgrade to the latest version
 
 Flags:

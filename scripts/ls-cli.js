@@ -20,7 +20,7 @@ import { apiRequest, getProjectId, getProjectInfo } from './lib/client.js';
 import { setMapping } from './lib/task-map.js';
 import { lsToCcStatus } from './lib/status-mapper.js';
 import { authenticate } from './lib/auth.js';
-import { getConfig, getDefaultBaseUrl, readProjectsFile, writeProjectsFile } from './lib/config.js';
+import { getConfig, getDefaultBaseUrl, readProjectsFile, writeProjectsFile, getGitRepoFullName } from './lib/config.js';
 
 export async function cliMain(command, args, context = {}) {
 	// Handle help flags
@@ -102,7 +102,7 @@ Commands:
       lightsprint comment abc123 "This is now complete"
 
   status
-    Show Lightsprint connection status for the current folder
+    Show Lightsprint connection status for the current repository
 
   whoami
     Display current project and authentication info
@@ -116,7 +116,7 @@ Commands:
       lightsprint connect --base-url https://staging.lightsprint.ai
 
   disconnect
-    Remove Lightsprint credentials for the current folder
+    Remove Lightsprint credentials for the current repository
 
   review-plan [input]
     Review an implementation plan (typically invoked by Claude Code hooks)
@@ -418,7 +418,7 @@ function cmdStatus() {
 		console.log('To get started:\n');
 		console.log('  1. Run:  lightsprint connect');
 		console.log('  2. Authorize in the browser when prompted');
-		console.log('  3. Select the project to link to this folder\n');
+		console.log('  3. Select the project to link to this repository\n');
 		console.log('For a custom instance:\n');
 		console.log('  lightsprint connect --base-url https://your-instance.lightsprint.ai');
 		return;
@@ -426,7 +426,12 @@ function cmdStatus() {
 
 	console.log(`Project:    ${cfg.projectName || 'unknown'}`);
 	console.log(`Project ID: ${cfg.projectId}`);
-	console.log(`Folder:     ${cfg.folder}`);
+	const ck = cfg.configKey || cfg.folder;
+	if (ck.includes('/') && !ck.startsWith('/')) {
+		console.log(`Repository: ${ck}`);
+	} else {
+		console.log(`Folder:     ${ck}`);
+	}
 	console.log(`Base URL:   ${cfg.baseUrl}`);
 
 	if (cfg.expiresAt) {
@@ -459,8 +464,12 @@ async function cmdDisconnect() {
 	const projects = readProjectsFile();
 	const cwd = process.cwd();
 
-	// Find matching entries: walk up from cwd (same logic as findProjectConfig)
+	// Find matching entries: repo name + walk up from cwd
 	const toRemove = [];
+	const repoName = getGitRepoFullName(cwd);
+	if (repoName && projects[repoName]) {
+		toRemove.push(repoName);
+	}
 	for (const [folder] of Object.entries(projects)) {
 		if (!cwd.startsWith(folder) && folder !== cwd) continue;
 		toRemove.push(folder);

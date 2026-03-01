@@ -263,11 +263,10 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 
 if ($repoFullName) {
     Write-Host ([char]0x2500 * 41)
-    Write-Host "  Connect this folder to a project on Lightsprint?"
+    Write-Host "  Connect this repo to a project on Lightsprint?"
     Write-Host ([char]0x2500 * 41)
     Write-Host ""
-    Write-Host "  Folder: $currentDir"
-    Write-Host "  Repo:   $repoFullName"
+    Write-Host "  Repo: $repoFullName"
     Write-Host ""
 
     $confirm = Read-Host "Connect? (Y/n)"

@@ -63,10 +63,11 @@ async function refreshTokenIfNeeded() {
 
 		// Update projects.json atomically
 		const projects = readProjectsFile();
-		if (projects[cfg.folder]) {
-			projects[cfg.folder].accessToken = data.access_token;
-			projects[cfg.folder].refreshToken = data.refresh_token;
-			projects[cfg.folder].expiresAt = Date.now() + (data.expires_in * 1000);
+		const key = cfg.configKey || cfg.folder;
+		if (projects[key]) {
+			projects[key].accessToken = data.access_token;
+			projects[key].refreshToken = data.refresh_token;
+			projects[key].expiresAt = Date.now() + (data.expires_in * 1000);
 			writeProjectsFile(projects);
 		}
 
