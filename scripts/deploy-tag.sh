@@ -101,8 +101,31 @@ if ! [[ "$CONFIRM" =~ ^[Yy]([Ee][Ss])?$ ]]; then
   exit 0
 fi
 
+# Strip leading 'v' for package.json version
+SEMVER="${NEW_VERSION#v}"
+
+# Bump version in plugin.json and package.json
+echo -e "${BLUE}Bumping version to $SEMVER...${NC}"
+node -e "
+const fs = require('fs');
+for (const file of ['.claude-plugin/plugin.json', 'package.json']) {
+  const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  pkg.version = '$SEMVER';
+  fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
+}
+"
+
+git add .claude-plugin/plugin.json package.json
+git commit -m "chore: bump version to $NEW_VERSION"
+echo -e "${GREEN}✓ Version bump committed${NC}"
+
 echo ""
-echo -e "${BLUE}Creating tag...${NC}"
+echo -e "${BLUE}Pushing bump commit to main...${NC}"
+git push origin "$CURRENT_BRANCH"
+echo -e "${GREEN}✓ Bump commit pushed${NC}"
+
+echo ""
+echo -e "${BLUE}Creating tag on bump commit...${NC}"
 git tag "$NEW_VERSION"
 echo -e "${GREEN}✓ Tag created: $NEW_VERSION${NC}"
 
