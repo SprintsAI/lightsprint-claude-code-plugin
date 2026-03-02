@@ -50,7 +50,7 @@ function log(level, message, data) {
 	}
 }
 
-function outputAllow() {
+export function outputAllow() {
 	const result = {
 		hookSpecificOutput: {
 			hookEventName: "PermissionRequest",
@@ -64,7 +64,7 @@ function outputAllow() {
 	process.stdout.write(json);
 }
 
-function outputDeny(feedback) {
+export function outputDeny(feedback) {
 	const result = {
 		hookSpecificOutput: {
 			hookEventName: "PermissionRequest",
@@ -116,7 +116,7 @@ async function openBrowser(url) {
  * @param {string} cwd - Working directory to resolve relative paths
  * @returns {string|null} Plan content or null
  */
-function extractPlanFromTranscript(transcriptPath, cwd) {
+export function extractPlanFromTranscript(transcriptPath, cwd) {
 	try {
 		if (!transcriptPath || !existsSync(transcriptPath)) {
 			log('debug', 'No transcript path or file not found', { transcriptPath });
@@ -175,7 +175,7 @@ function extractPlanFromTranscript(transcriptPath, cwd) {
  * @param {string} cwd - Working directory
  * @returns {string|null} Plan content or null
  */
-function readPlanFromFile(cwd) {
+export function readPlanFromFile(cwd) {
 	const candidates = [
 		join(cwd, '.claude', 'plan.md'),
 		join(cwd, 'plan.md'),
@@ -245,7 +245,7 @@ For more information on using Lightsprint with Claude Code, see:
 `);
 }
 
-function waitForCallback(port, timeoutMs = 345600000) {
+export function waitForCallback(port, timeoutMs = 345600000) {
 	return new Promise((resolve, reject) => {
 		const sockets = new Set();
 		const responseHtml = `<!DOCTYPE html>
@@ -275,6 +275,7 @@ let s=3;const el=document.getElementById('t');const card=document.getElementById
 const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.classList.add('fade-out');setTimeout(()=>{window.close();window.location.href='about:blank'},400)}},1000);
 </script></body></html>`;
 
+		const MAX_BODY_SIZE = 1024 * 1024; // 1 MB limit
 		const server = createServer((req, res) => {
 			const url = new URL(req.url, 'http://localhost');
 			if (url.pathname === '/callback') {
@@ -288,7 +289,17 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 				if (req.method === 'POST') {
 					// Handle form POST from browser (application/x-www-form-urlencoded)
 					let body = '';
-					req.on('data', chunk => { body += chunk; });
+					let bodySize = 0;
+					req.on('data', chunk => {
+						bodySize += chunk.length;
+						if (bodySize > MAX_BODY_SIZE) {
+							res.writeHead(413, { 'Connection': 'close' });
+							res.end('Request body too large');
+							req.destroy();
+							return;
+						}
+						body += chunk;
+					});
 					req.on('end', () => {
 						const params = new URLSearchParams(body);
 						const decision = params.get('decision') || 'allow';
@@ -318,7 +329,7 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 			server.close();
 		}
 
-		server.listen(port);
+		server.listen(port, '127.0.0.1');
 
 		const timer = setTimeout(() => {
 			closeServer();
