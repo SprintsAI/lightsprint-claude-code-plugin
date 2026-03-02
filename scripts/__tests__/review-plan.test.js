@@ -286,10 +286,6 @@ describe('readPlanFromFile', () => {
 
 describe('waitForCallback', () => {
 	test('resolves on GET callback', async () => {
-		const port = 0; // Let OS assign
-		// We need to find the actual port, so we'll use the function differently
-		// waitForCallback starts a server on the given port
-		// Let's use a fixed high port
 		const testPort = 19876 + Math.floor(Math.random() * 1000);
 
 		const callbackPromise = waitForCallback(testPort, 5000);

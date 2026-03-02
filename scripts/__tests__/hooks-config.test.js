@@ -4,6 +4,7 @@ import { join } from 'path';
 
 const HOOKS_PATH = join(import.meta.dir, '../../hooks/hooks.json');
 const hooks = JSON.parse(readFileSync(HOOKS_PATH, 'utf-8'));
+const exitPlanMode = hooks.hooks.PermissionRequest?.find(h => h.matcher === 'ExitPlanMode');
 
 describe('hooks.json configuration', () => {
 	test('has PermissionRequest event', () => {
@@ -13,12 +14,10 @@ describe('hooks.json configuration', () => {
 	});
 
 	test('has ExitPlanMode matcher', () => {
-		const exitPlanMode = hooks.hooks.PermissionRequest.find(h => h.matcher === 'ExitPlanMode');
 		expect(exitPlanMode).toBeDefined();
 	});
 
 	test('ExitPlanMode hook runs lightsprint review-plan command', () => {
-		const exitPlanMode = hooks.hooks.PermissionRequest.find(h => h.matcher === 'ExitPlanMode');
 		expect(exitPlanMode.hooks).toBeArray();
 		expect(exitPlanMode.hooks.length).toBe(1);
 
@@ -28,7 +27,6 @@ describe('hooks.json configuration', () => {
 	});
 
 	test('ExitPlanMode hook has 4-day timeout', () => {
-		const exitPlanMode = hooks.hooks.PermissionRequest.find(h => h.matcher === 'ExitPlanMode');
 		const hook = exitPlanMode.hooks[0];
 		// 4 days = 345600 seconds
 		expect(hook.timeout).toBe(345600);

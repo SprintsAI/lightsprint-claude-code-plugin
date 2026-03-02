@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir, homedir } from 'os';
 
@@ -21,7 +21,6 @@ describe('plan-tracker', () => {
 		// Save existing file if present
 		try {
 			if (existsSync(activePlanPath)) {
-				const { readFileSync } = require('fs');
 				savedContent = readFileSync(activePlanPath, 'utf-8');
 				hadFile = true;
 			}
