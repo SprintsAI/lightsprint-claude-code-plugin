@@ -241,6 +241,7 @@ async function cmdUpdate(args) {
 		console.error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status todo|in_progress|in_review|done] [--complexity trivial|low|medium|high|critical] [--assignee <name>]');
 		process.exit(1);
 	}
+	validateTaskId(taskId);
 
 	// Parse flags
 	const patch = {};
@@ -293,6 +294,7 @@ async function cmdGet(args) {
 		console.error('Usage: lightsprint get <taskId>');
 		process.exit(1);
 	}
+	validateTaskId(taskId);
 
 	const data = await apiRequest(`/api/tasks/${taskId}`);
 	const task = data.task;
@@ -335,6 +337,7 @@ async function cmdClaim(args) {
 		console.error('Usage: lightsprint claim <taskId>');
 		process.exit(1);
 	}
+	validateTaskId(taskId);
 
 	// Set task to in_progress
 	await apiRequest(`/api/tasks/${taskId}`, {
@@ -388,6 +391,7 @@ async function cmdComment(args) {
 		console.error('Usage: lightsprint comment <taskId> <body>');
 		process.exit(1);
 	}
+	validateTaskId(taskId);
 
 	await apiRequest(`/api/tasks/${taskId}/comments`, {
 		method: 'POST',
@@ -595,6 +599,13 @@ async function cmdUpgrade(currentVersion) {
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────
+
+function validateTaskId(taskId) {
+	if (!taskId || /[\/\\]|\.\./.test(taskId)) {
+		console.error(`Error: invalid task ID: ${taskId}`);
+		process.exit(1);
+	}
+}
 
 function statusToColumnName(status) {
 	const map = {

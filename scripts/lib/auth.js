@@ -7,7 +7,7 @@
 
 import { createServer } from 'http';
 import { createServer as createNetServer } from 'net';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import { readProjectsFile, writeProjectsFile, ensureConfigDir, getGitRepoFullName } from './config.js';
 
 /**
@@ -30,27 +30,25 @@ function findFreePort() {
  * Falls back to printing the URL if no opener is available.
  */
 function openBrowser(url) {
-	const commands = [
-		`open "${url}"`,          // macOS
-		`xdg-open "${url}"`,      // Linux
-		`start "" "${url}"`       // Windows
-	];
-
-	let opened = false;
-	for (const cmd of commands) {
-		try {
-			exec(cmd);
-			opened = true;
-			break;
-		} catch {
-			// Try next
+	const platform = process.platform;
+	try {
+		let child;
+		if (platform === 'darwin') {
+			child = spawn('open', [url], { detached: true, stdio: 'ignore' });
+		} else if (platform === 'linux') {
+			child = spawn('xdg-open', [url], { detached: true, stdio: 'ignore' });
+		} else if (platform === 'win32') {
+			child = spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' });
 		}
+		if (child) {
+			child.unref();
+			return;
+		}
+	} catch {
+		// Fall through to manual URL display
 	}
-
-	if (!opened) {
-		console.log('Open this URL in your browser:');
-		console.log(`  ${url}`);
-	}
+	console.log('Open this URL in your browser:');
+	console.log(`  ${url}`);
 }
 
 /**
@@ -147,7 +145,7 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 			server.close();
 		}
 
-		server.listen(port);
+		server.listen(port, '127.0.0.1');
 
 		const timer = setTimeout(() => {
 			server.close();
@@ -166,6 +164,10 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 export async function authenticate(baseUrl = 'https://lightsprint.ai', options = {}) {
 	const { cwd, quiet } = options;
 	ensureConfigDir();
+
+	if (baseUrl.startsWith('http://') && !quiet) {
+		console.warn('Warning: Base URL uses http:// — tokens will be sent over an unencrypted connection.');
+	}
 
 	const port = await findFreePort();
 	let authorizeUrl = `${baseUrl}/authorize-cli?port=${port}&scope=tasks:read+tasks:write+comments:write+plans:read+plans:write`;

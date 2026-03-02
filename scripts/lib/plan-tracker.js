@@ -14,7 +14,7 @@ const ACTIVE_FILE = join(homedir(), '.lightsprint', 'active-plan.json');
 function ensureDir() {
 	const dir = dirname(ACTIVE_FILE);
 	if (!existsSync(dir)) {
-		mkdirSync(dir, { recursive: true });
+		mkdirSync(dir, { recursive: true, mode: 0o700 });
 	}
 }
 
@@ -27,7 +27,7 @@ function ensureDir() {
 export function setActivePlan(planId, projectId, sessionId) {
 	ensureDir();
 	const tmp = ACTIVE_FILE + '.' + randomBytes(4).toString('hex');
-	writeFileSync(tmp, JSON.stringify({ planId, projectId, sessionId, updatedAt: new Date().toISOString() }));
+	writeFileSync(tmp, JSON.stringify({ planId, projectId, sessionId, updatedAt: new Date().toISOString() }), { mode: 0o600 });
 	renameSync(tmp, ACTIVE_FILE);
 }
 

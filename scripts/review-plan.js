@@ -25,6 +25,7 @@ import { createServer } from 'http';
 import { createServer as createNetServer } from 'net';
 import { spawn } from 'child_process';
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { randomBytes } from 'crypto';
 import { join } from 'path';
 import { homedir } from 'os';
 import { getConfig, getDefaultBaseUrl } from './lib/config.js';
@@ -41,10 +42,10 @@ const BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'unk
 
 function log(level, message, data) {
 	try {
-		if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true });
+		if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true, mode: 0o700 });
 		const ts = new Date().toISOString();
 		const line = `${ts} [${level}] review-plan: ${message}${data ? ' ' + JSON.stringify(data) : ''}\n`;
-		appendFileSync(LOG_FILE, line);
+		appendFileSync(LOG_FILE, line, { mode: 0o600 });
 	} catch {
 		// Never crash on logging
 	}
@@ -246,7 +247,8 @@ For more information on using Lightsprint with Claude Code, see:
 }
 
 export function waitForCallback(port, timeoutMs = 345600000) {
-	return new Promise((resolve, reject) => {
+	const nonce = randomBytes(16).toString('hex');
+	const promise = new Promise((resolve, reject) => {
 		const sockets = new Set();
 		const responseHtml = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -279,6 +281,13 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 		const server = createServer((req, res) => {
 			const url = new URL(req.url, 'http://localhost');
 			if (url.pathname === '/callback') {
+				// Validate nonce to prevent forged callbacks from other local processes
+				if (url.searchParams.get('nonce') !== nonce) {
+					res.writeHead(403, { 'Connection': 'close' });
+					res.end('Forbidden');
+					return;
+				}
+
 				function respond(decision, feedback, chatContext) {
 					res.writeHead(200, { 'Content-Type': 'text/html', 'Connection': 'close' });
 					res.end(responseHtml);
@@ -338,6 +347,7 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 
 		server.on('close', () => clearTimeout(timer));
 	});
+	return { nonce, promise };
 }
 
 export async function reviewPlanMain(args) {
@@ -499,7 +509,8 @@ export async function reviewPlanMain(args) {
 
 		// 4. Start callback server
 		const port = await findFreePort();
-		const callbackUrl = `http://localhost:${port}/callback`;
+		const { nonce, promise: callbackPromise } = waitForCallback(port);
+		const callbackUrl = `http://localhost:${port}/callback?nonce=${nonce}`;
 		const reviewUrl = `${cfg.baseUrl}/plans/${planId}?callback=${encodeURIComponent(callbackUrl)}`;
 
 		// 5. Open browser (also print URL so user can open manually if browser doesn't pop)
@@ -508,7 +519,7 @@ export async function reviewPlanMain(args) {
 		process.stderr.write(`\n→ Review plan: ${reviewUrl}\n\n`);
 
 		// 6. Wait for callback
-		const { decision, feedback, chatContext } = await waitForCallback(port);
+		const { decision, feedback, chatContext } = await callbackPromise;
 
 		log('info', 'Received review decision', { decision, feedback, chatContextCount: chatContext?.length });
 

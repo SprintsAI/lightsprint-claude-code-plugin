@@ -14,7 +14,7 @@ const MAP_FILE = join(homedir(), '.lightsprint', 'task-map.json');
 function ensureDir() {
 	const dir = dirname(MAP_FILE);
 	if (!existsSync(dir)) {
-		mkdirSync(dir, { recursive: true });
+		mkdirSync(dir, { recursive: true, mode: 0o700 });
 	}
 }
 
@@ -32,7 +32,7 @@ function readMap() {
 function writeMap(map) {
 	ensureDir();
 	const tmp = MAP_FILE + '.' + randomBytes(4).toString('hex');
-	writeFileSync(tmp, JSON.stringify(map, null, 2));
+	writeFileSync(tmp, JSON.stringify(map, null, 2), { mode: 0o600 });
 	renameSync(tmp, MAP_FILE);
 }
 

@@ -285,35 +285,50 @@ describe('readPlanFromFile', () => {
 });
 
 describe('waitForCallback', () => {
-	test('resolves on GET callback', async () => {
+	test('resolves on GET callback with valid nonce', async () => {
 		const testPort = 19876 + Math.floor(Math.random() * 1000);
 
-		const callbackPromise = waitForCallback(testPort, 5000);
+		const { nonce, promise } = waitForCallback(testPort, 5000);
 
 		// Give server time to start
 		await new Promise(r => setTimeout(r, 100));
 
-		// Send GET callback
-		await fetch(`http://localhost:${testPort}/callback?decision=allow&feedback=looks%20good`);
+		// Send GET callback with nonce
+		await fetch(`http://localhost:${testPort}/callback?nonce=${nonce}&decision=allow&feedback=looks%20good`);
 
-		const result = await callbackPromise;
+		const result = await promise;
 		expect(result.decision).toBe('allow');
 		expect(result.feedback).toBe('looks good');
+	});
+
+	test('rejects GET callback with invalid nonce', async () => {
+		const testPort = 19876 + Math.floor(Math.random() * 1000);
+
+		const { nonce, promise } = waitForCallback(testPort, 2000);
+
+		await new Promise(r => setTimeout(r, 100));
+
+		// Send callback with wrong nonce — should get 403
+		const res = await fetch(`http://localhost:${testPort}/callback?nonce=wrong&decision=allow`);
+		expect(res.status).toBe(403);
+
+		// Server should still be running, waiting for valid callback — will timeout
+		await expect(promise).rejects.toThrow('Plan review timed out.');
 	});
 
 	test('resolves on POST callback', async () => {
 		const testPort = 19876 + Math.floor(Math.random() * 1000);
 
-		const callbackPromise = waitForCallback(testPort, 5000);
+		const { nonce, promise } = waitForCallback(testPort, 5000);
 		await new Promise(r => setTimeout(r, 100));
 
-		await fetch(`http://localhost:${testPort}/callback`, {
+		await fetch(`http://localhost:${testPort}/callback?nonce=${nonce}`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: 'decision=deny&feedback=needs+changes'
 		});
 
-		const result = await callbackPromise;
+		const result = await promise;
 		expect(result.decision).toBe('deny');
 		expect(result.feedback).toBe('needs changes');
 	});
@@ -321,23 +336,24 @@ describe('waitForCallback', () => {
 	test('rejects on timeout', async () => {
 		const testPort = 19876 + Math.floor(Math.random() * 1000);
 
-		await expect(waitForCallback(testPort, 200)).rejects.toThrow('Plan review timed out.');
+		const { promise } = waitForCallback(testPort, 200);
+		await expect(promise).rejects.toThrow('Plan review timed out.');
 	});
 
 	test('POST callback includes chatContext', async () => {
 		const testPort = 19876 + Math.floor(Math.random() * 1000);
 
-		const callbackPromise = waitForCallback(testPort, 5000);
+		const { nonce, promise } = waitForCallback(testPort, 5000);
 		await new Promise(r => setTimeout(r, 100));
 
 		const chatContext = JSON.stringify([{ messageType: 'chat', senderName: 'Alice', content: 'LGTM' }]);
-		await fetch(`http://localhost:${testPort}/callback`, {
+		await fetch(`http://localhost:${testPort}/callback?nonce=${nonce}`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: `decision=allow&feedback=ok&chatContext=${encodeURIComponent(chatContext)}`
 		});
 
-		const result = await callbackPromise;
+		const result = await promise;
 		expect(result.chatContext).toEqual([{ messageType: 'chat', senderName: 'Alice', content: 'LGTM' }]);
 	});
 });

@@ -22,7 +22,11 @@ export LIGHTSPRINT_BASE_URL
 # Persist base URL so hooks can read it later (survives across sessions)
 LIGHTSPRINT_CONFIG_DIR="$HOME/.lightsprint"
 mkdir -p "$LIGHTSPRINT_CONFIG_DIR"
-printf '{"baseUrl":"%s"}\n' "$LIGHTSPRINT_BASE_URL" > "$LIGHTSPRINT_CONFIG_DIR/config.json"
+chmod 700 "$LIGHTSPRINT_CONFIG_DIR"
+# Escape JSON special characters in base URL before writing
+SAFE_BASE_URL=$(printf '%s' "$LIGHTSPRINT_BASE_URL" | sed 's/\\/\\\\/g; s/"/\\"/g')
+printf '{"baseUrl":"%s"}\n' "$SAFE_BASE_URL" > "$LIGHTSPRINT_CONFIG_DIR/config.json"
+chmod 600 "$LIGHTSPRINT_CONFIG_DIR/config.json"
 
 # Check prerequisites
 if ! command -v claude &>/dev/null; then
