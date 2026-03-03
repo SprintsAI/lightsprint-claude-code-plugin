@@ -184,7 +184,7 @@ if [[ "$LIGHTSPRINT_BASE_URL" != "https://lightsprint.ai" ]]; then
 fi
 
 # ─── Optional OpenCode plugin setup ────────────────────────────────────────
-if command -v opencode &>/dev/null || [[ -f "$(pwd)/opencode.json" ]]; then
+if command -v opencode &>/dev/null; then
   OPENCODE_CONFIG_PATH="$(pwd)/opencode.json"
 
   echo ""

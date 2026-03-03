@@ -142,7 +142,7 @@ if ($BaseUrl -ne "https://lightsprint.ai") {
 }
 
 # ── Optional OpenCode plugin setup ────────────────────────────────────────
-$opencodeDetected = (Get-Command opencode -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path (Get-Location) "opencode.json"))
+$opencodeDetected = Get-Command opencode -ErrorAction SilentlyContinue
 if ($opencodeDetected) {
     $opencodeConfigPath = Join-Path (Get-Location) "opencode.json"
 
