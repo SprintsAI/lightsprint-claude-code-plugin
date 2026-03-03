@@ -141,6 +141,63 @@ if ($BaseUrl -ne "https://lightsprint.ai") {
     Write-Host "Base URL: $BaseUrl"
 }
 
+# ── Optional OpenCode plugin setup ────────────────────────────────────────
+$opencodeDetected = (Get-Command opencode -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path (Get-Location) "opencode.json"))
+if ($opencodeDetected) {
+    $opencodeConfigPath = Join-Path (Get-Location) "opencode.json"
+
+    Write-Host ""
+    Write-Host ([char]0x2500 * 41)
+    Write-Host "  OpenCode detected"
+    Write-Host ([char]0x2500 * 41)
+    Write-Host ""
+    Write-Host "  Configure this repo to load @lightsprint/opencode?"
+    Write-Host "  Config file: $opencodeConfigPath"
+    Write-Host ""
+
+    $opencodeConfirm = Read-Host "Enable OpenCode plugin? (Y/n)"
+    if (-not $opencodeConfirm) { $opencodeConfirm = "Y" }
+
+    if ($opencodeConfirm -match '^[Yy]$') {
+        try {
+            $config = [PSCustomObject]@{}
+            if (Test-Path $opencodeConfigPath) {
+                $rawConfig = Get-Content $opencodeConfigPath -Raw -ErrorAction Stop
+                if ($rawConfig.Trim()) {
+                    $config = $rawConfig | ConvertFrom-Json -ErrorAction Stop
+                }
+            }
+
+            $plugins = @()
+            if ($null -ne $config.plugin) {
+                if ($config.plugin -is [System.Array]) {
+                    $plugins = @($config.plugin | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+                } else {
+                    $singlePlugin = "$($config.plugin)".Trim()
+                    if ($singlePlugin) {
+                        $plugins = @($singlePlugin)
+                    }
+                }
+            }
+
+            if ($plugins -notcontains "@lightsprint/opencode") {
+                $plugins += "@lightsprint/opencode"
+            }
+
+            if ($config.PSObject.Properties.Name -contains "plugin") {
+                $config.plugin = $plugins
+            } else {
+                Add-Member -InputObject $config -MemberType NoteProperty -Name "plugin" -Value $plugins
+            }
+
+            $config | ConvertTo-Json -Depth 20 | Set-Content -Path $opencodeConfigPath -Encoding UTF8
+            Write-Host "Configured OpenCode plugin in $opencodeConfigPath"
+        } catch {
+            Write-Warning "Failed to update $opencodeConfigPath. Please add @lightsprint/opencode manually."
+        }
+    }
+}
+
 # ── Check for conflicting ExitPlanMode hooks ─────────────────────────────
 $conflictingPlugins = @()
 $marketplacesDir = "$env:USERPROFILE\.claude\plugins\marketplaces"

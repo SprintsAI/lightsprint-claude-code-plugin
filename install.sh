@@ -183,6 +183,61 @@ if [[ "$LIGHTSPRINT_BASE_URL" != "https://lightsprint.ai" ]]; then
   echo "Base URL: $LIGHTSPRINT_BASE_URL"
 fi
 
+# ─── Optional OpenCode plugin setup ────────────────────────────────────────
+if command -v opencode &>/dev/null || [[ -f "$(pwd)/opencode.json" ]]; then
+  OPENCODE_CONFIG_PATH="$(pwd)/opencode.json"
+
+  echo ""
+  echo "─────────────────────────────────────────"
+  echo "  OpenCode detected"
+  echo "─────────────────────────────────────────"
+  echo ""
+  echo "  Configure this repo to load @lightsprint/opencode?"
+  echo "  Config file: $OPENCODE_CONFIG_PATH"
+  echo ""
+
+  read -rp "Enable OpenCode plugin? (Y/n) " OPENCODE_CONFIRM </dev/tty
+  OPENCODE_CONFIRM="${OPENCODE_CONFIRM:-Y}"
+
+  if [[ "$OPENCODE_CONFIRM" =~ ^[Yy]$ ]]; then
+    if ! command -v node &>/dev/null; then
+      echo "Warning: node is required to patch opencode.json. Skipping OpenCode plugin setup." >&2
+    else
+      if node - "$OPENCODE_CONFIG_PATH" <<'NODE'
+const fs = require('fs');
+const configPath = process.argv[2];
+let config = {};
+
+if (fs.existsSync(configPath)) {
+  const raw = fs.readFileSync(configPath, 'utf8').trim();
+  if (raw) {
+    config = JSON.parse(raw);
+  }
+}
+
+let plugins = [];
+if (Array.isArray(config.plugin)) {
+  plugins = [...config.plugin];
+} else if (typeof config.plugin === 'string' && config.plugin.trim()) {
+  plugins = [config.plugin.trim()];
+}
+
+if (!plugins.includes('@lightsprint/opencode')) {
+  plugins.push('@lightsprint/opencode');
+}
+
+config.plugin = plugins;
+fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+NODE
+      then
+        echo "Configured OpenCode plugin in $OPENCODE_CONFIG_PATH"
+      else
+        echo "Warning: Failed to update $OPENCODE_CONFIG_PATH. Please add @lightsprint/opencode manually." >&2
+      fi
+    fi
+  fi
+fi
+
 # ─── Check for conflicting ExitPlanMode hooks ────────────────────────────
 CONFLICTING_PLUGINS=()
 MARKETPLACES_DIR="$HOME/.claude/plugins/marketplaces"

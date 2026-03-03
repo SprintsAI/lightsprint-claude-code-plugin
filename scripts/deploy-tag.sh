@@ -104,18 +104,18 @@ fi
 # Strip leading 'v' for package.json version
 SEMVER="${NEW_VERSION#v}"
 
-# Bump version in plugin.json and package.json
+# Bump version in plugin.json and package.json files
 echo -e "${BLUE}Bumping version to $SEMVER...${NC}"
 node -e "
 const fs = require('fs');
-for (const file of ['.claude-plugin/plugin.json', 'package.json']) {
+for (const file of ['.claude-plugin/plugin.json', 'package.json', 'opencode-plugin/package.json']) {
   const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
   pkg.version = '$SEMVER';
   fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
 }
 "
 
-git add .claude-plugin/plugin.json package.json
+git add .claude-plugin/plugin.json package.json opencode-plugin/package.json
 if git diff --cached --quiet; then
   echo -e "${YELLOW}Version already at $SEMVER — skipping bump commit${NC}"
 else
@@ -148,5 +148,27 @@ echo ""
 echo -e "${YELLOW}What happens next:${NC}"
 echo "  • GitHub Actions compiles binaries for all platforms"
 echo "  • Binaries are uploaded to a GitHub release"
+echo "  • GitHub Actions publishes @lightsprint/opencode to npm"
 echo "  • Users can install with: curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | bash"
+echo ""
+
+echo -e "${BLUE}Optional: publish @lightsprint/opencode now from this machine${NC}"
+read -p "Publish now? (y/N): " PUBLISH_OPENCODE
+if [[ "$PUBLISH_OPENCODE" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+  if ! command -v bun >/dev/null 2>&1; then
+    echo -e "${RED}✗ bun is required to build @lightsprint/opencode before publish${NC}"
+    exit 1
+  fi
+
+  echo -e "${BLUE}Building and publishing @lightsprint/opencode...${NC}"
+  (
+    cd opencode-plugin
+    bun install
+    bun run build
+    npm publish --access public
+  )
+  echo -e "${GREEN}✓ Published @lightsprint/opencode${NC}"
+else
+  echo -e "${YELLOW}Skipped local npm publish (GitHub Actions will publish on tag).${NC}"
+fi
 echo ""

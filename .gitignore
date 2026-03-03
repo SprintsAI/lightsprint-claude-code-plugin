@@ -7,3 +7,5 @@ review-plan
 bin/
 node_modules/
 .DS_Store
+opencode-plugin/dist/
+opencode-plugin/node_modules/

@@ -33,6 +33,18 @@ The `lightsprint` binary is the single entry point for all CLI functionality:
 - `scripts/lib/client.js` — Lightsprint API client.
 - `scripts/lib/plan-tracker.js` — Tracks active plan ID for versioning on resubmission.
 
+## OpenCode Plugin (`opencode-plugin/`)
+- Purpose: Publish `@lightsprint/opencode` as a thin OpenCode wrapper over the same `lightsprint` binary.
+- Entry point: `opencode-plugin/index.ts`.
+- Tool surface:
+  - `submit_plan` (shells out to `lightsprint review-plan`)
+  - `lightsprint_tasks`, `lightsprint_create`, `lightsprint_update`, `lightsprint_get`, `lightsprint_claim`, `lightsprint_comment`
+- Build/publish:
+  - `cd opencode-plugin && bun install && bun run build`
+  - Package output: `opencode-plugin/dist/index.js`
+  - Release workflow publishes to npm with `NPM_TOKEN`.
+- Design rule: keep business logic in `scripts/*.js`; OpenCode package should only marshal arguments and invoke the binary.
+
 ## Install Scripts
 - `install.sh` (macOS/Linux) and `scripts/install.ps1` (Windows) must stay in parity. When changing one, always update the other to match.
 - `install.ps1` is production-only — no local dev mode (`LIGHTSPRINT_LOCAL_PATH`).
