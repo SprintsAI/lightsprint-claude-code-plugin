@@ -23,13 +23,13 @@
 
 import { createServer } from 'http';
 import { createServer as createNetServer } from 'net';
-import { spawn } from 'child_process';
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { getConfig, getDefaultBaseUrl } from './lib/config.js';
 import { apiRequest, getProjectId, setConfig } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
+import { openBrowser } from './lib/browser.js';
 
 const LOG_DIR = join(homedir(), '.lightsprint');
 const LOG_FILE = join(LOG_DIR, 'sync.log');
@@ -88,25 +88,6 @@ function findFreePort() {
 		});
 		server.on('error', reject);
 	});
-}
-
-async function openBrowser(url) {
-	const platform = process.platform;
-	try {
-		if (platform === 'darwin') {
-			const child = spawn('open', [url], { detached: true, stdio: 'ignore' });
-			if (child) child.unref();
-		} else if (platform === 'linux') {
-			const child = spawn('xdg-open', [url], { detached: true, stdio: 'ignore' });
-			if (child) child.unref();
-		} else if (platform === 'win32') {
-			const child = spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' });
-			if (child) child.unref();
-		}
-		return;
-	} catch {
-		log('warn', 'Could not open browser');
-	}
 }
 
 /**
@@ -504,7 +485,11 @@ export async function reviewPlanMain(args) {
 
 		// 5. Open browser (also print URL so user can open manually if browser doesn't pop)
 		log('info', 'Opening browser for plan review', { reviewUrl, port });
-		await openBrowser(reviewUrl);
+		openBrowser(reviewUrl, {
+			browserApp: cfg?.browserApp,
+			profileFlag: cfg?.profileFlag,
+			profileValue: cfg?.profileValue,
+		});
 		process.stderr.write(`\n→ Review plan: ${reviewUrl}\n\n`);
 
 		// 6. Wait for callback

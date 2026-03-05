@@ -7,8 +7,8 @@
 
 import { createServer } from 'http';
 import { createServer as createNetServer } from 'net';
-import { exec } from 'child_process';
 import { readProjectsFile, writeProjectsFile, ensureConfigDir, getGitRepoFullName } from './config.js';
+import { findBrowserProfileForEmail, openBrowser } from './browser.js';
 
 /**
  * Find a free TCP port by binding to port 0.
@@ -23,34 +23,6 @@ function findFreePort() {
 		});
 		server.on('error', reject);
 	});
-}
-
-/**
- * Open a URL in the default browser.
- * Falls back to printing the URL if no opener is available.
- */
-function openBrowser(url) {
-	const commands = [
-		`open "${url}"`,          // macOS
-		`xdg-open "${url}"`,      // Linux
-		`start "" "${url}"`       // Windows
-	];
-
-	let opened = false;
-	for (const cmd of commands) {
-		try {
-			exec(cmd);
-			opened = true;
-			break;
-		} catch {
-			// Try next
-		}
-	}
-
-	if (!opened) {
-		console.log('Open this URL in your browser:');
-		console.log(`  ${url}`);
-	}
 }
 
 /**
@@ -102,7 +74,8 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 					refreshToken: url.searchParams.get('refresh_token'),
 					expiresIn: url.searchParams.get('expires_in'),
 					project: url.searchParams.get('project'),
-					projectId: url.searchParams.get('project_id')
+					projectId: url.searchParams.get('project_id'),
+					email: url.searchParams.get('email')
 				};
 				res.writeHead(200, { 'Content-Type': 'text/html', 'Connection': 'close' });
 				res.end(`<!DOCTYPE html>
@@ -176,7 +149,10 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai', options =
 	}
 
 	if (!quiet) console.log('Opening browser to authorize with Lightsprint...');
-	openBrowser(authorizeUrl);
+	if (!openBrowser(authorizeUrl)) {
+		console.log('Open this URL in your browser:');
+		console.log(`  ${authorizeUrl}`);
+	}
 
 	const result = await waitForCallback(port);
 
@@ -195,13 +171,18 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai', options =
 		throw new Error('Authorization failed — no access token received.');
 	}
 
+	// Detect browser profile from email for correct profile targeting
+	const browserProfile = result.email ? findBrowserProfileForEmail(result.email) : null;
+
 	const entry = {
 		accessToken: result.accessToken,
 		refreshToken: result.refreshToken,
 		expiresAt: Date.now() + (parseInt(result.expiresIn) * 1000),
 		projectId: result.projectId,
 		projectName: result.project,
-		baseUrl
+		baseUrl,
+		...(result.email ? { email: result.email } : {}),
+		...(browserProfile || {}),
 	};
 
 	const projects = readProjectsFile();
