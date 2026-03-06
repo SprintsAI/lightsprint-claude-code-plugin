@@ -5,8 +5,89 @@
         "matcher": "ExitPlanMode",
         "hooks": [{
           "type": "command",
-          "command": "lightsprint review-plan",
+          "command": "lightsprint cc-review",
           "timeout": 345600
+        }]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "lightsprint cc-start",
+          "timeout": 10
+        }]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "lightsprint cc-end",
+          "timeout": 10
+        }]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "lightsprint cc-event",
+          "timeout": 5
+        }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "lightsprint cc-event",
+          "timeout": 5
+        }]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "lightsprint cc-event",
+          "timeout": 5
+        }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "TaskCreate",
+        "hooks": [{
+          "type": "command",
+          "command": "lightsprint cc-event",
+          "timeout": 5
+        }]
+      },
+      {
+        "matcher": "TaskUpdate",
+        "hooks": [{
+          "type": "command",
+          "command": "lightsprint cc-event",
+          "timeout": 5
+        }]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "lightsprint cc-event",
+          "timeout": 5
+        }]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "lightsprint cc-event",
+          "timeout": 5
         }]
       }
     ]

@@ -23,7 +23,7 @@ describe('hooks.json configuration', () => {
 
 		const hook = exitPlanMode.hooks[0];
 		expect(hook.type).toBe('command');
-		expect(hook.command).toBe('lightsprint review-plan');
+		expect(hook.command).toBe('lightsprint cc-review');
 	});
 
 	test('ExitPlanMode hook has 4-day timeout', () => {
@@ -37,6 +37,16 @@ describe('hooks.json configuration', () => {
 	});
 
 	test('no unexpected hook events', () => {
-		expect(Object.keys(hooks.hooks)).toEqual(['PermissionRequest']);
+		expect(Object.keys(hooks.hooks)).toEqual([
+			'PermissionRequest',
+			'SessionStart',
+			'SessionEnd',
+			'UserPromptSubmit',
+			'Stop',
+			'TaskCompleted',
+			'PostToolUse',
+			'SubagentStart',
+			'SubagentStop',
+		]);
 	});
 });

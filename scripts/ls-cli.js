@@ -21,6 +21,7 @@ import { setMapping } from './lib/task-map.js';
 import { lsToCcStatus } from './lib/status-mapper.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readProjectsFile, writeProjectsFile, getGitRepoFullName } from './lib/config.js';
+import { validateId, validateStatus, validateComplexity, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion } from './lib/validate.js';
 
 export async function cliMain(command, args, context = {}) {
 	// Handle help flags
@@ -146,9 +147,13 @@ async function cmdTasks(args) {
 		}
 	}
 
-	if (status) params.set('columnName', statusToColumnName(status));
+	if (status) {
+		validateStatus(status);
+		params.set('columnName', statusToColumnName(status));
+	}
 	params.set('limit', String(limit));
 
+	validateId(projectId, 'Project ID');
 	const data = await apiRequest(`/api/projects/${projectId}/tasks?${params}`);
 	const tasks = data.tasks || [];
 
@@ -209,10 +214,16 @@ async function cmdCreate(args) {
 		process.exit(1);
 	}
 
+	validateTitle(title);
+	validateStatus(status);
+	if (description) validateDescription(description);
+	if (complexity) validateComplexity(complexity);
+
 	const body = { title, projectStatus: status };
 	if (description) body.description = description;
 	if (complexity) body.complexity = complexity;
 
+	validateId(projectId, 'Project ID');
 	const data = await apiRequest(`/api/projects/${projectId}/tasks`, {
 		method: 'POST',
 		body: JSON.stringify(body)
@@ -263,6 +274,12 @@ async function cmdUpdate(args) {
 		process.exit(1);
 	}
 
+	validateId(taskId, 'Task ID');
+	if (patch.title) validateTitle(patch.title);
+	if (patch.description) validateDescription(patch.description);
+	if (patch.projectStatus) validateStatus(patch.projectStatus);
+	if (patch.complexity) validateComplexity(patch.complexity);
+
 	await apiRequest(`/api/tasks/${taskId}`, {
 		method: 'PATCH',
 		body: JSON.stringify(patch)
@@ -294,6 +311,7 @@ async function cmdGet(args) {
 		process.exit(1);
 	}
 
+	validateId(taskId, 'Task ID');
 	const data = await apiRequest(`/api/tasks/${taskId}`);
 	const task = data.task;
 
@@ -335,6 +353,8 @@ async function cmdClaim(args) {
 		console.error('Usage: lightsprint claim <taskId>');
 		process.exit(1);
 	}
+
+	validateId(taskId, 'Task ID');
 
 	// Set task to in_progress
 	await apiRequest(`/api/tasks/${taskId}`, {
@@ -389,6 +409,9 @@ async function cmdComment(args) {
 		process.exit(1);
 	}
 
+	validateId(taskId, 'Task ID');
+	validateCommentBody(body);
+
 	await apiRequest(`/api/tasks/${taskId}/comments`, {
 		method: 'POST',
 		body: JSON.stringify({ body })
@@ -426,12 +449,7 @@ function cmdStatus() {
 
 	console.log(`Project:    ${cfg.projectName || 'unknown'}`);
 	console.log(`Project ID: ${cfg.projectId}`);
-	const ck = cfg.configKey || cfg.folder;
-	if (ck.includes('/') && !ck.startsWith('/')) {
-		console.log(`Repository: ${ck}`);
-	} else {
-		console.log(`Folder:     ${ck}`);
-	}
+	console.log(`Repository: ${cfg.repo}`);
 	console.log(`Base URL:   ${cfg.baseUrl}`);
 
 	if (cfg.expiresAt) {
@@ -455,7 +473,9 @@ async function cmdConnect(args) {
 			baseUrl = args[++i];
 		}
 	}
-	await authenticate(baseUrl || getDefaultBaseUrl());
+	const resolvedBaseUrl = baseUrl || getDefaultBaseUrl();
+	validateBaseUrl(resolvedBaseUrl);
+	await authenticate(resolvedBaseUrl);
 }
 
 // ─── disconnect ──────────────────────────────────────────────────────
@@ -516,9 +536,7 @@ async function cmdUpgrade(currentVersion) {
 	const latestVersion = tag.replace(/^v/, '');
 
 	// Validate version string to prevent path traversal
-	if (/[\\/]|\.\./.test(latestVersion)) {
-		throw new Error(`Invalid characters in version from release tag: ${tag}`);
-	}
+	validateVersion(latestVersion);
 
 	if (currentVersion === latestVersion) {
 		console.log(`Already up to date (v${currentVersion}).`);

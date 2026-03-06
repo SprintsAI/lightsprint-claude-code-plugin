@@ -3,13 +3,11 @@
  *
  * Per-project auth resolution:
  * 1. Git repo full name lookup (owner/repo) in ~/.lightsprint/projects.json
- * 2. Walk up from cwd to find a matching folder path (legacy/non-git fallback)
- * 3. Fall back to git main worktree path (legacy worktree fallback)
- * 4. If no match found, trigger browser-based OAuth (interactive only)
+ * 2. If no match found, trigger browser-based OAuth (interactive only)
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 
@@ -19,7 +17,7 @@ const PLUGIN_CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 
 export function ensureConfigDir() {
 	if (!existsSync(CONFIG_DIR)) {
-		mkdirSync(CONFIG_DIR, { recursive: true });
+		mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
 	}
 }
 
@@ -42,7 +40,28 @@ export function readPluginConfig() {
  * Get the default base URL from env, plugin config, or hardcoded fallback.
  */
 export function getDefaultBaseUrl() {
-	return process.env.LIGHTSPRINT_BASE_URL || readPluginConfig().baseUrl || 'https://lightsprint.ai';
+	const url = process.env.LIGHTSPRINT_BASE_URL || readPluginConfig().baseUrl || 'https://lightsprint.ai';
+	// Validate URL scheme to prevent token leakage over cleartext or non-HTTP protocols
+	if (url && !url.startsWith('https://')) {
+		try {
+			const parsed = new URL(url);
+			const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+			if (isLocalhost) {
+				// Localhost allows http: or https: only (reject ftp:, file:, etc.)
+				if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+					console.error(`Warning: Base URL "${url}" uses unsupported protocol. Using default instead.`);
+					return 'https://lightsprint.ai';
+				}
+			} else {
+				console.error(`Warning: Base URL "${url}" does not use HTTPS. Using default instead.`);
+				return 'https://lightsprint.ai';
+			}
+		} catch {
+			console.error(`Warning: Invalid base URL "${url}". Using default instead.`);
+			return 'https://lightsprint.ai';
+		}
+	}
+	return url;
 }
 
 export function readProjectsFile() {
@@ -58,7 +77,7 @@ export function readProjectsFile() {
 
 export function writeProjectsFile(data) {
 	ensureConfigDir();
-	writeFileSync(PROJECTS_FILE, JSON.stringify(data, null, 2));
+	writeFileSync(PROJECTS_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
 /**
@@ -78,70 +97,31 @@ export function getGitRepoFullName(cwd) {
 }
 
 /**
- * Try to resolve the git main worktree path.
- * Returns null if not in a git repo or git is unavailable.
- * @param {string} [cwd] - Working directory to run git in
- */
-function getGitMainWorktree(cwd) {
-	try {
-		return execSync('git worktree list --porcelain', { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] })
-			.split('\n')
-			.find(line => line.startsWith('worktree '))
-			?.replace('worktree ', '') || null;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Find the project config for the current working directory.
- * Resolution order:
- * 1. Git repo full name lookup (owner/repo) — works across worktrees
- * 2. Walk up from cwd to find a matching folder path (legacy/non-git fallback)
- * 3. Git main worktree path (legacy worktree fallback)
+ * Find the project config by git repo full name (owner/repo).
  *
- * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, configKey: string } | null}
+ * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, repo: string } | null}
  */
 function findProjectConfig(startDir) {
 	const projects = readProjectsFile();
 	const dir = startDir || process.cwd();
 
-	// 1. Repo full name lookup (e.g. "owner/repo")
 	const repoName = getGitRepoFullName(dir);
 	if (repoName && projects[repoName]) {
-		return { ...projects[repoName], folder: dir, configKey: repoName };
-	}
-
-	// 2. Folder walk-up (legacy/non-git fallback)
-	let walkDir = dir;
-	while (true) {
-		if (projects[walkDir]) {
-			return { ...projects[walkDir], folder: walkDir, configKey: walkDir };
-		}
-		const parent = dirname(walkDir);
-		if (parent === walkDir) break; // reached root
-		walkDir = parent;
-	}
-
-	// 3. Git main worktree (legacy worktree fallback)
-	const mainWorktree = getGitMainWorktree(dir);
-	if (mainWorktree && projects[mainWorktree]) {
-		return { ...projects[mainWorktree], folder: mainWorktree, configKey: mainWorktree };
+		return { ...projects[repoName], repo: repoName };
 	}
 
 	return null;
 }
 
 /**
- * Get the Lightsprint config for the current folder.
- * Returns null for both unconfigured and skipped folders (hooks should skip silently).
- * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, configKey: string, baseUrl: string } | null}
+ * Get the Lightsprint config for the current repo.
+ * Returns null for unconfigured and skipped repos (hooks should skip silently).
+ * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, repo: string, baseUrl: string } | null}
  */
 export function getConfig(cwd) {
 	const project = findProjectConfig(cwd);
 	if (!project || project.skipped) return null;
 
-	// Env var overrides stored baseUrl, which overrides plugin config, which overrides hardcoded default
 	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || project.baseUrl || getDefaultBaseUrl();
 
 	return {
@@ -153,26 +133,24 @@ export function getConfig(cwd) {
 /**
  * Get config or trigger on-demand OAuth.
  * Only call from interactive contexts (skills/CLI), not hooks.
- * Returns null if the user previously skipped this folder.
- * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, configKey: string, baseUrl: string } | null>}
+ * Returns null if the user previously skipped this repo.
+ * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, repo: string, baseUrl: string } | null>}
  */
 export async function requireConfig() {
-	// Check for skipped folders before calling getConfig (which hides them)
 	const project = findProjectConfig();
 	if (project?.skipped) {
-		console.log('Lightsprint is not connected for this folder (previously skipped).');
+		console.log('Lightsprint is not connected for this repository (previously skipped).');
 		return null;
 	}
 
 	const existing = getConfig();
 	if (existing) return existing;
 
-	// No config for this folder — trigger OAuth
+	// No config for this repo — trigger OAuth
 	const { authenticate } = await import('./auth.js');
 	const baseUrl = getDefaultBaseUrl();
 	const result = await authenticate(baseUrl);
 
-	// User skipped during OAuth flow
 	if (result.skipped) return null;
 
 	return result;

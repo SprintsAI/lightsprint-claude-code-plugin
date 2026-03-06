@@ -6,6 +6,8 @@
 
 import { requireConfig, readProjectsFile, writeProjectsFile } from './config.js';
 
+const MAX_RESPONSE_BYTES = 10 * 1024 * 1024; // 10MB
+
 let _config = null;
 
 /**
@@ -63,7 +65,7 @@ async function refreshTokenIfNeeded() {
 
 		// Update projects.json atomically
 		const projects = readProjectsFile();
-		const key = cfg.configKey || cfg.folder;
+		const key = cfg.repo;
 		if (projects[key]) {
 			projects[key].accessToken = data.access_token;
 			projects[key].refreshToken = data.refresh_token;
@@ -81,6 +83,42 @@ async function refreshTokenIfNeeded() {
 		console.error('Lightsprint: token refresh error:', err.message);
 		return false;
 	}
+}
+
+/**
+ * Read response body with a size cap to prevent OOM on oversized responses.
+ * Checks Content-Length first, then streams with a byte limit as fallback.
+ * @param {Response} response
+ * @returns {Promise<string>}
+ */
+async function readBodyCapped(response) {
+	const contentLength = response.headers.get('content-length');
+	if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
+		throw new Error('Lightsprint API response too large');
+	}
+	// For responses without Content-Length, stream with a byte cap
+	if (!contentLength && response.body) {
+		const reader = response.body.getReader();
+		const decoder = new TextDecoder();
+		let text = '';
+		let bytesRead = 0;
+		try {
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				bytesRead += value.length;
+				if (bytesRead > MAX_RESPONSE_BYTES) {
+					throw new Error('Lightsprint API response too large');
+				}
+				text += decoder.decode(value, { stream: true });
+			}
+			text += decoder.decode(); // flush
+		} finally {
+			reader.releaseLock();
+		}
+		return text;
+	}
+	return response.text();
 }
 
 /**
@@ -111,12 +149,15 @@ export async function apiRequest(path, options = {}) {
 	});
 
 	if (!response.ok) {
-		const text = await response.text().catch(() => '');
-		throw new Error(`Lightsprint API ${response.status}: ${text}`);
+		const text = await readBodyCapped(response).catch(() => '');
+		// Truncate error body to avoid leaking verbose server internals
+		const safeText = text.length > 500 ? text.slice(0, 500) + '...' : text;
+		throw new Error(`Lightsprint API ${response.status}: ${safeText}`);
 	}
 
 	if (response.status === 204) return null;
-	return response.json();
+	const body = await readBodyCapped(response);
+	return JSON.parse(body);
 }
 
 /**
