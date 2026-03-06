@@ -23,7 +23,7 @@
 
 import { createServer } from 'http';
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, resolve, normalize } from 'path';
 import { homedir } from 'os';
 import { getConfig, getDefaultBaseUrl } from './lib/config.js';
 import { apiRequest, getProjectId, setConfig } from './lib/client.js';
@@ -404,10 +404,16 @@ export async function reviewPlanMain(args) {
 	// 2b. Extract plan content — PostToolUse includes plan in tool_input.plan
 	let plan = input?.tool_input?.plan;
 	log('info', 'Plan from tool_input', { found: !!plan, length: plan?.length });
-	if (!plan) {
-		// Fallback: try transcript or file
-		plan = extractPlanFromTranscript(transcriptPath, hookCwd);
-		log('info', 'Plan from transcript', { found: !!plan, length: plan?.length });
+	if (!plan && transcriptPath) {
+		// Validate transcriptPath is within ~/.claude/ to prevent path traversal
+		const resolvedTranscript = resolve(normalize(transcriptPath));
+		const claudeDir = resolve(homedir(), '.claude');
+		if (resolvedTranscript.startsWith(claudeDir + '/') || resolvedTranscript.startsWith(claudeDir + '\\')) {
+			plan = extractPlanFromTranscript(resolvedTranscript, hookCwd);
+			log('info', 'Plan from transcript', { found: !!plan, length: plan?.length });
+		} else {
+			log('warn', 'Rejected transcriptPath outside ~/.claude/', { transcriptPath: resolvedTranscript });
+		}
 	}
 	if (!plan) {
 		plan = readPlanFromFile(hookCwd);

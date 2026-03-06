@@ -105,7 +105,7 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 			server.close();
 		}
 
-		server.listen(port);
+		server.listen(port, '127.0.0.1');
 
 		const timer = setTimeout(() => {
 			server.close();

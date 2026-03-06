@@ -28,7 +28,8 @@ import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracke
 import { openBrowser } from './lib/browser.js';
 import { getConfig } from './lib/config.js';
 import { createHash } from 'crypto';
-import { hostname } from 'os';
+import { hostname, homedir } from 'os';
+import { resolve, normalize } from 'path';
 
 // Resolve config: env vars take precedence, fall back to projects.json
 const CWD = process.env.LS_CWD || process.cwd();
@@ -212,16 +213,7 @@ async function startHttpServer() {
 	httpServer = createServer(async (req, res) => {
 		const url = new URL(req.url, `http://localhost:${port}`);
 
-		// CORS for local requests
-		res.setHeader('Access-Control-Allow-Origin', '*');
-		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-		res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-		if (req.method === 'OPTIONS') {
-			res.writeHead(200);
-			res.end();
-			return;
-		}
+		// No CORS headers — daemon is only accessed by local CLI tools via localhost
 
 		if (url.pathname === '/health' && req.method === 'GET') {
 			res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -308,7 +300,14 @@ async function handlePlanReview(data) {
 
 	let planContent = plan;
 	if (!planContent && transcriptPath) {
-		planContent = extractPlanFromTranscript(transcriptPath, CWD);
+		// Validate transcriptPath is within ~/.claude/ to prevent path traversal
+		const resolvedPath = resolve(normalize(transcriptPath));
+		const claudeDir = resolve(homedir(), '.claude');
+		if (resolvedPath.startsWith(claudeDir + '/') || resolvedPath.startsWith(claudeDir + '\\')) {
+			planContent = extractPlanFromTranscript(resolvedPath, CWD);
+		} else {
+			log('Rejected transcriptPath outside ~/.claude/', { transcriptPath: resolvedPath });
+		}
 	}
 	if (!planContent) {
 		planContent = readPlanFromFile(CWD);

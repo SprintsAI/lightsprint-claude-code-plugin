@@ -12,6 +12,58 @@ import { getConfig } from './lib/config.js';
 const log = createLogger('cc-start');
 
 /**
+ * Get the command name for a given PID (cross-platform).
+ * @param {number} pid
+ * @returns {string|null}
+ */
+function getProcessCommand(pid) {
+	try {
+		if (process.platform === 'win32') {
+			const out = execSync(`wmic process where ProcessId=${pid} get CommandLine /format:list`, {
+				encoding: 'utf-8',
+				stdio: ['pipe', 'pipe', 'pipe']
+			}).trim();
+			const match = out.match(/CommandLine=(.*)/);
+			return match ? match[1].trim() : null;
+		}
+		return execSync(`ps -o command= -p ${pid}`, {
+			encoding: 'utf-8',
+			stdio: ['pipe', 'pipe', 'pipe']
+		}).trim();
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Get the parent PID for a given PID (cross-platform).
+ * @param {number} pid
+ * @returns {number|null}
+ */
+function getParentPid(pid) {
+	try {
+		if (process.platform === 'win32') {
+			const out = execSync(`wmic process where ProcessId=${pid} get ParentProcessId /format:list`, {
+				encoding: 'utf-8',
+				stdio: ['pipe', 'pipe', 'pipe']
+			}).trim();
+			const match = out.match(/ParentProcessId=(\d+)/);
+			return match ? parseInt(match[1], 10) : null;
+		}
+		const ppid = parseInt(
+			execSync(`ps -o ppid= -p ${pid}`, {
+				encoding: 'utf-8',
+				stdio: ['pipe', 'pipe', 'pipe']
+			}).trim(),
+			10
+		);
+		return isNaN(ppid) ? null : ppid;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Get Claude Code's PID. Walk up from current process looking for the `claude` binary.
  * Process tree may be: claude → lightsprint cc-start (direct)
  *                   or: claude → shell → lightsprint cc-start (via shell)
@@ -19,25 +71,12 @@ const log = createLogger('cc-start');
 function getClaudeCodePid() {
 	let pid = process.ppid;
 	for (let i = 0; i < 3; i++) {
-		try {
-			const command = execSync(`ps -o command= -p ${pid}`, {
-				encoding: 'utf-8',
-				stdio: ['pipe', 'pipe', 'pipe']
-			}).trim();
-			if (/\bclaude\b/i.test(command)) return pid;
-			// Go up one level
-			const ppid = parseInt(
-				execSync(`ps -o ppid= -p ${pid}`, {
-					encoding: 'utf-8',
-					stdio: ['pipe', 'pipe', 'pipe']
-				}).trim(),
-				10
-			);
-			if (ppid <= 1 || isNaN(ppid)) break;
-			pid = ppid;
-		} catch {
-			break;
-		}
+		const command = getProcessCommand(pid);
+		if (!command) break;
+		if (/\bclaude\b/i.test(command)) return pid;
+		const ppid = getParentPid(pid);
+		if (!ppid || ppid <= 1) break;
+		pid = ppid;
 	}
 	return process.ppid;
 }
@@ -121,6 +160,25 @@ export async function main(args) {
 	daemon.unref();
 	log('Daemon spawned', { daemonPid: daemon.pid });
 
-	// Brief wait for daemon to be ready
-	await new Promise(r => setTimeout(r, 500));
+	// Poll daemon health endpoint until ready (or timeout)
+	const maxWaitMs = 5000;
+	const pollIntervalMs = 100;
+	const start = Date.now();
+	while (Date.now() - start < maxWaitMs) {
+		try {
+			const state = readSessionState(ccSessionId);
+			if (state?.port) {
+				const resp = await fetch(`http://127.0.0.1:${state.port}/health`, {
+					signal: AbortSignal.timeout(500),
+				});
+				if (resp.ok) {
+					log('Daemon ready', { elapsedMs: Date.now() - start });
+					break;
+				}
+			}
+		} catch {
+			// Not ready yet
+		}
+		await new Promise(r => setTimeout(r, pollIntervalMs));
+	}
 }
