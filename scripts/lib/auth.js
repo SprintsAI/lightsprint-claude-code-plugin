@@ -6,24 +6,9 @@
  */
 
 import { createServer } from 'http';
-import { createServer as createNetServer } from 'net';
 import { readProjectsFile, writeProjectsFile, ensureConfigDir, getGitRepoFullName } from './config.js';
 import { findBrowserProfileForEmail, openBrowser } from './browser.js';
-
-/**
- * Find a free TCP port by binding to port 0.
- * @returns {Promise<number>}
- */
-function findFreePort() {
-	return new Promise((resolve, reject) => {
-		const server = createNetServer();
-		server.listen(0, () => {
-			const port = server.address().port;
-			server.close(() => resolve(port));
-		});
-		server.on('error', reject);
-	});
-}
+import { findFreePort } from './cc-utils.js';
 
 /**
  * Start a local HTTP server and wait for the OAuth callback.

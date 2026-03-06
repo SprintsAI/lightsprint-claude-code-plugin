@@ -22,7 +22,6 @@
  */
 
 import { createServer } from 'http';
-import { createServer as createNetServer } from 'net';
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -30,6 +29,7 @@ import { getConfig, getDefaultBaseUrl } from './lib/config.js';
 import { apiRequest, getProjectId, setConfig } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
+import { findFreePort } from './lib/cc-utils.js';
 
 const LOG_DIR = join(homedir(), '.lightsprint');
 const LOG_FILE = join(LOG_DIR, 'sync.log');
@@ -77,17 +77,6 @@ export function outputDeny(feedback) {
 	const json = JSON.stringify(result);
 	log('info', 'Output decision', { output: json });
 	process.stdout.write(json);
-}
-
-function findFreePort() {
-	return new Promise((resolve, reject) => {
-		const server = createNetServer();
-		server.listen(0, () => {
-			const port = server.address().port;
-			server.close(() => resolve(port));
-		});
-		server.on('error', reject);
-	});
 }
 
 /**

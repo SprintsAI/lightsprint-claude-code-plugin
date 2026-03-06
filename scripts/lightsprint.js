@@ -20,6 +20,11 @@
 
 import { reviewPlanMain } from './review-plan.js';
 import { cliMain } from './ls-cli.js';
+import { main as ccStartMain } from './cc-start.js';
+import { main as ccDaemonMain } from './cc-daemon.js';
+import { main as ccEndMain } from './cc-end.js';
+import { main as ccEventMain } from './cc-event.js';
+import { main as ccReviewMain } from './cc-review.js';
 
 // Injected at build time via --define
 const BUILD_VERSION = typeof __BUILD_VERSION__ !== 'undefined' ? __BUILD_VERSION__ : 'dev';
@@ -31,6 +36,16 @@ const args = process.argv.slice(3);
 
 if (subcommand === 'review-plan') {
 	reviewPlanMain(args);
+} else if (subcommand === 'cc-start') {
+	await ccStartMain(args);
+} else if (subcommand === 'cc-daemon') {
+	await ccDaemonMain();
+} else if (subcommand === 'cc-end') {
+	await ccEndMain(args);
+} else if (subcommand === 'cc-event') {
+	await ccEventMain(args);
+} else if (subcommand === 'cc-review') {
+	await ccReviewMain(args);
 } else if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
 	showHelp();
 } else if (subcommand === '--version' || subcommand === '-v') {
