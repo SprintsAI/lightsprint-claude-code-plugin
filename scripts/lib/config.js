@@ -41,12 +41,18 @@ export function readPluginConfig() {
  */
 export function getDefaultBaseUrl() {
 	const url = process.env.LIGHTSPRINT_BASE_URL || readPluginConfig().baseUrl || 'https://lightsprint.ai';
-	// Reject non-localhost HTTP URLs to prevent token leakage over cleartext
+	// Validate URL scheme to prevent token leakage over cleartext or non-HTTP protocols
 	if (url && !url.startsWith('https://')) {
 		try {
 			const parsed = new URL(url);
 			const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
-			if (!isLocalhost) {
+			if (isLocalhost) {
+				// Localhost allows http: or https: only (reject ftp:, file:, etc.)
+				if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+					console.error(`Warning: Base URL "${url}" uses unsupported protocol. Using default instead.`);
+					return 'https://lightsprint.ai';
+				}
+			} else {
 				console.error(`Warning: Base URL "${url}" does not use HTTPS. Using default instead.`);
 				return 'https://lightsprint.ai';
 			}

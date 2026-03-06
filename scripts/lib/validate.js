@@ -102,7 +102,7 @@ export function validateLength(value, maxLength, fieldName, options = {}) {
 	// Reject control characters (allow \n, \r, \t in body fields)
 	const pattern = options.allowNewlines
 		? /[\x00-\x08\x0B\x0C\x0E-\x1F]/
-		: /[\x00-\x08\x0B\x0C\x0E-\x1F]/;
+		: /[\x00-\x1F]/;
 	if (pattern.test(value)) {
 		throw new Error(`${fieldName} contains invalid control characters.`);
 	}

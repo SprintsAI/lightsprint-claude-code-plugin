@@ -474,7 +474,7 @@ async function cmdConnect(args) {
 		}
 	}
 	const resolvedBaseUrl = baseUrl || getDefaultBaseUrl();
-	if (baseUrl) validateBaseUrl(baseUrl);
+	validateBaseUrl(resolvedBaseUrl);
 	await authenticate(resolvedBaseUrl);
 }
 

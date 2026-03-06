@@ -4,7 +4,7 @@
  * Sends plan content to the daemon for review (blocking).
  * The daemon handles: upload to API, open browser, wait for callback.
  *
- * If daemon is not running, outputs allow (no plan review without active session).
+ * If daemon is not running or unreachable, outputs deny with retry prompt.
  */
 
 import { readSessionState, readHookInput } from './lib/cc-utils.js';
@@ -25,8 +25,8 @@ export async function main(args) {
 
 	const state = readSessionState(ccSessionId);
 	if (!state) {
-		// No daemon running — plan review requires active session
-		outputAllow();
+		// No daemon running — deny so the review gate blocks until daemon is available
+		outputDeny('Plan review daemon is not running for this session. Please retry — the daemon may still be starting.');
 		return;
 	}
 
@@ -46,6 +46,11 @@ export async function main(args) {
 			signal: AbortSignal.timeout(345600000), // 4 day timeout
 		});
 
+		if (!res.ok) {
+			outputDeny('Plan review daemon returned an error. Please retry.');
+			return;
+		}
+
 		const result = await res.json();
 
 		if (result.decision === 'deny') {
@@ -54,8 +59,8 @@ export async function main(args) {
 			outputAllow();
 		}
 	} catch (err) {
-		// Daemon unreachable — allow
-		outputAllow();
+		// Daemon unreachable — deny so plan review gate blocks until daemon recovers
+		outputDeny('Plan review daemon is unreachable. Please retry — the daemon may be restarting.');
 	}
 
 	process.exit(0);
