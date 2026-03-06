@@ -26,9 +26,9 @@ export function createLogger(tag) {
 	const logFile = join(logDir, 'daemon.log');
 	mkdirSync(logDir, { recursive: true });
 	return function log(msg, data) {
-		const ts = new Date().toISOString();
-		const line = data ? `${ts} [${tag}] ${msg} ${JSON.stringify(data)}\n` : `${ts} [${tag}] ${msg}\n`;
 		try {
+			const ts = new Date().toISOString();
+			const line = data ? `${ts} [${tag}] ${msg} ${JSON.stringify(data)}\n` : `${ts} [${tag}] ${msg}\n`;
 			appendFileSync(logFile, line);
 		} catch { /* never crash on logging */ }
 	};
@@ -124,8 +124,10 @@ export function hasRunningDaemonForCcPid(ccPid) {
  * @returns {boolean}
  */
 export function isPidAlive(pid) {
+	const n = Number(pid);
+	if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return false;
 	try {
-		process.kill(pid, 0);
+		process.kill(n, 0);
 		return true;
 	} catch (e) {
 		return e.code !== 'ESRCH';
@@ -154,7 +156,7 @@ export function readHookInput(args) {
 	// Try stdin (SessionStart, PostToolUse, etc.)
 	try {
 		if (!process.stdin.isTTY) {
-			const raw = readFileSync('/dev/stdin', 'utf-8');
+			const raw = readFileSync(0, 'utf-8');
 			if (raw.trim()) return JSON.parse(raw);
 		}
 	} catch {

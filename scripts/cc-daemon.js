@@ -154,10 +154,12 @@ function connectWebSocket() {
 				lsSessionId = response.sessionId;
 				log('Session started', { lsSessionId });
 			} else {
-				log('Session start failed', { error: response?.error });
+				log('Session start failed, triggering reconnect', { error: response?.error });
+				try { ws.close(4000, 'session_start_failed'); } catch { /* ignore */ }
 			}
 		} catch (err) {
-			log('Session start error', { error: err.message });
+			log('Session start error, triggering reconnect', { error: err.message });
+			try { ws.close(4000, 'session_start_error'); } catch { /* ignore */ }
 		}
 	};
 
@@ -222,8 +224,8 @@ async function startHttpServer() {
 		}
 
 		if (url.pathname === '/event' && req.method === 'POST') {
-			const body = await readBody(req);
 			try {
+				const body = await readBody(req);
 				const data = JSON.parse(body);
 				log('Event received', { eventType: data.eventType });
 				if (ws?.readyState === WebSocket.OPEN && lsSessionId) {
@@ -245,8 +247,8 @@ async function startHttpServer() {
 		}
 
 		if (url.pathname === '/review-plan' && req.method === 'POST') {
-			const body = await readBody(req);
 			try {
+				const body = await readBody(req);
 				const data = JSON.parse(body);
 				const decision = await handlePlanReview(data);
 				res.writeHead(200, { 'Content-Type': 'application/json' });

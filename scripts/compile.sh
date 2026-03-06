@@ -17,13 +17,16 @@ if [[ "$(uname)" == "Darwin" ]]; then
   codesign --force --sign - lightsprint 2>/dev/null && echo "Signed binary (ad-hoc)"
 fi
 
-# Auto-install to PATH in dev mode
+# Auto-install to PATH in dev mode (non-fatal — compilation already succeeded)
 INSTALL_DIR="$HOME/.local/bin"
 if [ -d "$INSTALL_DIR" ]; then
-  cp lightsprint "$INSTALL_DIR/lightsprint"
-  # Re-sign after copy (cp invalidates the signature)
-  if [[ "$(uname)" == "Darwin" ]]; then
-    codesign --force --sign - "$INSTALL_DIR/lightsprint" 2>/dev/null
+  if cp lightsprint "$INSTALL_DIR/lightsprint"; then
+    # Re-sign after copy (cp invalidates the signature)
+    if [[ "$(uname)" == "Darwin" ]]; then
+      codesign --force --sign - "$INSTALL_DIR/lightsprint" 2>/dev/null || true
+    fi
+    echo "Installed to $INSTALL_DIR/lightsprint"
+  else
+    echo "Warning: could not copy to $INSTALL_DIR (build succeeded)"
   fi
-  echo "Installed to $INSTALL_DIR/lightsprint"
 fi
