@@ -26,7 +26,7 @@ import { outputAllow, outputDeny, extractPlanFromTranscript, readPlanFromFile, w
 import { apiRequest, setConfig } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
-import { getConfig } from './lib/config.js';
+import { getConfig, readProjectsFile, writeProjectsFile } from './lib/config.js';
 import { createHash, randomBytes } from 'crypto';
 import { hostname, homedir } from 'os';
 import { resolve, normalize } from 'path';
@@ -53,9 +53,9 @@ if (credsFile) {
 	}
 }
 
-const ACCESS_TOKEN = _accessToken || process.env.LS_ACCESS_TOKEN || projectConfig?.accessToken;
-const REFRESH_TOKEN = _refreshToken || process.env.LS_REFRESH_TOKEN || projectConfig?.refreshToken;
-const EXPIRES_AT = _expiresAt || (process.env.LS_EXPIRES_AT ? parseInt(process.env.LS_EXPIRES_AT, 10) : projectConfig?.expiresAt);
+let ACCESS_TOKEN = _accessToken || process.env.LS_ACCESS_TOKEN || projectConfig?.accessToken;
+let REFRESH_TOKEN = _refreshToken || process.env.LS_REFRESH_TOKEN || projectConfig?.refreshToken;
+let EXPIRES_AT = _expiresAt || (process.env.LS_EXPIRES_AT ? parseInt(process.env.LS_EXPIRES_AT, 10) : projectConfig?.expiresAt);
 const BASE_URL = process.env.LS_BASE_URL || projectConfig?.baseUrl;
 const PROJECT_ID = process.env.LS_PROJECT_ID || projectConfig?.projectId;
 const CC_SESSION_ID = process.env.LS_SESSION_ID;
@@ -126,6 +126,59 @@ async function shutdown(reason) {
 	process.exit(0);
 }
 
+// -- Token Refresh --
+
+async function refreshTokenIfNeeded() {
+	const fiveMinutes = 5 * 60 * 1000;
+	if (EXPIRES_AT && EXPIRES_AT > Date.now() + fiveMinutes) {
+		return true; // Token still valid
+	}
+	if (!REFRESH_TOKEN) {
+		log('Token expired and no refresh token available');
+		return false;
+	}
+	try {
+		const response = await fetch(`${BASE_URL}/oauth/token`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({
+				grant_type: 'refresh_token',
+				refresh_token: REFRESH_TOKEN
+			})
+		});
+		if (!response.ok) {
+			log('Token refresh failed', { status: response.status });
+			return false;
+		}
+		const data = await response.json();
+		ACCESS_TOKEN = data.access_token;
+		REFRESH_TOKEN = data.refresh_token;
+		EXPIRES_AT = Date.now() + (data.expires_in * 1000);
+
+		// Persist to projects.json so other processes pick up the new tokens
+		if (projectConfig?.repo) {
+			try {
+				const projects = readProjectsFile();
+				const key = projectConfig.repo;
+				if (projects[key]) {
+					projects[key].accessToken = ACCESS_TOKEN;
+					projects[key].refreshToken = REFRESH_TOKEN;
+					projects[key].expiresAt = EXPIRES_AT;
+					writeProjectsFile(projects);
+				}
+			} catch (err) {
+				log('Failed to persist refreshed tokens', { error: err.message });
+			}
+		}
+
+		log('Token refreshed successfully');
+		return true;
+	} catch (err) {
+		log('Token refresh error', { error: err.message });
+		return false;
+	}
+}
+
 // -- WebSocket Client --
 
 let reconnectAttempts = 0;
@@ -150,13 +203,19 @@ function scheduleReconnect() {
 	setTimeout(connectWebSocket, delay);
 }
 
-function connectWebSocket() {
-	const wsUrl = BASE_URL.replace(/^http/, 'ws') + '/cc-ws';
+async function connectWebSocket() {
+	// Refresh token if expired before attempting connection
+	const refreshed = await refreshTokenIfNeeded();
+	if (!refreshed) {
+		log('Cannot connect: token refresh failed');
+		scheduleReconnect();
+		return;
+	}
+
+	const wsUrl = BASE_URL.replace(/^http/, 'ws') + `/cc-ws?token=${encodeURIComponent(ACCESS_TOKEN)}`;
 
 	try {
-		ws = new WebSocket(wsUrl, {
-			headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` },
-		});
+		ws = new WebSocket(wsUrl);
 	} catch (err) {
 		log('WebSocket creation error', { error: err.message });
 		scheduleReconnect();
@@ -433,11 +492,11 @@ export async function main() {
 		process.exit(1);
 	}
 
-	// Inject config for API requests (once at startup)
+	// Inject config for API requests — use getters so client.js always sees refreshed tokens
 	setConfig({
-		accessToken: ACCESS_TOKEN,
-		refreshToken: REFRESH_TOKEN,
-		expiresAt: EXPIRES_AT,
+		get accessToken() { return ACCESS_TOKEN; },
+		get refreshToken() { return REFRESH_TOKEN; },
+		get expiresAt() { return EXPIRES_AT; },
 		baseUrl: BASE_URL,
 		projectId: PROJECT_ID,
 		repo: projectConfig?.repo,
