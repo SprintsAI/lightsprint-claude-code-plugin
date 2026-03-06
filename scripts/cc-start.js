@@ -6,7 +6,7 @@
  */
 
 import { spawn, execSync } from 'child_process';
-import { readHookInput, readSessionState, isPidAlive, deleteSessionState, hasRunningDaemonForCcPid, createLogger } from './lib/cc-utils.js';
+import { readHookInput, readSessionState, writeSessionState, isPidAlive, deleteSessionState, findRunningDaemonForCcPid, createLogger } from './lib/cc-utils.js';
 import { getConfig } from './lib/config.js';
 
 const log = createLogger('cc-start');
@@ -132,8 +132,19 @@ export async function main(args) {
 	// Check if this Claude Code process already has a running daemon
 	// (handles --continue firing SessionStart for both new and old session IDs)
 	const ccPid = getClaudeCodePid();
-	if (hasRunningDaemonForCcPid(ccPid)) {
-		log('Daemon already running for this CC process, skipping', { ccPid, ccSessionId });
+	const existingDaemonState = findRunningDaemonForCcPid(ccPid);
+	if (existingDaemonState) {
+		// Create a session state file for the new session ID pointing to the existing daemon,
+		// so hooks using this session_id can still find the daemon's port.
+		log('Daemon already running for this CC process, aliasing session', { ccPid, ccSessionId });
+		writeSessionState(ccSessionId, {
+			port: existingDaemonState.port,
+			pid: existingDaemonState.pid,
+			ccPid: existingDaemonState.ccPid,
+			ccSessionId,
+			lsSessionId: existingDaemonState.lsSessionId,
+			projectId: existingDaemonState.projectId,
+		});
 		return;
 	}
 

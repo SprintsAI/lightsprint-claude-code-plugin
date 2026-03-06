@@ -97,12 +97,12 @@ export function deleteSessionState(ccSessionId) {
 }
 
 /**
- * Check if any daemon is already running for a given Claude Code PID.
+ * Find the running daemon state for a given Claude Code PID.
  * Scans all session state files in cc-sessions/.
  * @param {number} ccPid - Claude Code process PID
- * @returns {boolean}
+ * @returns {object|null} The daemon's session state, or null if none found
  */
-export function hasRunningDaemonForCcPid(ccPid) {
+export function findRunningDaemonForCcPid(ccPid) {
 	try {
 		const files = readdirSync(SESSIONS_DIR);
 		for (const file of files) {
@@ -110,12 +110,12 @@ export function hasRunningDaemonForCcPid(ccPid) {
 			try {
 				const state = JSON.parse(readFileSync(join(SESSIONS_DIR, file), 'utf-8'));
 				if (state.ccPid === ccPid && isPidAlive(state.pid)) {
-					return true;
+					return state;
 				}
 			} catch { continue; }
 		}
 	} catch { /* dir doesn't exist yet */ }
-	return false;
+	return null;
 }
 
 /**
