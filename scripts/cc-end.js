@@ -19,7 +19,10 @@ export async function main(args) {
 	try {
 		await fetch(`http://127.0.0.1:${state.port}/session-end`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: {
+				'Content-Type': 'application/json',
+				...(state.daemonToken ? { 'Authorization': `Bearer ${state.daemonToken}` } : {}),
+			},
 			body: JSON.stringify({}),
 			signal: AbortSignal.timeout(3000),
 		});

@@ -33,7 +33,10 @@ export async function main(args) {
 	try {
 		const res = await fetch(`http://127.0.0.1:${state.port}/review-plan`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: {
+				'Content-Type': 'application/json',
+				...(state.daemonToken ? { 'Authorization': `Bearer ${state.daemonToken}` } : {}),
+			},
 			body: JSON.stringify({
 				plan: input?.tool_input?.plan,
 				allowedPrompts: input?.tool_input?.allowedPrompts,

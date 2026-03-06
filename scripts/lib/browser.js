@@ -185,6 +185,16 @@ export function openBrowser(url, options = {}) {
 	const { browserApp, profileFlag, profileValue } = options;
 	const platform = process.platform;
 
+	// Validate URL scheme to prevent opening dangerous URIs
+	try {
+		const parsed = new URL(url);
+		if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+			return false;
+		}
+	} catch {
+		return false;
+	}
+
 	try {
 		if (platform === 'darwin') {
 			if (browserApp && profileFlag && profileValue) {

@@ -6,8 +6,13 @@
  */
 
 import { spawn, execSync } from 'child_process';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
+import { randomBytes } from 'crypto';
 import { readHookInput, readSessionState, writeSessionState, isPidAlive, deleteSessionState, findRunningDaemonForCcPid, createLogger } from './lib/cc-utils.js';
 import { getConfig } from './lib/config.js';
+import { validatePid } from './lib/validate.js';
 
 const log = createLogger('cc-start');
 
@@ -18,15 +23,16 @@ const log = createLogger('cc-start');
  */
 function getProcessCommand(pid) {
 	try {
+		const safePid = validatePid(pid);
 		if (process.platform === 'win32') {
-			const out = execSync(`wmic process where ProcessId=${pid} get CommandLine /format:list`, {
+			const out = execSync(`wmic process where ProcessId=${safePid} get CommandLine /format:list`, {
 				encoding: 'utf-8',
 				stdio: ['pipe', 'pipe', 'pipe']
 			}).trim();
 			const match = out.match(/CommandLine=(.*)/);
 			return match ? match[1].trim() : null;
 		}
-		return execSync(`ps -o command= -p ${pid}`, {
+		return execSync(`ps -o command= -p ${safePid}`, {
 			encoding: 'utf-8',
 			stdio: ['pipe', 'pipe', 'pipe']
 		}).trim();
@@ -42,8 +48,9 @@ function getProcessCommand(pid) {
  */
 function getParentPid(pid) {
 	try {
+		const safePid = validatePid(pid);
 		if (process.platform === 'win32') {
-			const out = execSync(`wmic process where ProcessId=${pid} get ParentProcessId /format:list`, {
+			const out = execSync(`wmic process where ProcessId=${safePid} get ParentProcessId /format:list`, {
 				encoding: 'utf-8',
 				stdio: ['pipe', 'pipe', 'pipe']
 			}).trim();
@@ -51,7 +58,7 @@ function getParentPid(pid) {
 			return match ? parseInt(match[1], 10) : null;
 		}
 		const ppid = parseInt(
-			execSync(`ps -o ppid= -p ${pid}`, {
+			execSync(`ps -o ppid= -p ${safePid}`, {
 				encoding: 'utf-8',
 				stdio: ['pipe', 'pipe', 'pipe']
 			}).trim(),
@@ -152,14 +159,26 @@ export async function main(args) {
 	const gitBranch = getGitBranch(cwd);
 	log('Spawning daemon', { ccSessionId, projectId: cfg.projectId, ccPid, cwd });
 
+	// Write credentials to a temp file (0o600) so they don't leak via /proc/pid/environ
+	const credsDir = join(homedir(), '.lightsprint', 'cc-sessions');
+	mkdirSync(credsDir, { recursive: true, mode: 0o700 });
+	const credsPath = join(credsDir, `.creds-${randomBytes(8).toString('hex')}.json`);
+	writeFileSync(credsPath, JSON.stringify({
+		accessToken: cfg.accessToken,
+		refreshToken: cfg.refreshToken || '',
+		expiresAt: cfg.expiresAt ? String(cfg.expiresAt) : '',
+	}), { mode: 0o600 });
+
+	// Only pass non-sensitive env vars + path to credentials file
 	const daemon = spawn(process.execPath, ['cc-daemon'], {
 		detached: true,
 		stdio: 'ignore',
 		env: {
-			...process.env,
-			LS_ACCESS_TOKEN: cfg.accessToken,
-			LS_REFRESH_TOKEN: cfg.refreshToken || '',
-			LS_EXPIRES_AT: cfg.expiresAt ? String(cfg.expiresAt) : '',
+			PATH: process.env.PATH,
+			HOME: process.env.HOME,
+			NODE_ENV: process.env.NODE_ENV || '',
+			LIGHTSPRINT_BASE_URL: process.env.LIGHTSPRINT_BASE_URL || '',
+			LS_CREDS_FILE: credsPath,
 			LS_BASE_URL: cfg.baseUrl,
 			LS_PROJECT_ID: cfg.projectId,
 			LS_SESSION_ID: ccSessionId,

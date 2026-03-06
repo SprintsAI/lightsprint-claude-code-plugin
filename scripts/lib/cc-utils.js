@@ -24,7 +24,7 @@ const SESSIONS_DIR = join(homedir(), '.lightsprint', 'cc-sessions');
 export function createLogger(tag) {
 	const logDir = join(homedir(), '.lightsprint');
 	const logFile = join(logDir, 'daemon.log');
-	mkdirSync(logDir, { recursive: true });
+	mkdirSync(logDir, { recursive: true, mode: 0o700 });
 	return function log(msg, data) {
 		try {
 			const ts = new Date().toISOString();
@@ -64,10 +64,10 @@ function sessionFilePath(ccSessionId) {
  * @param {object} state - { port, pid, ccPid, lsSessionId, projectId }
  */
 export function writeSessionState(ccSessionId, state) {
-	mkdirSync(SESSIONS_DIR, { recursive: true });
+	mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
 	const filePath = sessionFilePath(ccSessionId);
 	const tmp = filePath + '.' + randomBytes(4).toString('hex');
-	writeFileSync(tmp, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }));
+	writeFileSync(tmp, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }), { mode: 0o600 });
 	renameSync(tmp, filePath);
 }
 

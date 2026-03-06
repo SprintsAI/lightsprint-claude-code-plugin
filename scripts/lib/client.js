@@ -63,7 +63,7 @@ async function refreshTokenIfNeeded() {
 
 		// Update projects.json atomically
 		const projects = readProjectsFile();
-		const key = cfg.configKey || cfg.folder;
+		const key = cfg.repo;
 		if (projects[key]) {
 			projects[key].accessToken = data.access_token;
 			projects[key].refreshToken = data.refresh_token;
@@ -112,7 +112,15 @@ export async function apiRequest(path, options = {}) {
 
 	if (!response.ok) {
 		const text = await response.text().catch(() => '');
-		throw new Error(`Lightsprint API ${response.status}: ${text}`);
+		// Truncate error body to avoid leaking verbose server internals
+		const safeText = text.length > 500 ? text.slice(0, 500) + '...' : text;
+		throw new Error(`Lightsprint API ${response.status}: ${safeText}`);
+	}
+
+	// Guard against oversized responses (10MB limit)
+	const contentLength = response.headers.get('content-length');
+	if (contentLength && parseInt(contentLength, 10) > 10 * 1024 * 1024) {
+		throw new Error('Lightsprint API response too large');
 	}
 
 	if (response.status === 204) return null;

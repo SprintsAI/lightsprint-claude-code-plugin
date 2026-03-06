@@ -29,7 +29,7 @@ The `lightsprint` binary is the single entry point for all CLI functionality:
 - `scripts/lightsprint.js` — Unified CLI entry point. Routes subcommands to review-plan or CLI handlers.
 - `scripts/review-plan.js` — Plan review handler. Exports `reviewPlanMain(args)`.
 - `scripts/ls-cli.js` — Task management commands. Exports `cliMain(command, args)`.
-- `scripts/lib/config.js` — Config resolution. Uses `cwd` from hook stdin (not `process.cwd()`).
+- `scripts/lib/config.js` — Config resolution. Keys projects.json by repo (owner/repo), not cwd.
 - `scripts/lib/client.js` — Lightsprint API client.
 - `scripts/lib/plan-tracker.js` — Tracks active plan ID for versioning on resubmission.
 

@@ -119,19 +119,20 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 /**
  * Run the full OAuth flow: open browser, wait for callback, save tokens.
  * @param {string} [baseUrl='https://lightsprint.ai']
- * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, folder: string, baseUrl: string }>}
+ * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, repo: string, baseUrl: string }>}
  */
 export async function authenticate(baseUrl = 'https://lightsprint.ai', options = {}) {
 	const { cwd, quiet } = options;
 	ensureConfigDir();
 
+	const repoFullName = getGitRepoFullName(cwd);
+	if (!repoFullName) {
+		throw new Error('Not a git repository with a GitHub remote. Lightsprint requires a git repo with an origin remote.');
+	}
+
 	const port = await findFreePort();
 	let authorizeUrl = `${baseUrl}/authorize-cli?port=${port}&scope=tasks:read+tasks:write+comments:write+plans:read+plans:write`;
-
-	const repoFullName = getGitRepoFullName(cwd);
-	if (repoFullName) {
-		authorizeUrl += `&repo=${encodeURIComponent(repoFullName)}`;
-	}
+	authorizeUrl += `&repo=${encodeURIComponent(repoFullName)}`;
 
 	if (!quiet) console.log('Opening browser to authorize with Lightsprint...');
 	if (!openBrowser(authorizeUrl)) {
@@ -141,15 +142,12 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai', options =
 
 	const result = await waitForCallback(port);
 
-	const folder = cwd || process.cwd();
-	const configKey = repoFullName || folder;
-
 	if (result.skipped) {
 		const projects = readProjectsFile();
-		projects[configKey] = { skipped: true };
+		projects[repoFullName] = { skipped: true };
 		writeProjectsFile(projects);
-		if (!quiet) console.log('Lightsprint skipped for this folder.');
-		return { skipped: true, folder, configKey, baseUrl };
+		if (!quiet) console.log('Lightsprint skipped for this repository.');
+		return { skipped: true, repo: repoFullName, baseUrl };
 	}
 
 	if (!result.accessToken) {
@@ -171,10 +169,10 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai', options =
 	};
 
 	const projects = readProjectsFile();
-	projects[configKey] = entry;
+	projects[repoFullName] = entry;
 	writeProjectsFile(projects);
 
 	if (!quiet) console.log(`Connected to project: ${result.project}`);
 
-	return { ...entry, folder, configKey, baseUrl };
+	return { ...entry, repo: repoFullName, baseUrl };
 }

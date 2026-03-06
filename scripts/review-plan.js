@@ -22,7 +22,7 @@
  */
 
 import { createServer } from 'http';
-import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { appendFileSync, mkdirSync, existsSync, readFileSync, realpathSync } from 'fs';
 import { join, resolve, normalize } from 'path';
 import { homedir } from 'os';
 import { getConfig, getDefaultBaseUrl } from './lib/config.js';
@@ -30,6 +30,7 @@ import { apiRequest, getProjectId, setConfig } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
 import { findFreePort } from './lib/cc-utils.js';
+import { validateId } from './lib/validate.js';
 
 const LOG_DIR = join(homedir(), '.lightsprint');
 const LOG_FILE = join(LOG_DIR, 'sync.log');
@@ -41,7 +42,7 @@ const BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'unk
 
 function log(level, message, data) {
 	try {
-		if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true });
+		if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true, mode: 0o700 });
 		const ts = new Date().toISOString();
 		const line = `${ts} [${level}] review-plan: ${message}${data ? ' ' + JSON.stringify(data) : ''}\n`;
 		appendFileSync(LOG_FILE, line);
@@ -405,14 +406,18 @@ export async function reviewPlanMain(args) {
 	let plan = input?.tool_input?.plan;
 	log('info', 'Plan from tool_input', { found: !!plan, length: plan?.length });
 	if (!plan && transcriptPath) {
-		// Validate transcriptPath is within ~/.claude/ to prevent path traversal
-		const resolvedTranscript = resolve(normalize(transcriptPath));
-		const claudeDir = resolve(homedir(), '.claude');
-		if (resolvedTranscript.startsWith(claudeDir + '/') || resolvedTranscript.startsWith(claudeDir + '\\')) {
-			plan = extractPlanFromTranscript(resolvedTranscript, hookCwd);
-			log('info', 'Plan from transcript', { found: !!plan, length: plan?.length });
-		} else {
-			log('warn', 'Rejected transcriptPath outside ~/.claude/', { transcriptPath: resolvedTranscript });
+		// Validate transcriptPath is within ~/.claude/ — use realpathSync to resolve symlinks
+		try {
+			const resolvedTranscript = realpathSync(resolve(normalize(transcriptPath)));
+			const claudeDir = realpathSync(resolve(homedir(), '.claude'));
+			if (resolvedTranscript.startsWith(claudeDir + '/') || resolvedTranscript.startsWith(claudeDir + '\\')) {
+				plan = extractPlanFromTranscript(resolvedTranscript, hookCwd);
+				log('info', 'Plan from transcript', { found: !!plan, length: plan?.length });
+			} else {
+				log('warn', 'Rejected transcriptPath outside ~/.claude/', { transcriptPath: resolvedTranscript });
+			}
+		} catch (err) {
+			log('warn', 'Failed to resolve transcriptPath', { transcriptPath, error: err.message });
 		}
 	}
 	if (!plan) {
@@ -440,6 +445,7 @@ export async function reviewPlanMain(args) {
 		if (activePlan && activePlan.projectId === projectId && activePlan.sessionId === sessionId) {
 			// Try PUT to create a new version on the existing plan
 			try {
+				validateId(activePlan.planId, 'Plan ID');
 				const versionResult = await apiRequest(`/api/plans/${activePlan.planId}/versions`, {
 					method: 'PUT',
 					body: JSON.stringify({ content: plan })
@@ -455,6 +461,7 @@ export async function reviewPlanMain(args) {
 
 		if (!planId) {
 			// POST new plan
+			validateId(projectId, 'Project ID');
 			const createResult = await apiRequest(`/api/projects/${projectId}/plans`, {
 				method: 'POST',
 				body: JSON.stringify({ content: plan, allowedPrompts })

@@ -27,17 +27,35 @@ import { apiRequest, setConfig } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
 import { getConfig } from './lib/config.js';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { hostname, homedir } from 'os';
 import { resolve, normalize } from 'path';
+import { validateId } from './lib/validate.js';
 
-// Resolve config: env vars take precedence, fall back to projects.json
+import { readFileSync, unlinkSync, realpathSync } from 'fs';
+
+// Resolve config: credentials file (secure) > env vars (legacy) > projects.json
 const CWD = process.env.LS_CWD || process.cwd();
 const projectConfig = getConfig(CWD);
 
-const ACCESS_TOKEN = process.env.LS_ACCESS_TOKEN || projectConfig?.accessToken;
-const REFRESH_TOKEN = process.env.LS_REFRESH_TOKEN || projectConfig?.refreshToken;
-const EXPIRES_AT = process.env.LS_EXPIRES_AT ? parseInt(process.env.LS_EXPIRES_AT, 10) : projectConfig?.expiresAt;
+let _accessToken, _refreshToken, _expiresAt;
+const credsFile = process.env.LS_CREDS_FILE;
+if (credsFile) {
+	try {
+		const creds = JSON.parse(readFileSync(credsFile, 'utf-8'));
+		_accessToken = creds.accessToken;
+		_refreshToken = creds.refreshToken;
+		_expiresAt = creds.expiresAt ? parseInt(creds.expiresAt, 10) : undefined;
+		// Delete credentials file immediately after reading
+		try { unlinkSync(credsFile); } catch { /* ignore */ }
+	} catch {
+		// Fall back to env vars / config
+	}
+}
+
+const ACCESS_TOKEN = _accessToken || process.env.LS_ACCESS_TOKEN || projectConfig?.accessToken;
+const REFRESH_TOKEN = _refreshToken || process.env.LS_REFRESH_TOKEN || projectConfig?.refreshToken;
+const EXPIRES_AT = _expiresAt || (process.env.LS_EXPIRES_AT ? parseInt(process.env.LS_EXPIRES_AT, 10) : projectConfig?.expiresAt);
 const BASE_URL = process.env.LS_BASE_URL || projectConfig?.baseUrl;
 const PROJECT_ID = process.env.LS_PROJECT_ID || projectConfig?.projectId;
 const CC_SESSION_ID = process.env.LS_SESSION_ID;
@@ -52,6 +70,9 @@ let httpServer = null;
 let lsSessionId = null; // Lightsprint DB session ID
 let shuttingDown = false;
 let watchdogInterval = null;
+
+// Local auth token — required on all daemon HTTP endpoints (except /health for liveness probes)
+const DAEMON_AUTH_TOKEN = randomBytes(32).toString('hex');
 
 // WebSocket request-response tracking
 let msgIdCounter = 0;
@@ -130,10 +151,12 @@ function scheduleReconnect() {
 }
 
 function connectWebSocket() {
-	const wsUrl = BASE_URL.replace(/^http/, 'ws') + '/cc-ws?token=' + encodeURIComponent(ACCESS_TOKEN);
+	const wsUrl = BASE_URL.replace(/^http/, 'ws') + '/cc-ws';
 
 	try {
-		ws = new WebSocket(wsUrl);
+		ws = new WebSocket(wsUrl, {
+			headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` },
+		});
 	} catch (err) {
 		log('WebSocket creation error', { error: err.message });
 		scheduleReconnect();
@@ -223,6 +246,15 @@ async function startHttpServer() {
 			return;
 		}
 
+		// Auth check for all mutating endpoints
+		const authHeader = req.headers['authorization'];
+		const providedToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+		if (providedToken !== DAEMON_AUTH_TOKEN) {
+			res.writeHead(401, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+			return;
+		}
+
 		if (url.pathname === '/event' && req.method === 'POST') {
 			try {
 				const body = await readBody(req);
@@ -302,13 +334,17 @@ async function handlePlanReview(data) {
 
 	let planContent = plan;
 	if (!planContent && transcriptPath) {
-		// Validate transcriptPath is within ~/.claude/ to prevent path traversal
-		const resolvedPath = resolve(normalize(transcriptPath));
-		const claudeDir = resolve(homedir(), '.claude');
-		if (resolvedPath.startsWith(claudeDir + '/') || resolvedPath.startsWith(claudeDir + '\\')) {
-			planContent = extractPlanFromTranscript(resolvedPath, CWD);
-		} else {
-			log('Rejected transcriptPath outside ~/.claude/', { transcriptPath: resolvedPath });
+		// Validate transcriptPath is within ~/.claude/ — use realpathSync to resolve symlinks
+		try {
+			const resolvedPath = realpathSync(resolve(normalize(transcriptPath)));
+			const claudeDir = realpathSync(resolve(homedir(), '.claude'));
+			if (resolvedPath.startsWith(claudeDir + '/') || resolvedPath.startsWith(claudeDir + '\\')) {
+				planContent = extractPlanFromTranscript(resolvedPath, CWD);
+			} else {
+				log('Rejected transcriptPath outside ~/.claude/', { transcriptPath: resolvedPath });
+			}
+		} catch (err) {
+			log('Failed to resolve transcriptPath', { transcriptPath, error: err.message });
 		}
 	}
 	if (!planContent) {
@@ -325,6 +361,7 @@ async function handlePlanReview(data) {
 
 	if (activePlan && activePlan.projectId === PROJECT_ID && activePlan.sessionId === hookSessionId) {
 		try {
+			validateId(activePlan.planId, 'Plan ID');
 			await apiRequest(`/api/plans/${activePlan.planId}/versions`, {
 				method: 'PUT',
 				body: JSON.stringify({ content: planContent })
@@ -336,6 +373,7 @@ async function handlePlanReview(data) {
 	}
 
 	if (!planId) {
+		validateId(PROJECT_ID, 'Project ID');
 		const createResult = await apiRequest(`/api/projects/${PROJECT_ID}/plans`, {
 			method: 'POST',
 			body: JSON.stringify({ content: planContent, allowedPrompts })
@@ -402,8 +440,7 @@ export async function main() {
 		expiresAt: EXPIRES_AT,
 		baseUrl: BASE_URL,
 		projectId: PROJECT_ID,
-		configKey: projectConfig?.configKey,
-		folder: projectConfig?.folder,
+		repo: projectConfig?.repo,
 	});
 
 	// Start local HTTP server
@@ -413,7 +450,7 @@ export async function main() {
 	// Connect WebSocket
 	connectWebSocket();
 
-	// Save session state
+	// Save session state (includes daemon auth token for CLI callers)
 	writeSessionState(CC_SESSION_ID, {
 		port,
 		pid: process.pid,
@@ -421,6 +458,7 @@ export async function main() {
 		ccSessionId: CC_SESSION_ID,
 		lsSessionId: null, // Updated after session:start ack
 		projectId: PROJECT_ID,
+		daemonToken: DAEMON_AUTH_TOKEN,
 	});
 
 	// Start PID watchdog
