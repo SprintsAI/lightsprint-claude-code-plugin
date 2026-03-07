@@ -25,8 +25,8 @@ import { createServer } from 'http';
 import { appendFileSync, mkdirSync, existsSync, readFileSync, realpathSync } from 'fs';
 import { join, resolve, normalize } from 'path';
 import { homedir } from 'os';
-import { getConfig, getDefaultBaseUrl } from './lib/config.js';
-import { apiRequest, getProjectId, setConfig } from './lib/client.js';
+import { getConfig } from './lib/config.js';
+import { apiRequest, getProjectId } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
 import { findFreePort } from './lib/cc-utils.js';
@@ -376,28 +376,12 @@ export async function reviewPlanMain(args) {
 	const sessionId = input?.session_id;
 	const hookCwd = input?.cwd || process.cwd();
 	// 2. Config guard (use cwd from stdin, not process.cwd())
+	// getConfig returns null for unconfigured and skipped repos — exit silently
+	// so Claude Code shows its normal permission prompt (no output = no decision).
 	let cfg = getConfig(hookCwd);
 	if (!cfg) {
-		// No config for this folder — trigger OAuth in the browser
-		log('info', 'No project configured, triggering OAuth', { cwd: hookCwd });
-		try {
-			const defaultBaseUrl = getDefaultBaseUrl();
-			const { authenticate } = await import('./lib/auth.js');
-			const authResult = await authenticate(defaultBaseUrl, { cwd: hookCwd, quiet: true });
-			if (!authResult || authResult.skipped || !authResult.accessToken) {
-				log('info', 'OAuth skipped or failed, allowing', { cwd: hookCwd });
-				outputAllow();
-				process.exit(0);
-			}
-			cfg = authResult;
-			// Inject fresh config into client module so apiRequest uses it
-			setConfig(cfg);
-			log('info', 'OAuth succeeded', { projectId: cfg.projectId, cwd: hookCwd });
-		} catch (err) {
-			log('error', 'OAuth failed', { error: err.message, cwd: hookCwd });
-			outputAllow();
-			process.exit(0);
-		}
+		log('info', 'No config for repo, skipping hook silently', { cwd: hookCwd });
+		process.exit(0);
 	}
 
 	log('info', 'Config resolved', { baseUrl: cfg.baseUrl, cwd: hookCwd });
