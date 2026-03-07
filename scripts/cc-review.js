@@ -14,21 +14,21 @@ import { getConfig } from './lib/config.js';
 export async function main(args) {
 	const input = readHookInput(args);
 	if (!input) {
-		outputAllow();
+		// Can't parse hook input — exit silently so Claude Code shows normal prompt
 		return;
 	}
 
 	const ccSessionId = input?.session_id;
 	if (!ccSessionId) {
-		outputAllow();
+		// No session ID — exit silently so Claude Code shows normal prompt
 		return;
 	}
 
-	// If lightsprint isn't configured for this repo, be a no-op
+	// If lightsprint isn't configured for this repo, exit silently (no output)
+	// so Claude Code falls through to its normal ExitPlanMode permission prompt.
 	const hookCwd = input?.cwd || process.cwd();
 	const cfg = getConfig(hookCwd);
 	if (!cfg) {
-		outputAllow();
 		return;
 	}
 
