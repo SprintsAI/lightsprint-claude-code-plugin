@@ -8,6 +8,7 @@
  *   update <taskId> [--title <text>] [--description <text>] [--status <status>] [--complexity <level>] [--assignee <name>]
  *   get <taskId>
  *   claim <taskId> [--cc-pid <pid>]
+ *   current-task [--cc-pid <pid>]
  *   comment <taskId> <body>
  *   whoami
  */
@@ -37,6 +38,7 @@ export async function cliMain(command, args, context = {}) {
 		case 'update': return await cmdUpdate(args);
 		case 'get': return await cmdGet(args);
 		case 'claim': return await cmdClaim(args);
+		case 'current-task': return await cmdCurrentTask(args);
 		case 'link-pr': return await cmdLinkPr(args);
 		case 'unlink-pr': return await cmdUnlinkPr(args);
 		case 'comment': return await cmdComment(args);
@@ -337,6 +339,58 @@ async function cmdGet(args) {
 	if (!task) {
 		console.error(`Task ${taskId} not found`);
 		process.exit(1);
+	}
+
+	console.log(`Title: ${task.title}`);
+	console.log(`ID: ${task.id}`);
+	console.log(`Status: ${task.projectStatus || 'unknown'}`);
+	if (task.assignee) console.log(`Assignee: ${task.assignee}`);
+	if (task.complexity && task.complexity !== 'unknown') {
+		console.log(`Complexity: ${task.complexity}`);
+	}
+	if (task.description) {
+		console.log(`\nDescription:\n${task.description}`);
+	}
+	if (task.todoList && task.todoList.length > 0) {
+		console.log(`\nTodo list:`);
+		for (const item of task.todoList) {
+			console.log(`  ${item.completed ? '[x]' : '[ ]'} ${item.text}`);
+		}
+	}
+	if (task.relatedFiles && task.relatedFiles.length > 0) {
+		console.log(`\nRelated files:`);
+		for (const f of task.relatedFiles) {
+			const path = typeof f === 'string' ? f : f.path;
+			console.log(`  - ${path}`);
+		}
+	}
+}
+
+// ─── current-task ────────────────────────────────────────────────────────
+
+async function cmdCurrentTask(args) {
+	// Parse --cc-pid flag (passed by skill via $PPID)
+	let ccPidArg;
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--cc-pid' && i + 1 < args.length) {
+			ccPidArg = parseInt(args[++i], 10);
+		}
+	}
+
+	// Discover the active CC session's Lightsprint session ID
+	const ccPid = ccPidArg || getClaudeCodePid();
+	const daemonState = findRunningDaemonForCcPid(ccPid);
+	if (!daemonState?.lsSessionId) {
+		console.log('No active CC session found. Claim a task first with /lightsprint:claim.');
+		return;
+	}
+
+	const data = await apiRequest(`/api/cc-sessions/${daemonState.lsSessionId}/task`);
+	const task = data.task;
+
+	if (!task) {
+		console.log('No task is linked to the current CC session. Claim a task with /lightsprint:claim.');
+		return;
 	}
 
 	console.log(`Title: ${task.title}`);
