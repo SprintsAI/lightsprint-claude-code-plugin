@@ -301,22 +301,12 @@ fi
 
 if [[ -n "$REPO_FULL_NAME" ]]; then
   echo "─────────────────────────────────────────"
-  echo "  Connect this repo to a project on Lightsprint?"
+  echo "  Connecting repo to Lightsprint..."
   echo "─────────────────────────────────────────"
   echo ""
   echo "  Repo: $REPO_FULL_NAME"
   echo ""
-
-  read -rp "Connect? (Y/n) " CONFIRM </dev/tty
-  CONFIRM="${CONFIRM:-Y}"
-
-  if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo ""
-    node "$PLUGIN_DIR/scripts/lightsprint.js" connect </dev/tty
-  else
-    echo ""
-    echo "Skipped. You can connect later with 'lightsprint connect' or any /lightsprint: command."
-  fi
+  node "$PLUGIN_DIR/scripts/lightsprint.js" connect </dev/tty
 else
   echo "─────────────────────────────────────────"
   echo "  No git repository detected"

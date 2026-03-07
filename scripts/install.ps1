@@ -263,22 +263,12 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 
 if ($repoFullName) {
     Write-Host ([char]0x2500 * 41)
-    Write-Host "  Connect this repo to a project on Lightsprint?"
+    Write-Host "  Connecting repo to Lightsprint..."
     Write-Host ([char]0x2500 * 41)
     Write-Host ""
     Write-Host "  Repo: $repoFullName"
     Write-Host ""
-
-    $confirm = Read-Host "Connect? (Y/n)"
-    if (-not $confirm) { $confirm = "Y" }
-
-    if ($confirm -match '^[Yy]$') {
-        Write-Host ""
-        & node "$pluginDir\scripts\lightsprint.js" connect
-    } else {
-        Write-Host ""
-        Write-Host "Skipped. You can connect later with 'lightsprint connect' or any /lightsprint: command."
-    }
+    & node "$pluginDir\scripts\lightsprint.js" connect
 } else {
     Write-Host ([char]0x2500 * 41)
     Write-Host "  No git repository detected"
