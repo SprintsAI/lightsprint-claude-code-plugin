@@ -12,6 +12,8 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { randomBytes } from 'crypto';
 import { createServer as createNetServer } from 'net';
+import { execSync } from 'child_process';
+import { validatePid } from './validate.js';
 
 const SESSIONS_DIR = join(homedir(), '.lightsprint', 'cc-sessions');
 
@@ -132,6 +134,79 @@ export function isPidAlive(pid) {
 	} catch (e) {
 		return e.code !== 'ESRCH';
 	}
+}
+
+/**
+ * Get the command name for a given PID (cross-platform).
+ * @param {number} pid
+ * @returns {string|null}
+ */
+export function getProcessCommand(pid) {
+	try {
+		const safePid = validatePid(pid);
+		if (process.platform === 'win32') {
+			const out = execSync(`wmic process where ProcessId=${safePid} get CommandLine /format:list`, {
+				encoding: 'utf-8',
+				stdio: ['pipe', 'pipe', 'pipe']
+			}).trim();
+			const match = out.match(/CommandLine=(.*)/);
+			return match ? match[1].trim() : null;
+		}
+		return execSync(`ps -o command= -p ${safePid}`, {
+			encoding: 'utf-8',
+			stdio: ['pipe', 'pipe', 'pipe']
+		}).trim();
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Get the parent PID for a given PID (cross-platform).
+ * @param {number} pid
+ * @returns {number|null}
+ */
+export function getParentPid(pid) {
+	try {
+		const safePid = validatePid(pid);
+		if (process.platform === 'win32') {
+			const out = execSync(`wmic process where ProcessId=${safePid} get ParentProcessId /format:list`, {
+				encoding: 'utf-8',
+				stdio: ['pipe', 'pipe', 'pipe']
+			}).trim();
+			const match = out.match(/ParentProcessId=(\d+)/);
+			return match ? parseInt(match[1], 10) : null;
+		}
+		const ppid = parseInt(
+			execSync(`ps -o ppid= -p ${safePid}`, {
+				encoding: 'utf-8',
+				stdio: ['pipe', 'pipe', 'pipe']
+			}).trim(),
+			10
+		);
+		return isNaN(ppid) ? null : ppid;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Get Claude Code's PID. Walk up from current process looking for the `claude` binary.
+ * Process tree may be: claude → lightsprint cc-start (direct)
+ *                   or: claude → shell → lightsprint cc-start (via shell)
+ * @returns {number}
+ */
+export function getClaudeCodePid() {
+	let pid = process.ppid;
+	for (let i = 0; i < 3; i++) {
+		const command = getProcessCommand(pid);
+		if (!command) break;
+		if (/\bclaude\b/i.test(command)) return pid;
+		const ppid = getParentPid(pid);
+		if (!ppid || ppid <= 1) break;
+		pid = ppid;
+	}
+	return process.ppid;
 }
 
 /**
