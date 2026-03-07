@@ -14,7 +14,7 @@
 
 import { createHash } from 'crypto';
 import { execSync } from 'child_process';
-import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
 import { apiRequest, getProjectId, getProjectInfo } from './lib/client.js';
@@ -658,6 +658,19 @@ async function cmdUpgrade(currentVersion) {
 		} catch (err) {
 			// Non-fatal — plugin cache is the primary location
 			console.warn(`Warning: Could not update convenience binary at ${cliDir}: ${err.message}`);
+		}
+
+		// Update marketplace copy (if present — keeps source checkout in sync)
+		try {
+			const marketplaceDir = join(home, '.claude', 'plugins', 'marketplaces', 'lightsprint');
+			const marketplaceDest = join(marketplaceDir, binaryFilename);
+			if (existsSync(marketplaceDest)) {
+				copyFileSync(tmpPath, marketplaceDest);
+				if (!isWindows) chmodSync(marketplaceDest, 0o755);
+				console.log(`Updated marketplace copy`);
+			}
+		} catch {
+			// Non-fatal
 		}
 	} finally {
 		// Clean up temp directory
