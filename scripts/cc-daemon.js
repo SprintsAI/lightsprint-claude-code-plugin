@@ -21,7 +21,7 @@
  */
 
 import { createServer } from 'http';
-import { writeSessionState, deleteSessionState, isPidAlive, createLogger, findFreePort } from './lib/cc-utils.js';
+import { readSessionState, writeSessionState, deleteSessionState, isPidAlive, createLogger, findFreePort } from './lib/cc-utils.js';
 import { outputAllow, outputDeny, extractPlanFromTranscript, readPlanFromFile, waitForCallback } from './review-plan.js';
 import { apiRequest, setConfig } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
@@ -235,6 +235,11 @@ async function connectWebSocket() {
 			if (response?.ok) {
 				lsSessionId = response.sessionId;
 				log('Session started', { lsSessionId });
+				// Persist lsSessionId to session file so CLI tools can discover it
+				const currentState = readSessionState(CC_SESSION_ID);
+				if (currentState) {
+					writeSessionState(CC_SESSION_ID, { ...currentState, lsSessionId });
+				}
 			} else {
 				log('Session start failed, triggering reconnect', { error: response?.error });
 				try { ws.close(4000, 'session_start_failed'); } catch { /* ignore */ }

@@ -23,6 +23,7 @@ import { lsToCcStatus } from './lib/status-mapper.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readProjectsFile, writeProjectsFile, getGitRepoFullName } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion } from './lib/validate.js';
+import { findRunningDaemonForCcPid, getClaudeCodePid } from './lib/cc-utils.js';
 
 export async function cliMain(command, args, context = {}) {
 	// Handle help flags
@@ -361,10 +362,27 @@ async function cmdClaim(args) {
 
 	validateId(taskId, 'Task ID');
 
-	// Set task to in_progress
+	// Best-effort: discover the active CC session's Lightsprint session ID
+	let ccSessionId;
+	try {
+		const ccPid = getClaudeCodePid();
+		const daemonState = findRunningDaemonForCcPid(ccPid);
+		if (daemonState?.lsSessionId) {
+			ccSessionId = daemonState.lsSessionId;
+		}
+	} catch {
+		// Session discovery failed — continue without linking
+	}
+
+	// Set task to in_progress (and optionally link CC session)
+	const patchBody = { projectStatus: 'in_progress' };
+	if (ccSessionId) {
+		patchBody.ccSessionId = ccSessionId;
+	}
+
 	await apiRequest(`/api/tasks/${taskId}`, {
 		method: 'PATCH',
-		body: JSON.stringify({ projectStatus: 'in_progress' })
+		body: JSON.stringify(patchBody)
 	});
 
 	// Get full task details
