@@ -7,7 +7,7 @@
  *   create <title> [--description <text>] [--complexity <level>] [--status <status>]
  *   update <taskId> [--title <text>] [--description <text>] [--status <status>] [--complexity <level>] [--assignee <name>]
  *   get <taskId>
- *   claim <taskId>
+ *   claim <taskId> [--cc-pid <pid>]
  *   comment <taskId> <body>
  *   whoami
  */
@@ -95,10 +95,10 @@ Commands:
     Example:
       lightsprint get abc123
 
-  claim <taskId>
-    Claim a task and set its status to in_progress
+  claim <taskId> [--cc-pid <pid>]
+    Claim a task and set its status to in_progress. Links the active CC session if found.
     Example:
-      lightsprint claim abc123
+      lightsprint claim --cc-pid $PPID abc123
 
   comment <taskId> <body>
     Add a comment to a task
@@ -354,7 +354,18 @@ async function cmdGet(args) {
 // ─── claim ───────────────────────────────────────────────────────────────
 
 async function cmdClaim(args) {
-	const taskId = args[0];
+	// Parse --cc-pid flag (passed by skill via $PPID)
+	let ccPidArg;
+	const filteredArgs = [];
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--cc-pid' && i + 1 < args.length) {
+			ccPidArg = parseInt(args[++i], 10);
+		} else {
+			filteredArgs.push(args[i]);
+		}
+	}
+
+	const taskId = filteredArgs[0];
 	if (!taskId) {
 		console.error('Usage: lightsprint claim <taskId>');
 		process.exit(1);
@@ -365,7 +376,7 @@ async function cmdClaim(args) {
 	// Best-effort: discover the active CC session's Lightsprint session ID
 	let ccSessionId;
 	try {
-		const ccPid = getClaudeCodePid();
+		const ccPid = ccPidArg || getClaudeCodePid();
 		const daemonState = findRunningDaemonForCcPid(ccPid);
 		if (daemonState?.lsSessionId) {
 			ccSessionId = daemonState.lsSessionId;
@@ -660,18 +671,6 @@ async function cmdUpgrade(currentVersion) {
 			console.warn(`Warning: Could not update convenience binary at ${cliDir}: ${err.message}`);
 		}
 
-		// Update marketplace copy (if present — keeps source checkout in sync)
-		try {
-			const marketplaceDir = join(home, '.claude', 'plugins', 'marketplaces', 'lightsprint');
-			const marketplaceDest = join(marketplaceDir, binaryFilename);
-			if (existsSync(marketplaceDest)) {
-				copyFileSync(tmpPath, marketplaceDest);
-				if (!isWindows) chmodSync(marketplaceDest, 0o755);
-				console.log(`Updated marketplace copy`);
-			}
-		} catch {
-			// Non-fatal
-		}
 	} finally {
 		// Clean up temp directory
 		try { rmSync(tmpDir, { recursive: true }); } catch {}

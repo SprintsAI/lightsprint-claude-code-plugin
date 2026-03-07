@@ -517,7 +517,7 @@ export async function main() {
 	// Save session state (includes daemon auth token for CLI callers)
 	writeSessionState(CC_SESSION_ID, {
 		port,
-		pid: process.pid,
+		daemonPid: process.pid,
 		ccPid: CC_PID,
 		ccSessionId: CC_SESSION_ID,
 		lsSessionId: null, // Updated after session:start ack

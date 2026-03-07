@@ -6,7 +6,7 @@ description: Claim an existing Lightsprint task to work on. Sets the task to in_
 Run this command to claim a Lightsprint task:
 
 ```bash
-lightsprint claim $ARGUMENTS
+lightsprint claim --cc-pid $PPID $ARGUMENTS
 ```
 
 After claiming, create a Claude Code task from the returned details:

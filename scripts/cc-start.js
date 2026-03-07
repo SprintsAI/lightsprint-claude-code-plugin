@@ -55,7 +55,7 @@ export async function main(args) {
 	// Check for stale session file
 	const existing = readSessionState(ccSessionId);
 	if (existing) {
-		if (isPidAlive(existing.pid)) {
+		if (isPidAlive(existing.daemonPid)) {
 			// Daemon already running for this session
 			return;
 		}
@@ -73,7 +73,7 @@ export async function main(args) {
 		log('Daemon already running for this CC process, aliasing session', { ccPid, ccSessionId });
 		writeSessionState(ccSessionId, {
 			port: existingDaemonState.port,
-			pid: existingDaemonState.pid,
+			daemonPid: existingDaemonState.daemonPid,
 			ccPid: existingDaemonState.ccPid,
 			ccSessionId,
 			lsSessionId: existingDaemonState.lsSessionId,

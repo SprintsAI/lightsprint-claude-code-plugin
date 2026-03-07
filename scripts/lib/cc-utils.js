@@ -111,7 +111,7 @@ export function findRunningDaemonForCcPid(ccPid) {
 			if (!file.endsWith('.json')) continue;
 			try {
 				const state = JSON.parse(readFileSync(join(SESSIONS_DIR, file), 'utf-8'));
-				if (state.ccPid === ccPid && isPidAlive(state.pid)) {
+				if (state.ccPid === ccPid && isPidAlive(state.daemonPid)) {
 					return state;
 				}
 			} catch { continue; }
