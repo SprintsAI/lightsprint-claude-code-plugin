@@ -37,6 +37,8 @@ export async function cliMain(command, args, context = {}) {
 		case 'update': return await cmdUpdate(args);
 		case 'get': return await cmdGet(args);
 		case 'claim': return await cmdClaim(args);
+		case 'link-pr': return await cmdLinkPr(args);
+		case 'unlink-pr': return await cmdUnlinkPr(args);
 		case 'comment': return await cmdComment(args);
 		case 'whoami': return await cmdWhoami();
 		case 'open': return cmdOpen();
@@ -99,6 +101,11 @@ Commands:
     Claim a task and set its status to in_progress. Links the active CC session if found.
     Example:
       lightsprint claim --cc-pid $PPID abc123
+
+  unlink-pr <taskId>
+    Remove a linked GitHub pull request from a task
+    Example:
+      lightsprint unlink-pr abc123
 
   comment <taskId> <body>
     Add a comment to a task
@@ -170,11 +177,15 @@ async function cmdTasks(args) {
 
 	console.log(`Found ${tasks.length} task(s)${data.totalCount > tasks.length ? ` of ${data.totalCount} total` : ''}:\n`);
 
+	const prefix = data.taskPrefix || 'LS';
 	for (const task of tasks) {
 		const status = task.projectStatus || 'unknown';
 		const assignee = task.assignee ? ` [${task.assignee}]` : '';
 		const complexity = task.complexity && task.complexity !== 'unknown' ? ` (${task.complexity})` : '';
-		console.log(`  ${task.id}  [${status}]${assignee}${complexity}  ${task.title}`);
+		const displayId = task.taskNumber != null
+			? `${prefix}-${task.taskNumber < 100 ? task.taskNumber.toString().padStart(3, '0') : task.taskNumber}`
+			: task.id;
+		console.log(`  ${displayId}  [${status}]${assignee}${complexity}  ${task.title}`);
 		if (task.description) {
 			const desc = task.description.slice(0, 120).replace(/\n/g, ' ');
 			console.log(`           ${desc}${task.description.length > 120 ? '...' : ''}`);
@@ -253,8 +264,8 @@ async function cmdCreate(args) {
 // ─── update ──────────────────────────────────────────────────────────────
 
 async function cmdUpdate(args) {
-	const taskId = args[0];
-	if (!taskId || taskId.startsWith('--')) {
+	const taskIdInput = args[0];
+	if (!taskIdInput || taskIdInput.startsWith('--')) {
 		console.error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status todo|in_progress|in_review|done] [--complexity trivial|low|medium|high|critical] [--assignee <name>]');
 		process.exit(1);
 	}
@@ -280,12 +291,13 @@ async function cmdUpdate(args) {
 		process.exit(1);
 	}
 
-	validateId(taskId, 'Task ID');
+	validateId(taskIdInput, 'Task ID');
 	if (patch.title) validateTitle(patch.title);
 	if (patch.description) validateDescription(patch.description);
 	if (patch.projectStatus) validateStatus(patch.projectStatus);
 	if (patch.complexity) validateComplexity(patch.complexity);
 
+	const taskId = await resolveTaskId(taskIdInput);
 	await apiRequest(`/api/tasks/${taskId}`, {
 		method: 'PATCH',
 		body: JSON.stringify(patch)
@@ -311,13 +323,14 @@ async function cmdUpdate(args) {
 // ─── get ─────────────────────────────────────────────────────────────────
 
 async function cmdGet(args) {
-	const taskId = args[0];
-	if (!taskId) {
+	const taskIdInput = args[0];
+	if (!taskIdInput) {
 		console.error('Usage: lightsprint get <taskId>');
 		process.exit(1);
 	}
 
-	validateId(taskId, 'Task ID');
+	validateId(taskIdInput, 'Task ID');
+	const taskId = await resolveTaskId(taskIdInput);
 	const data = await apiRequest(`/api/tasks/${taskId}`);
 	const task = data.task;
 
@@ -365,13 +378,14 @@ async function cmdClaim(args) {
 		}
 	}
 
-	const taskId = filteredArgs[0];
-	if (!taskId) {
+	const taskIdInput = filteredArgs[0];
+	if (!taskIdInput) {
 		console.error('Usage: lightsprint claim <taskId>');
 		process.exit(1);
 	}
 
-	validateId(taskId, 'Task ID');
+	validateId(taskIdInput, 'Task ID');
+	const taskId = await resolveTaskId(taskIdInput);
 
 	// Best-effort: discover the active CC session's Lightsprint session ID
 	let ccSessionId;
@@ -385,15 +399,15 @@ async function cmdClaim(args) {
 		// Session discovery failed — continue without linking
 	}
 
-	// Set task to in_progress (and optionally link CC session)
-	const patchBody = { projectStatus: 'in_progress' };
+	// Claim: sets status to in_progress and assigns to the token owner
+	const claimBody = {};
 	if (ccSessionId) {
-		patchBody.ccSessionId = ccSessionId;
+		claimBody.ccSessionId = ccSessionId;
 	}
 
-	await apiRequest(`/api/tasks/${taskId}`, {
-		method: 'PATCH',
-		body: JSON.stringify(patchBody)
+	await apiRequest(`/api/tasks/${taskId}/claim`, {
+		method: 'POST',
+		body: JSON.stringify(claimBody)
 	});
 
 	// Get full task details
@@ -432,26 +446,78 @@ async function cmdClaim(args) {
 	console.log(`  metadata: { lightsprint_task_id: "${task.id}" }`);
 }
 
+// ─── link-pr ─────────────────────────────────────────────────────────────
+
+async function cmdLinkPr(args) {
+	const taskIdInput = args[0];
+	const prUrl = args[1];
+
+	if (!taskIdInput || !prUrl) {
+		console.error('Usage: lightsprint link-pr <taskId> <prUrl>');
+		process.exit(1);
+	}
+
+	validateId(taskIdInput, 'Task ID');
+
+	// Basic validation of PR URL format
+	if (!/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(prUrl)) {
+		console.error('Error: invalid GitHub PR URL. Expected format: https://github.com/owner/repo/pull/123');
+		process.exit(1);
+	}
+
+	const taskId = await resolveTaskId(taskIdInput);
+	const data = await apiRequest(`/api/tasks/${taskId}/link-pr`, {
+		method: 'POST',
+		body: JSON.stringify({ prUrl })
+	});
+
+	const pr = data.pr;
+	console.log(`Linked PR to task ${taskIdInput}`);
+	console.log(`PR: ${pr.prUrl}`);
+	console.log(`Status: ${pr.status}`);
+	if (pr.title) console.log(`Title: ${pr.title}`);
+}
+
+// ─── unlink-pr ───────────────────────────────────────────────────────────
+
+async function cmdUnlinkPr(args) {
+	const taskIdInput = args[0];
+
+	if (!taskIdInput) {
+		console.error('Usage: lightsprint unlink-pr <taskId>');
+		process.exit(1);
+	}
+
+	validateId(taskIdInput, 'Task ID');
+	const taskId = await resolveTaskId(taskIdInput);
+	await apiRequest(`/api/tasks/${taskId}/link-pr`, {
+		method: 'DELETE'
+	});
+
+	console.log(`Unlinked PR from task ${taskIdInput}.`);
+}
+
 // ─── comment ─────────────────────────────────────────────────────────────
 
 async function cmdComment(args) {
-	const taskId = args[0];
+	const taskIdInput = args[0];
 	const body = args.slice(1).join(' ');
 
-	if (!taskId || !body) {
+	if (!taskIdInput || !body) {
 		console.error('Usage: lightsprint comment <taskId> <body>');
 		process.exit(1);
 	}
 
-	validateId(taskId, 'Task ID');
+	validateId(taskIdInput, 'Task ID');
 	validateCommentBody(body);
 
+	const taskId = await resolveTaskId(taskIdInput);
 	await apiRequest(`/api/tasks/${taskId}/comments`, {
 		method: 'POST',
 		body: JSON.stringify({ body })
 	});
 
-	console.log(`Comment added to task ${taskId}.`);
+	console.log(`Comment added to task ${taskIdInput}.`);
 }
 
 // ─── whoami ──────────────────────────────────────────────────────────────
@@ -703,6 +769,27 @@ function ensureInstalledPluginsJson(version) {
 	} catch (err) {
 		console.warn(`Warning: Could not update installed_plugins.json: ${err.message}`);
 	}
+}
+
+/**
+ * Resolve a display ID like "LIG-024" to a real task ID by fetching the task list.
+ * If the input doesn't match the PREFIX-NUMBER pattern, return it as-is (raw ID).
+ */
+const DISPLAY_ID_PATTERN = /^([A-Z]{2,4})-(\d{1,6})$/;
+
+async function resolveTaskId(input) {
+	const match = input.match(DISPLAY_ID_PATTERN);
+	if (!match) return input; // already a raw ID
+
+	const taskNumber = parseInt(match[2], 10);
+	const projectId = await getProjectId();
+	const data = await apiRequest(`/api/projects/${projectId}/tasks?limit=100`);
+	const tasks = data.tasks || [];
+	const found = tasks.find(t => t.taskNumber === taskNumber);
+	if (!found) {
+		throw new Error(`Task ${input} not found (no task with number ${taskNumber} in project).`);
+	}
+	return found.id;
 }
 
 function statusToColumnName(status) {
