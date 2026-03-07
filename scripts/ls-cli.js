@@ -13,6 +13,7 @@
  */
 
 import { createHash } from 'crypto';
+import { execSync } from 'child_process';
 import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
@@ -37,6 +38,7 @@ export async function cliMain(command, args, context = {}) {
 		case 'claim': return await cmdClaim(args);
 		case 'comment': return await cmdComment(args);
 		case 'whoami': return await cmdWhoami();
+		case 'open': return cmdOpen();
 		case 'status': return cmdStatus();
 		case 'connect': return await cmdConnect(args);
 		case 'disconnect': return await cmdDisconnect(args);
@@ -101,6 +103,9 @@ Commands:
     Add a comment to a task
     Example:
       lightsprint comment abc123 "This is now complete"
+
+  open
+    Open the project board in your browser
 
   status
     Show Lightsprint connection status for the current repository
@@ -428,6 +433,35 @@ async function cmdWhoami() {
 	if (info.project.fullName) console.log(`Repository: ${info.project.fullName}`);
 	console.log(`Project ID: ${info.project.id}`);
 	console.log(`Scopes: ${info.scopes.join(', ')}`);
+}
+
+// ─── open ────────────────────────────────────────────────────────────────
+
+function cmdOpen() {
+	const cwd = process.cwd();
+	const cfg = getConfig(cwd);
+
+	if (!cfg) {
+		console.error('Not connected to Lightsprint. Run "lightsprint connect" first.');
+		process.exit(1);
+	}
+
+	const url = `${cfg.baseUrl}/projects/${cfg.projectId}`;
+
+	const platform = process.platform;
+	try {
+		if (platform === 'darwin') {
+			execSync(`open ${JSON.stringify(url)}`, { stdio: 'ignore' });
+		} else if (platform === 'win32') {
+			execSync(`start "" ${JSON.stringify(url)}`, { stdio: 'ignore' });
+		} else {
+			execSync(`xdg-open ${JSON.stringify(url)}`, { stdio: 'ignore' });
+		}
+		console.log(`Opened ${url}`);
+	} catch {
+		// Fallback: just print the URL
+		console.log(`Open this URL in your browser:\n  ${url}`);
+	}
 }
 
 // ─── status ──────────────────────────────────────────────────────────────

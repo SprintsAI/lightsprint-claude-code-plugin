@@ -10,6 +10,7 @@
  *   get <taskId>            Show full task details
  *   claim <taskId>          Claim a task (set to in_progress)
  *   comment <taskId> <body> Add a comment to a task
+ *   open                    Open project board in the browser
  *   status                  Show connection status
  *   whoami                  Show project/auth info
  *   connect [--base-url]    Authenticate and connect
@@ -73,6 +74,7 @@ Commands:
   get <taskId>            Show full task details
   claim <taskId>          Claim a task (set to in_progress)
   comment <taskId> <body> Add a comment to a task
+  open                    Open the project board in your browser
   status                  Show connection status for this repository
   whoami                  Show project/auth info
   connect [--base-url]    Authenticate and connect to Lightsprint
