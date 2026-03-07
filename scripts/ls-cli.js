@@ -14,7 +14,7 @@
 
 import { createHash } from 'crypto';
 import { execSync } from 'child_process';
-import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
 import { apiRequest, getProjectId, getProjectInfo } from './lib/client.js';
@@ -623,20 +623,21 @@ async function cmdUpgrade(currentVersion) {
 		throw new Error(`Checksum verification failed!\n  Expected: ${expected}\n  Actual:   ${actual}`);
 	}
 
+	// Determine install paths
+	const home = homedir();
+	const pluginCacheDir = join(home, '.claude', 'plugins', 'cache', 'lightsprint', 'lightsprint', latestVersion);
+	const pluginBinDir = join(pluginCacheDir, 'bin');
+	const isWindows = platform === 'win32';
+	const binaryFilename = isWindows ? `${UPGRADE_BINARY}.exe` : UPGRADE_BINARY;
+	const cliDir = isWindows
+		? join(process.env.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'lightsprint')
+		: join(process.env.XDG_DATA_HOME || join(home, '.local'), 'bin');
+
 	// Write to a secure temp directory
 	const tmpDir = mkdtempSync(join(tmpdir(), 'lightsprint-upgrade-'));
 	const tmpPath = join(tmpDir, assetName);
 	try {
 		writeFileSync(tmpPath, binBuffer, { mode: 0o755 });
-
-		// Determine install paths
-		const home = homedir();
-		const pluginBinDir = join(home, '.claude', 'plugins', 'cache', 'lightsprint', 'lightsprint', latestVersion, 'bin');
-		const isWindows = platform === 'win32';
-		const binaryFilename = isWindows ? `${UPGRADE_BINARY}.exe` : UPGRADE_BINARY;
-		const cliDir = isWindows
-			? join(process.env.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'lightsprint')
-			: join(process.env.XDG_DATA_HOME || join(home, '.local'), 'bin');
 
 		// Install to plugin cache
 		mkdirSync(pluginBinDir, { recursive: true });
@@ -659,6 +660,23 @@ async function cmdUpgrade(currentVersion) {
 	} finally {
 		// Clean up temp directory
 		try { rmSync(tmpDir, { recursive: true }); } catch {}
+	}
+
+	// Update installed_plugins.json to point to the new version
+	const installedPluginsPath = join(home, '.claude', 'plugins', 'installed_plugins.json');
+	try {
+		const pluginsData = JSON.parse(readFileSync(installedPluginsPath, 'utf-8'));
+		const entries = pluginsData.plugins?.['lightsprint@lightsprint'];
+		if (entries && entries.length > 0) {
+			entries[0].installPath = pluginCacheDir;
+			entries[0].version = latestVersion;
+			entries[0].lastUpdated = new Date().toISOString();
+			writeFileSync(installedPluginsPath, JSON.stringify(pluginsData, null, 2) + '\n');
+			console.log('Updated installed_plugins.json');
+		}
+	} catch (err) {
+		console.warn(`Warning: Could not update installed_plugins.json: ${err.message}`);
+		console.warn(`Manually update installPath to: ${pluginCacheDir}`);
 	}
 
 	console.log(`\nUpgraded lightsprint v${currentVersion === 'dev' ? 'dev' : currentVersion} → v${latestVersion}`);
