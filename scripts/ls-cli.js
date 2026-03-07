@@ -592,6 +592,8 @@ async function cmdUpgrade(currentVersion) {
 
 	if (currentVersion === latestVersion) {
 		console.log(`Already up to date (v${currentVersion}).`);
+		// Still ensure installed_plugins.json is correct (may be stale from older upgrades)
+		ensureInstalledPluginsJson(latestVersion);
 		return;
 	}
 
@@ -662,27 +664,34 @@ async function cmdUpgrade(currentVersion) {
 		try { rmSync(tmpDir, { recursive: true }); } catch {}
 	}
 
-	// Update installed_plugins.json to point to the new version
+	ensureInstalledPluginsJson(latestVersion);
+
+	console.log(`\nUpgraded lightsprint v${currentVersion === 'dev' ? 'dev' : currentVersion} → v${latestVersion}`);
+}
+
+// ─── helpers ─────────────────────────────────────────────────────────────
+
+function ensureInstalledPluginsJson(version) {
+	const home = homedir();
+	const pluginCacheDir = join(home, '.claude', 'plugins', 'cache', 'lightsprint', 'lightsprint', version);
 	const installedPluginsPath = join(home, '.claude', 'plugins', 'installed_plugins.json');
 	try {
 		const pluginsData = JSON.parse(readFileSync(installedPluginsPath, 'utf-8'));
 		const entries = pluginsData.plugins?.['lightsprint@lightsprint'];
 		if (entries && entries.length > 0) {
+			if (entries[0].version === version && entries[0].installPath === pluginCacheDir) {
+				return; // already correct
+			}
 			entries[0].installPath = pluginCacheDir;
-			entries[0].version = latestVersion;
+			entries[0].version = version;
 			entries[0].lastUpdated = new Date().toISOString();
 			writeFileSync(installedPluginsPath, JSON.stringify(pluginsData, null, 2) + '\n');
 			console.log('Updated installed_plugins.json');
 		}
 	} catch (err) {
 		console.warn(`Warning: Could not update installed_plugins.json: ${err.message}`);
-		console.warn(`Manually update installPath to: ${pluginCacheDir}`);
 	}
-
-	console.log(`\nUpgraded lightsprint v${currentVersion === 'dev' ? 'dev' : currentVersion} → v${latestVersion}`);
 }
-
-// ─── helpers ─────────────────────────────────────────────────────────────
 
 function statusToColumnName(status) {
 	const map = {
