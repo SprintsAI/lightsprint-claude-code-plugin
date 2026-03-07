@@ -9,6 +9,7 @@
 
 import { readSessionState, readHookInput } from './lib/cc-utils.js';
 import { outputAllow, outputDeny } from './review-plan.js';
+import { getConfig } from './lib/config.js';
 
 export async function main(args) {
 	const input = readHookInput(args);
@@ -19,6 +20,14 @@ export async function main(args) {
 
 	const ccSessionId = input?.session_id;
 	if (!ccSessionId) {
+		outputAllow();
+		return;
+	}
+
+	// If lightsprint isn't configured for this repo, be a no-op
+	const hookCwd = input?.cwd || process.cwd();
+	const cfg = getConfig(hookCwd);
+	if (!cfg) {
 		outputAllow();
 		return;
 	}
