@@ -1,6 +1,6 @@
 ---
 name: link-pr
-description: Link a GitHub pull request to a Lightsprint task. Use this after creating a GitHub PR for a task you're working on.
+description: Link a GitHub pull request to a Lightsprint (ls) task. Use this after creating a GitHub PR for a task you're working on.
 ---
 
 Run this command to link a GitHub pull request to a Lightsprint task:

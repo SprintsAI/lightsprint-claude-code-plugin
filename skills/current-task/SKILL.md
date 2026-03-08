@@ -1,6 +1,6 @@
 ---
 name: current-task
-description: Get the Lightsprint task linked to the current Claude Code session. Uses the session PID to auto-discover the task without needing a task ID.
+description: Get the Lightsprint (ls) task linked to the current Claude Code session. Uses the session PID to auto-discover the task without needing a task ID.
 ---
 
 Run this command to find the task linked to the current CC session:

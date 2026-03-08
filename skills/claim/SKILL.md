@@ -1,6 +1,6 @@
 ---
 name: claim
-description: Claim an existing Lightsprint task to work on. Sets the task to in_progress on the board.
+description: Claim an existing Lightsprint (ls) task to work on. Sets the task to in_progress on the board.
 ---
 
 Run this command to claim a Lightsprint task:

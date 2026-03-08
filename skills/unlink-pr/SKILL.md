@@ -1,6 +1,6 @@
 ---
 name: unlink-pr
-description: Remove a linked GitHub pull request from a Lightsprint task. Use this to unlink a PR that was previously linked to a task.
+description: Remove a linked GitHub pull request from a Lightsprint (ls) task. Use this to unlink a PR that was previously linked to a task.
 ---
 
 Run this command to remove a linked GitHub pull request from a Lightsprint task:

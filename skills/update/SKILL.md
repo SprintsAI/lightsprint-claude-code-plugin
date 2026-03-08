@@ -1,6 +1,6 @@
 ---
 name: update
-description: Update an existing Lightsprint task. Change its title, description, status, complexity, assignee, or dependencies.
+description: Update an existing Lightsprint (ls) task. Change its title, description, status, complexity, assignee, or dependencies.
 ---
 
 Run this command to update a Lightsprint task:
