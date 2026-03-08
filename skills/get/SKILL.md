@@ -11,7 +11,7 @@ lightsprint get $ARGUMENTS
 
 Usage: `get <taskId>`
 
-Task ID can be a raw ID or display ID (e.g. `LIG-024`).
+Task ID can be a display ID (e.g. `LIG-024`), bare task number (e.g. `24`), or raw ID. All formats are resolved server-side.
 
 ## Output fields
 
@@ -32,6 +32,7 @@ Task ID can be a raw ID or display ID (e.g. `LIG-024`).
 
 ```bash
 lightsprint get LIG-003
+lightsprint get 3
 lightsprint get abc123def
 ```
 
@@ -39,4 +40,4 @@ lightsprint get abc123def
 
 - This is a read-only command — it does not modify any tasks
 - Always use `lightsprint get <taskId>` before `lightsprint update` to confirm current state
-- Task ID can be a display ID (e.g. `LIG-003`) or raw ID
+- Task ID can be a display ID (e.g. `LIG-003`), bare number (e.g. `3`), or raw ID — all formats are resolved server-side

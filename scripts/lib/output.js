@@ -90,7 +90,7 @@ export function formatTaskText(task, options = {}) {
 	const prefix = options.prefix ? `${options.prefix}: ` : '';
 	console.log(`${prefix}Title: ${task.title}`);
 	console.log(`ID: ${task.id}`);
-	console.log(`Status: ${task.projectStatus || 'unknown'}`);
+	console.log(`Status: ${task.status || 'unknown'}`);
 	const assignee = task.assignedUser?.name || task.assignee;
 	if (assignee) console.log(`Assignee: ${assignee}`);
 	if (task.complexity && task.complexity !== 'unknown') {
@@ -123,7 +123,7 @@ export function buildTaskData(task) {
 	return {
 		id: task.id,
 		title: task.title,
-		projectStatus: task.projectStatus || 'unknown',
+		status: task.status || 'unknown',
 		assignee: task.assignedUser?.name || task.assignee || null,
 		complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
 		description: task.description || null,

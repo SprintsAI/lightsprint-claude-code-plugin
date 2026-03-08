@@ -15,14 +15,14 @@ Usage: `update <taskId> [--title <text>] [--description <text>] [--status backlo
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `<taskId>` | Yes | Task ID (positional, first arg). Supports raw IDs or display IDs (e.g. `LIG-024`). |
+| `<taskId>` | Yes | Task ID (positional, first arg). Supports display IDs (e.g. `LIG-024`), bare task numbers (e.g. `24`), or raw IDs. All formats are resolved server-side. |
 | `--title <text>` | No | New task title. Max 500 chars. |
 | `--description <text>` | No | New task description. Supports multiline. Max 50000 chars. |
 | `--status <status>` | No | New status: `backlog`, `todo`, `in_progress`, `in_review`, or `done`. |
 | `--complexity <level>` | No | Complexity: `low`, `medium`, or `high`. |
 | `--assignee <name>` | No | Assign to a team member by name. |
-| `--add-dep <taskId>` | No | Add a dependency (this task depends on the given task). Repeatable for multiple deps. Supports display IDs. |
-| `--remove-dep <taskId>` | No | Remove a dependency. Repeatable for multiple deps. Supports display IDs. |
+| `--add-dep <taskId>` | No | Add a dependency (this task depends on the given task). Repeatable for multiple deps. Supports display IDs, bare task numbers, or raw IDs. |
+| `--remove-dep <taskId>` | No | Remove a dependency. Repeatable for multiple deps. Supports display IDs, bare task numbers, or raw IDs. |
 | `--json-body <json>` | No | Raw JSON request body (replaces individual field flags). Cannot combine with --title/--description/etc. |
 | `--dry-run` | No | Validate inputs without calling the API. |
 | `--output json` | No | Return structured JSON instead of human-readable text. |

@@ -245,7 +245,7 @@ async function cmdTasks(args, opts) {
 			displayId,
 			id: task.id,
 			title: task.title,
-			projectStatus: (task.projectStatus || 'unknown'),
+			status: (task.status || 'unknown'),
 			assignee: task.assignedUser?.name || task.assignee || null,
 			complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
 			description: task.description || null
@@ -271,7 +271,7 @@ async function cmdTasks(args, opts) {
 		for (const task of resultTasks) {
 			const assigneeLabel = task.assignee ? ` [${task.assignee}]` : '';
 			const complexity = task.complexity ? ` (${task.complexity})` : '';
-			console.log(`  ${task.displayId}  [${task.projectStatus}]${assigneeLabel}${complexity}  ${task.title}`);
+			console.log(`  ${task.displayId}  [${task.status}]${assigneeLabel}${complexity}  ${task.title}`);
 			if (task.description) {
 				const desc = task.description.slice(0, 120).replace(/\n/g, ' ');
 				console.log(`           ${desc}${task.description.length > 120 ? '...' : ''}`);
@@ -334,7 +334,7 @@ async function cmdCreate(args, opts) {
 		}
 		// Validate known fields
 		if (body.title) validateTitle(body.title);
-		if (body.projectStatus) validateStatus(body.projectStatus);
+		if (body.status) validateStatus(body.status);
 		if (body.complexity) validateComplexity(body.complexity);
 		if (body.description) validateDescription(body.description);
 	} else {
@@ -349,7 +349,7 @@ async function cmdCreate(args, opts) {
 		if (description) validateDescription(description);
 		if (complexity) validateComplexity(complexity);
 
-		body = { title, projectStatus: status };
+		body = { title, status: status };
 		if (description) body.description = description;
 		if (complexity) body.complexity = complexity;
 	}
@@ -383,7 +383,7 @@ async function cmdCreate(args, opts) {
 	outputResult(result, opts, () => {
 		console.log(`Created task: ${task.title}`);
 		console.log(`ID: ${task.id}`);
-		console.log(`Status: ${(task.projectStatus || 'unknown')}`);
+		console.log(`Status: ${(task.status || 'unknown')}`);
 		if (task.complexity && task.complexity !== 'unknown') {
 			console.log(`Complexity: ${task.complexity}`);
 		}
@@ -420,7 +420,7 @@ async function cmdUpdate(args, opts) {
 		} else if (args[i] === '--description' && args[i + 1]) {
 			patch.description = args[++i];
 		} else if (args[i] === '--status' && args[i + 1]) {
-			patch.projectStatus = args[++i];
+			patch.status = args[++i];
 		} else if (args[i] === '--complexity' && args[i + 1]) {
 			patch.complexity = args[++i];
 		} else if (args[i] === '--assignee' && args[i + 1]) {
@@ -443,7 +443,7 @@ async function cmdUpdate(args, opts) {
 		}
 		if (patch.title) validateTitle(patch.title);
 		if (patch.description) validateDescription(patch.description);
-		if (patch.projectStatus) validateStatus(patch.projectStatus);
+		if (patch.status) validateStatus(patch.status);
 		if (patch.complexity) validateComplexity(patch.complexity);
 	}
 
@@ -459,7 +459,7 @@ async function cmdUpdate(args, opts) {
 	if (!jsonBody) {
 		if (patch.title) validateTitle(patch.title);
 		if (patch.description) validateDescription(patch.description);
-		if (patch.projectStatus) validateStatus(patch.projectStatus);
+		if (patch.status) validateStatus(patch.status);
 		if (patch.complexity) validateComplexity(patch.complexity);
 	}
 	for (const id of addDeps) validateId(id, 'Dependency task ID');
@@ -523,7 +523,7 @@ async function cmdUpdate(args, opts) {
 	outputResult(result, opts, () => {
 		console.log(`Updated task: ${task.title}`);
 		console.log(`ID: ${task.id}`);
-		console.log(`Status: ${(task.projectStatus || 'unknown')}`);
+		console.log(`Status: ${(task.status || 'unknown')}`);
 		if (task.assignee) console.log(`Assignee: ${task.assignee}`);
 		if (task.complexity && task.complexity !== 'unknown') {
 			console.log(`Complexity: ${task.complexity}`);
@@ -571,7 +571,7 @@ async function cmdGet(args, opts) {
 			id: t.id,
 			taskNumber: t.taskNumber || null,
 			title: t.title,
-			projectStatus: (t.projectStatus || 'unknown')
+			status: (t.status || 'unknown')
 		};
 	};
 
@@ -588,14 +588,14 @@ async function cmdGet(args, opts) {
 			console.log(`\nDepends on:`);
 			for (const d of result.dependencies) {
 				const label = d.taskNumber != null ? `#${d.taskNumber}` : d.id;
-				console.log(`  - ${label} ${d.title} [${d.projectStatus}]`);
+				console.log(`  - ${label} ${d.title} [${d.status}]`);
 			}
 		}
 		if (result.dependents.length > 0) {
 			console.log(`\nBlocks:`);
 			for (const d of result.dependents) {
 				const label = d.taskNumber != null ? `#${d.taskNumber}` : d.id;
-				console.log(`  - ${label} ${d.title} [${d.projectStatus}]`);
+				console.log(`  - ${label} ${d.title} [${d.status}]`);
 			}
 		}
 	});
@@ -1173,24 +1173,10 @@ function ensureInstalledPluginsJson(version) {
  *   - Bare task number: "24" or "024"
  *   - Raw ID: "YCRFHw7OeZUbogdOtYnFh" (returned as-is)
  */
-const DISPLAY_ID_PATTERN = /^([A-Z]{2,4})-(\d{1,6})$/;
-const BARE_NUMBER_PATTERN = /^\d{1,6}$/;
-
 async function resolveTaskId(input) {
-	const displayMatch = input.match(DISPLAY_ID_PATTERN);
-	const bareNumber = !displayMatch && input.match(BARE_NUMBER_PATTERN);
-
-	if (!displayMatch && !bareNumber) return input; // raw ID
-
-	const taskNumber = parseInt(displayMatch ? displayMatch[2] : input, 10);
 	const projectId = await getProjectId();
-	const data = await apiRequest(`/api/projects/${projectId}/tasks?limit=100`);
-	const tasks = data.tasks || [];
-	const found = tasks.find(t => t.taskNumber === taskNumber);
-	if (!found) {
-		throw new Error(`Task ${input} not found (no task with number ${taskNumber} in project).`);
-	}
-	return found.id;
+	const data = await apiRequest(`/api/projects/${projectId}/tasks/resolve?ref=${encodeURIComponent(input)}`);
+	return data.taskId;
 }
 
 

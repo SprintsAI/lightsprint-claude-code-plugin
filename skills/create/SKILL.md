@@ -19,7 +19,7 @@ Usage: `create <title> [--description <text>] [--complexity low|medium|high] [--
 | `--description <text>` | No | Task description. Supports multiline text. Max 50000 chars. |
 | `--complexity <level>` | No | Complexity estimate: `low`, `medium`, or `high`. |
 | `--status <status>` | No | Initial status: `backlog`, `todo` (default), `in_progress`, `in_review`, or `done`. |
-| `--depends-on <ids>` | No | Comma-separated list of task IDs this task depends on. Supports raw IDs or display IDs (e.g. `LIG-024`). |
+| `--depends-on <ids>` | No | Comma-separated list of task IDs this task depends on. Supports raw IDs, display IDs (e.g. `LIG-024`), or bare task numbers (e.g. `6`). All formats are resolved server-side. |
 | `--json-body <json>` | No | Raw JSON request body (replaces individual flags). Cannot combine with positional title or other field flags. |
 | `--dry-run` | No | Validate inputs without calling the API. |
 | `--output json` | No | Return structured JSON instead of human-readable text. |

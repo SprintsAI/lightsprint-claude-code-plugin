@@ -13,7 +13,7 @@ const LS_TO_CC = {
 };
 
 /**
- * Map a Lightsprint projectStatus to a Claude Code status.
+ * Map a Lightsprint status to a Claude Code status.
  * @param {string} lsStatus
  * @returns {string | undefined}
  */
