@@ -10,3 +10,8 @@ lightsprint comment $ARGUMENTS
 ```
 
 Usage: `comment <taskId> <comment body>`
+
+## Constraints
+
+- Comment body: max 10,000 characters
+- Body must not contain control characters (newlines and tabs are allowed)
