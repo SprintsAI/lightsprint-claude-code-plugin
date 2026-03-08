@@ -1167,16 +1167,22 @@ function ensureInstalledPluginsJson(version) {
 }
 
 /**
- * Resolve a display ID like "LIG-024" to a real task ID by fetching the task list.
- * If the input doesn't match the PREFIX-NUMBER pattern, return it as-is (raw ID).
+ * Resolve a task reference to a real task ID.
+ * Accepts:
+ *   - Display ID: "LIG-024" (prefix-number)
+ *   - Bare task number: "24" or "024"
+ *   - Raw ID: "YCRFHw7OeZUbogdOtYnFh" (returned as-is)
  */
 const DISPLAY_ID_PATTERN = /^([A-Z]{2,4})-(\d{1,6})$/;
+const BARE_NUMBER_PATTERN = /^\d{1,6}$/;
 
 async function resolveTaskId(input) {
-	const match = input.match(DISPLAY_ID_PATTERN);
-	if (!match) return input; // already a raw ID
+	const displayMatch = input.match(DISPLAY_ID_PATTERN);
+	const bareNumber = !displayMatch && input.match(BARE_NUMBER_PATTERN);
 
-	const taskNumber = parseInt(match[2], 10);
+	if (!displayMatch && !bareNumber) return input; // raw ID
+
+	const taskNumber = parseInt(displayMatch ? displayMatch[2] : input, 10);
 	const projectId = await getProjectId();
 	const data = await apiRequest(`/api/projects/${projectId}/tasks?limit=100`);
 	const tasks = data.tasks || [];
