@@ -139,7 +139,7 @@ export function buildTaskData(task) {
  * @param {string[]} fields
  * @returns {object|object[]}
  */
-function filterFields(data, fields) {
+export function filterFields(data, fields) {
 	if (Array.isArray(data)) {
 		return data.map(item => filterObj(item, fields));
 	}

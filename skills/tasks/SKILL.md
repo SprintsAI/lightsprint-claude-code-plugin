@@ -23,6 +23,7 @@ Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--
 | `--deps <filter>` | all | Filter by dependencies: `has-dependencies`, `has-dependents`, `unblocked`. |
 | `--limit N` | 20 | Maximum number of tasks to return (server max: 100). |
 | `--offset N` | 0 | Skip first N tasks (for pagination). |
+| `--page-all` | — | Stream all tasks as NDJSON (one JSON object per line). Ignores `--limit`/`--offset`. |
 | `--output json` | text | Return structured JSON instead of human-readable text. |
 
 ## Dependency filters

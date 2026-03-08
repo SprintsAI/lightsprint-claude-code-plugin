@@ -9,9 +9,11 @@ Run this command to get a Lightsprint task's details:
 lightsprint get $ARGUMENTS
 ```
 
-Usage: `get <taskId>`
+Usage: `get <taskId> [--fields <field1,field2,...>]`
 
 Task ID can be a display ID (e.g. `LIG-024`), bare task number (e.g. `24`), or raw ID. All formats are resolved server-side.
+
+The `--fields` flag accepts a comma-separated list of field names to return only specific fields (implies `--output json`). Available fields: `task`, `dependencies`, `dependents`. Within `task`: `id`, `title`, `status`, `assignee`, `complexity`, `description`, `todoList`, `relatedFiles`, `creator`. The `lightsprint tasks` command also supports `--fields`.
 
 ## Output fields
 
@@ -34,6 +36,7 @@ Task ID can be a display ID (e.g. `LIG-024`), bare task number (e.g. `24`), or r
 lightsprint get LIG-003
 lightsprint get 3
 lightsprint get abc123def
+lightsprint get LIG-003 --fields task,dependencies
 ```
 
 ## Invariants

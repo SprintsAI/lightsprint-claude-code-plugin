@@ -14,14 +14,10 @@ const runCli = async (...args) => {
 };
 
 describe('CLI routing', () => {
-	test('--version flag prints version', async () => {
-		const stdout = await runCli('--version');
+	test('version subcommand prints version with build time', async () => {
+		const stdout = await runCli('version');
 		expect(stdout).toMatch(/^lightsprint v/);
-	});
-
-	test('-v flag prints version', async () => {
-		const stdout = await runCli('-v');
-		expect(stdout).toMatch(/^lightsprint v/);
+		expect(stdout).toContain('built');
 	});
 
 	test('help subcommand prints usage', async () => {

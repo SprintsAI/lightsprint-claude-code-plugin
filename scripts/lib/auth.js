@@ -58,8 +58,8 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 					accessToken: url.searchParams.get('access_token'),
 					refreshToken: url.searchParams.get('refresh_token'),
 					expiresIn: url.searchParams.get('expires_in'),
-					project: url.searchParams.get('project'),
-					projectId: url.searchParams.get('project_id'),
+					project: url.searchParams.get('repo'),
+					projectId: url.searchParams.get('repo_id'),
 					email: url.searchParams.get('email')
 				};
 				res.writeHead(200, { 'Content-Type': 'text/html', 'Connection': 'close' });

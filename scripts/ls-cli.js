@@ -14,7 +14,7 @@
  */
 
 import { createHash } from 'crypto';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
@@ -26,7 +26,7 @@ import { getConfig, getDefaultBaseUrl, readProjectsFile, writeProjectsFile, getG
 import { validateId, validateStatus, validateComplexity, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
-import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData } from './lib/output.js';
+import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
 import { getCommandSchema, getAllCommandNames } from './lib/schema.js';
 
 export async function cliMain(command, args, context = {}) {
@@ -87,6 +87,7 @@ Commands:
       --deps <filter>       Filter by dependencies: has-dependencies, has-dependents, unblocked
       --limit <N>           Limit number of results (default: 20)
       --offset <N>          Skip first N results (for pagination)
+      --page-all            Stream all tasks as NDJSON (one JSON object per line)
     Example:
       lightsprint tasks --status todo,in_progress --mine
       lightsprint tasks --status backlog --unassigned --complexity low
@@ -192,6 +193,7 @@ async function cmdTasks(args, opts) {
 	let depsFilter = null;
 	let unassigned = false;
 	let mine = false;
+	let pageAll = false;
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--status' && args[i + 1]) {
 			status = args[++i];
@@ -209,6 +211,8 @@ async function cmdTasks(args, opts) {
 			unassigned = true;
 		} else if (args[i] === '--mine') {
 			mine = true;
+		} else if (args[i] === '--page-all') {
+			pageAll = true;
 		}
 	}
 
@@ -233,7 +237,40 @@ async function cmdTasks(args, opts) {
 	else if (assigneeFilter) params.set('assignee', assigneeFilter);
 
 	validateId(projectId, 'Project ID');
-	const data = await apiRequest(`/api/projects/${projectId}/tasks?${params}`);
+
+	// --page-all: stream all pages as NDJSON (one task per line)
+	if (pageAll) {
+		let pageOffset = 0;
+		const pageLimit = 100; // max per page
+		let hasMore = true;
+		while (hasMore) {
+			params.set('limit', String(pageLimit));
+			params.set('offset', String(pageOffset));
+			const pageData = await apiRequest(`/api/repos/${projectId}/tasks?${params}`);
+			const pageTasks = pageData.tasks || [];
+			const prefix = pageData.taskPrefix || 'LS';
+			for (const task of pageTasks) {
+				const displayId = task.taskNumber != null
+					? `${prefix}-${task.taskNumber < 100 ? task.taskNumber.toString().padStart(3, '0') : task.taskNumber}`
+					: task.id;
+				const line = {
+					displayId, id: task.id, title: task.title,
+					status: (task.status || 'unknown'),
+					assignee: task.assignedUser?.name || task.assignee || null,
+					complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
+					description: task.description || null
+				};
+				const output = opts.fields ? filterFields(line, opts.fields) : line;
+				process.stdout.write(JSON.stringify(output) + '\n');
+			}
+			hasMore = pageData.pagination?.hasMore || false;
+			pageOffset += pageTasks.length || pageLimit;
+			if (pageTasks.length === 0) break;
+		}
+		return;
+	}
+
+	const data = await apiRequest(`/api/repos/${projectId}/tasks?${params}`);
 	let tasks = data.tasks || [];
 
 	const prefix = data.taskPrefix || 'LS';
@@ -288,8 +325,7 @@ async function cmdTasks(args, opts) {
 
 async function cmdCreate(args, opts) {
 	if (args.length === 0) {
-		console.error('Usage: lightsprint create <title> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <id1,id2,...>]');
-		process.exit(1);
+		throw new Error('Usage: lightsprint create <title> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <id1,id2,...>]');
 	}
 
 	const projectId = await getProjectId();
@@ -305,7 +341,7 @@ async function cmdCreate(args, opts) {
 	let dependsOn = null;
 
 	for (let i = 0; i < args.length; i++) {
-		if (args[i] === '--json-body' && args[i + 1]) {
+		if ((args[i] === '--json-body' || args[i] === '--json') && args[i + 1]) {
 			jsonBody = args[++i];
 		} else if (args[i] === '--description' && args[i + 1]) {
 			description = args[++i];
@@ -325,23 +361,22 @@ async function cmdCreate(args, opts) {
 	if (jsonBody) {
 		// Raw JSON mode — reject if combined with individual flags
 		if (titleParts.length > 0 || description || complexity) {
-			throw new Error('Cannot combine --json-body with --description, --complexity, or positional title. Use --json-body alone.');
+			throw new Error('Cannot combine --json/--json-body with --description, --complexity, or positional title. Use --json/--json-body alone.');
 		}
 		try {
 			body = JSON.parse(jsonBody);
 		} catch {
-			throw new Error('Invalid JSON in --json-body.');
+			throw new Error('Invalid JSON in --json/--json-body.');
 		}
-		// Validate known fields
-		if (body.title) validateTitle(body.title);
-		if (body.status) validateStatus(body.status);
-		if (body.complexity) validateComplexity(body.complexity);
-		if (body.description) validateDescription(body.description);
+		// Validate known fields (use 'in' to catch empty strings)
+		if ('title' in body) validateTitle(body.title);
+		if ('status' in body) validateStatus(body.status);
+		if ('complexity' in body) validateComplexity(body.complexity);
+		if ('description' in body) validateDescription(body.description);
 	} else {
 		const title = titleParts.join(' ');
 		if (!title) {
-			console.error('Error: title is required.');
-			process.exit(1);
+			throw new Error('Error: title is required.');
 		}
 
 		validateTitle(title);
@@ -365,11 +400,11 @@ async function cmdCreate(args, opts) {
 
 	// Dry-run: validate only, don't call API
 	if (opts.dryRun) {
-		return outputDryRun('create', body, `POST /api/projects/${projectId}/tasks`, opts);
+		return outputDryRun('create', body, `POST /api/repos/${projectId}/tasks`, opts);
 	}
 
 	validateId(projectId, 'Project ID');
-	const data = await apiRequest(`/api/projects/${projectId}/tasks`, {
+	const data = await apiRequest(`/api/repos/${projectId}/tasks`, {
 		method: 'POST',
 		body: JSON.stringify(body)
 	});
@@ -403,8 +438,7 @@ async function cmdCreate(args, opts) {
 async function cmdUpdate(args, opts) {
 	const taskIdInput = args[0];
 	if (!taskIdInput || taskIdInput.startsWith('--')) {
-		console.error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]');
-		process.exit(1);
+		throw new Error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]');
 	}
 
 	// Parse flags
@@ -413,7 +447,7 @@ async function cmdUpdate(args, opts) {
 	const removeDeps = [];
 	let jsonBody = null;
 	for (let i = 1; i < args.length; i++) {
-		if (args[i] === '--json-body' && args[i + 1]) {
+		if ((args[i] === '--json-body' || args[i] === '--json') && args[i + 1]) {
 			jsonBody = args[++i];
 		} else if (args[i] === '--title' && args[i + 1]) {
 			patch.title = args[++i];
@@ -434,25 +468,24 @@ async function cmdUpdate(args, opts) {
 
 	if (jsonBody) {
 		if (Object.keys(patch).length > 0) {
-			throw new Error('Cannot combine --json-body with --title, --description, --status, --complexity, or --assignee. Use --json-body alone.');
+			throw new Error('Cannot combine --json/--json-body with --title, --description, --status, --complexity, or --assignee. Use --json/--json-body alone.');
 		}
 		try {
 			patch = JSON.parse(jsonBody);
 		} catch {
-			throw new Error('Invalid JSON in --json-body.');
+			throw new Error('Invalid JSON in --json/--json-body.');
 		}
-		if (patch.title) validateTitle(patch.title);
-		if (patch.description) validateDescription(patch.description);
-		if (patch.status) validateStatus(patch.status);
-		if (patch.complexity) validateComplexity(patch.complexity);
+		if ('title' in patch) validateTitle(patch.title);
+		if ('description' in patch) validateDescription(patch.description);
+		if ('status' in patch) validateStatus(patch.status);
+		if ('complexity' in patch) validateComplexity(patch.complexity);
 	}
 
 	const hasPatch = Object.keys(patch).length > 0;
 	const hasDeps = addDeps.length > 0 || removeDeps.length > 0;
 
 	if (!hasPatch && !hasDeps) {
-		console.error('Error: at least one field to update is required.');
-		process.exit(1);
+		throw new Error('Error: at least one field to update is required.');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -543,8 +576,7 @@ async function cmdUpdate(args, opts) {
 async function cmdGet(args, opts) {
 	const taskIdInput = args[0];
 	if (!taskIdInput) {
-		console.error('Usage: lightsprint get <taskId>');
-		process.exit(1);
+		throw new Error('Usage: lightsprint get <taskId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -553,7 +585,13 @@ async function cmdGet(args, opts) {
 	// Fetch task and dependencies in parallel
 	const [data, depData] = await Promise.all([
 		apiRequest(`/api/tasks/${taskId}`),
-		apiRequest(`/api/tasks/${taskId}/dependencies`).catch(() => ({ dependencies: [], dependents: [] }))
+		apiRequest(`/api/tasks/${taskId}/dependencies`).catch(err => {
+			// Only suppress 404 (endpoint unavailable); surface other errors as partial failure
+			if (err.message && (err.message.includes('404') || err.message.includes('not found'))) {
+				return { dependencies: [], dependents: [] };
+			}
+			return { dependencies: [], dependents: [], _error: err.message };
+		})
 	]);
 	const task = data.task;
 
@@ -580,10 +618,14 @@ async function cmdGet(args, opts) {
 		dependencies: dependencies.map(mapDep),
 		dependents: dependents.map(mapDep)
 	};
+	if (depData._error) result.dependenciesError = depData._error;
 
 	outputResult(result, opts, () => {
 		formatTaskText(task);
 
+		if (depData._error) {
+			console.error(`\nWarning: Could not fetch dependencies: ${depData._error}`);
+		}
 		if (result.dependencies.length > 0) {
 			console.log(`\nDepends on:`);
 			for (const d of result.dependencies) {
@@ -652,8 +694,7 @@ async function cmdClaim(args, opts) {
 
 	const taskIdInput = filteredArgs[0];
 	if (!taskIdInput) {
-		console.error('Usage: lightsprint claim <taskId>');
-		process.exit(1);
+		throw new Error('Usage: lightsprint claim <taskId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -715,8 +756,7 @@ async function cmdLinkPr(args, opts) {
 	const prUrl = args[1];
 
 	if (!taskIdInput || !prUrl) {
-		console.error('Usage: lightsprint link-pr <taskId> <prUrl>');
-		process.exit(1);
+		throw new Error('Usage: lightsprint link-pr <taskId> <prUrl>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -752,8 +792,7 @@ async function cmdUnlinkPr(args, opts) {
 	const taskIdInput = args[0];
 
 	if (!taskIdInput) {
-		console.error('Usage: lightsprint unlink-pr <taskId>');
-		process.exit(1);
+		throw new Error('Usage: lightsprint unlink-pr <taskId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -773,8 +812,7 @@ async function cmdComment(args, opts) {
 	const body = args.slice(1).join(' ');
 
 	if (!taskIdInput || !body) {
-		console.error('Usage: lightsprint comment <taskId> <body>');
-		process.exit(1);
+		throw new Error('Usage: lightsprint comment <taskId> <body>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -800,6 +838,7 @@ async function cmdComment(args, opts) {
 async function cmdWhoami(opts) {
 	const info = await getProjectInfo();
 
+	const proj = info.repo || info.project;
 	const result = {
 		user: info.user ? {
 			name: info.user.name,
@@ -807,9 +846,9 @@ async function cmdWhoami(opts) {
 			id: info.user.id
 		} : null,
 		project: {
-			name: info.project.name,
-			fullName: info.project.fullName || null,
-			id: info.project.id
+			name: proj.name,
+			fullName: proj.fullName || null,
+			id: proj.id
 		},
 		scopes: info.scopes
 	};
@@ -819,9 +858,9 @@ async function cmdWhoami(opts) {
 			console.log(`User: ${info.user.name}`);
 			if (info.user.email) console.log(`Email: ${info.user.email}`);
 		}
-		console.log(`Project: ${info.project.name}`);
-		if (info.project.fullName) console.log(`Repository: ${info.project.fullName}`);
-		console.log(`Project ID: ${info.project.id}`);
+		console.log(`Project: ${proj.name}`);
+		if (proj.fullName) console.log(`Repository: ${proj.fullName}`);
+		console.log(`Project ID: ${proj.id}`);
 		console.log(`Scopes: ${info.scopes.join(', ')}`);
 	});
 }
@@ -1013,7 +1052,7 @@ async function cmdUpgrade(currentVersion, opts) {
 
 	if (currentVersion === latestVersion) {
 		// Still ensure installed_plugins.json is correct (may be stale from older upgrades)
-		ensureInstalledPluginsJson(latestVersion);
+		ensureInstalledPluginsJson(latestVersion, { logger: log });
 		const result = { upgraded: false, current: currentVersion, latest: latestVersion, message: 'Already up to date.' };
 		return outputResult(result, opts, () => console.log(`Already up to date (v${currentVersion}).`));
 	}
@@ -1079,7 +1118,7 @@ async function cmdUpgrade(currentVersion, opts) {
 		// Remove old version directory if it exists (start fresh)
 		try { rmSync(pluginCacheDir, { recursive: true, force: true }); } catch {}
 		mkdirSync(pluginCacheDir, { recursive: true });
-		execSync(`tar -xzf "${tarPath}" -C "${pluginCacheDir}" --strip-components=1`, { stdio: 'ignore' });
+		execFileSync('tar', ['-xzf', tarPath, '-C', pluginCacheDir, '--strip-components=1'], { stdio: 'ignore' });
 		log('Extracted plugin files (hooks, skills, plugin metadata).');
 
 		// Install compiled binary to plugin cache (overwrites source bin/)
@@ -1106,7 +1145,7 @@ async function cmdUpgrade(currentVersion, opts) {
 		try { rmSync(tmpDir, { recursive: true }); } catch {}
 	}
 
-	ensureInstalledPluginsJson(latestVersion);
+	ensureInstalledPluginsJson(latestVersion, { logger: log });
 
 	// Clean up old version directories
 	const pluginParentDir = join(homedir(), '.claude', 'plugins', 'cache', 'lightsprint', 'lightsprint');
@@ -1144,7 +1183,7 @@ function cmdDescribe(args) {
 
 // ─── helpers ─────────────────────────────────────────────────────────────
 
-function ensureInstalledPluginsJson(version) {
+function ensureInstalledPluginsJson(version, { logger = console.log } = {}) {
 	const home = homedir();
 	const pluginCacheDir = join(home, '.claude', 'plugins', 'cache', 'lightsprint', 'lightsprint', version);
 	const installedPluginsPath = join(home, '.claude', 'plugins', 'installed_plugins.json');
@@ -1159,7 +1198,7 @@ function ensureInstalledPluginsJson(version) {
 			entries[0].version = version;
 			entries[0].lastUpdated = new Date().toISOString();
 			writeFileSync(installedPluginsPath, JSON.stringify(pluginsData, null, 2) + '\n');
-			console.log('Updated installed_plugins.json');
+			logger('Updated installed_plugins.json');
 		}
 	} catch (err) {
 		console.warn(`Warning: Could not update installed_plugins.json: ${err.message}`);
@@ -1175,7 +1214,7 @@ function ensureInstalledPluginsJson(version) {
  */
 async function resolveTaskId(input) {
 	const projectId = await getProjectId();
-	const data = await apiRequest(`/api/projects/${projectId}/tasks/resolve?ref=${encodeURIComponent(input)}`);
+	const data = await apiRequest(`/api/repos/${projectId}/tasks/resolve?ref=${encodeURIComponent(input)}`);
 	return data.taskId;
 }
 

@@ -170,11 +170,9 @@ export function validateBaseUrl(url) {
  * @returns {string}
  */
 export function validateVersion(version) {
-	if (!/^\d+\.\d+\.\d+/.test(version)) {
+	// Strict: only allow semver with optional pre-release/build metadata (alphanumeric, dots, hyphens)
+	if (!/^\d+\.\d+\.\d+([.a-zA-Z0-9-]*)$/.test(version)) {
 		throw new Error(`Invalid version format: "${version}". Expected semver (e.g. 1.2.3).`);
-	}
-	if (/[\\/]|\.\./.test(version)) {
-		throw new Error(`Invalid characters in version: "${version}".`);
 	}
 	return version;
 }
