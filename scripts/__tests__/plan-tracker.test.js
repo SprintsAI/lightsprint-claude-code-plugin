@@ -46,17 +46,17 @@ describe('plan-tracker', () => {
 	});
 
 	test('setActivePlan + getActivePlan round-trip', () => {
-		setActivePlan('plan-123', 'proj-456', 'sess-789');
+		setActivePlan('plan-123', 'repo-456', 'sess-789');
 
 		const result = getActivePlan();
 		expect(result).toBeDefined();
 		expect(result.planId).toBe('plan-123');
-		expect(result.projectId).toBe('proj-456');
+		expect(result.repoId).toBe('repo-456');
 		expect(result.sessionId).toBe('sess-789');
 	});
 
 	test('clearActivePlan removes the file', () => {
-		setActivePlan('plan-abc', 'proj-def', 'sess-ghi');
+		setActivePlan('plan-abc', 'repo-def', 'sess-ghi');
 		expect(getActivePlan()).toBeDefined();
 
 		clearActivePlan();
@@ -65,12 +65,12 @@ describe('plan-tracker', () => {
 	});
 
 	test('setActivePlan overwrites previous plan', () => {
-		setActivePlan('plan-1', 'proj-1', 'sess-1');
-		setActivePlan('plan-2', 'proj-2', 'sess-2');
+		setActivePlan('plan-1', 'repo-1', 'sess-1');
+		setActivePlan('plan-2', 'repo-2', 'sess-2');
 
 		const result = getActivePlan();
 		expect(result.planId).toBe('plan-2');
-		expect(result.projectId).toBe('proj-2');
+		expect(result.repoId).toBe('repo-2');
 		expect(result.sessionId).toBe('sess-2');
 	});
 

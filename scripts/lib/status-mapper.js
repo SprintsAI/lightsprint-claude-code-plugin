@@ -1,5 +1,5 @@
 /**
- * Maps Lightsprint project statuses to Claude Code task statuses.
+ * Maps Lightsprint repo statuses to Claude Code task statuses.
  *
  * Claude Code: pending → in_progress → completed (+ deleted)
  * Lightsprint: todo → in_progress → in_review → done

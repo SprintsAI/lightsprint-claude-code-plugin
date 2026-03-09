@@ -4,7 +4,7 @@
  * Handles automatic token refresh when access token expires.
  */
 
-import { requireConfig, readProjectsFile, writeProjectsFile } from './config.js';
+import { requireConfig, readReposFile, writeReposFile } from './config.js';
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -30,7 +30,7 @@ async function config() {
 
 /**
  * Refresh the access token using the refresh token.
- * Updates projects.json with new tokens atomically.
+ * Updates repos.json with new tokens atomically.
  * @returns {boolean} true if refresh succeeded
  */
 async function refreshTokenIfNeeded() {
@@ -63,14 +63,14 @@ async function refreshTokenIfNeeded() {
 
 		const data = await response.json();
 
-		// Update projects.json atomically
-		const projects = readProjectsFile();
+		// Update repos.json atomically
+		const repos = readReposFile();
 		const key = cfg.repo;
-		if (projects[key]) {
-			projects[key].accessToken = data.access_token;
-			projects[key].refreshToken = data.refresh_token;
-			projects[key].expiresAt = Date.now() + (data.expires_in * 1000);
-			writeProjectsFile(projects);
+		if (repos[key]) {
+			repos[key].accessToken = data.access_token;
+			repos[key].refreshToken = data.refresh_token;
+			repos[key].expiresAt = Date.now() + (data.expires_in * 1000);
+			writeReposFile(repos);
 		}
 
 		// Update in-memory config
@@ -161,25 +161,25 @@ export async function apiRequest(path, options = {}) {
 }
 
 /**
- * Get project info from the token.
- * @returns {Promise<{ project: { id: string, name: string }, scopes: string[] }>}
+ * Get repo info from the token.
+ * @returns {Promise<{ repo: { id: string, name: string }, scopes: string[] }>}
  */
-let _projectInfo = null;
-export async function getProjectInfo() {
-	if (_projectInfo) return _projectInfo;
-	_projectInfo = await apiRequest('/api/repo-key/info');
-	return _projectInfo;
+let _repoInfo = null;
+export async function getRepoInfo() {
+	if (_repoInfo) return _repoInfo;
+	_repoInfo = await apiRequest('/api/repo-key/info');
+	return _repoInfo;
 }
 
 /**
- * Get the project ID from the token.
+ * Get the repo ID from the token.
  * @returns {Promise<string>}
  */
-export async function getProjectId() {
-	// Use the projectId from config first (faster, no API call)
+export async function getRepoId() {
+	// Use the repoId from config first (faster, no API call)
 	const cfg = await config();
-	if (cfg.projectId) return cfg.projectId;
+	if (cfg.repoId) return cfg.repoId;
 
-	const info = await getProjectInfo();
+	const info = await getRepoInfo();
 	return info.repo?.id || info.project?.id;
 }

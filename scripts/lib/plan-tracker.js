@@ -21,26 +21,26 @@ function ensureDir() {
 /**
  * Set the active plan being reviewed.
  * @param {string} planId
- * @param {string} projectId
+ * @param {string} repoId
  * @param {string} sessionId
  */
-export function setActivePlan(planId, projectId, sessionId) {
+export function setActivePlan(planId, repoId, sessionId) {
 	ensureDir();
 	const tmp = ACTIVE_FILE + '.' + randomBytes(4).toString('hex');
-	writeFileSync(tmp, JSON.stringify({ planId, projectId, sessionId, updatedAt: new Date().toISOString() }));
+	writeFileSync(tmp, JSON.stringify({ planId, repoId, sessionId, updatedAt: new Date().toISOString() }));
 	renameSync(tmp, ACTIVE_FILE);
 }
 
 /**
  * Get the active plan.
- * @returns {{ planId: string, projectId: string } | undefined}
+ * @returns {{ planId: string, repoId: string } | undefined}
  */
 export function getActivePlan() {
 	try {
 		if (existsSync(ACTIVE_FILE)) {
 			const data = JSON.parse(readFileSync(ACTIVE_FILE, 'utf-8'));
-			if (data.planId && data.projectId) {
-				return { planId: data.planId, projectId: data.projectId, sessionId: data.sessionId };
+			if (data.planId && data.repoId) {
+				return { planId: data.planId, repoId: data.repoId, sessionId: data.sessionId };
 			}
 		}
 	} catch {

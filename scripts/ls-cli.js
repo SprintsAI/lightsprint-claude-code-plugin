@@ -18,11 +18,11 @@ import { execFileSync, execSync } from 'child_process';
 import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
-import { apiRequest, getProjectId, getProjectInfo } from './lib/client.js';
+import { apiRequest, getRepoId, getRepoInfo } from './lib/client.js';
 import { setMapping } from './lib/task-map.js';
 import { lsToCcStatus } from './lib/status-mapper.js';
 import { authenticate } from './lib/auth.js';
-import { getConfig, getDefaultBaseUrl, readProjectsFile, writeProjectsFile, getGitRepoFullName } from './lib/config.js';
+import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
@@ -68,7 +68,7 @@ export async function cliMain(command, args, context = {}) {
 // ─── help ────────────────────────────────────────────────────────────────
 
 function showHelp() {
-	console.log(`Lightsprint CLI — Manage tasks on your Lightsprint project board
+	console.log(`Lightsprint CLI — Manage tasks on your Lightsprint repo board
 
 Usage:
   lightsprint <command> [options] [--output json|text] [--dry-run] [--fields f1,f2]
@@ -77,7 +77,7 @@ Usage:
 Commands:
 
   tasks [options]
-    List tasks from the project board
+    List tasks from the repo board
     Options:
       --status <status>     Filter by status (comma-separated): backlog, todo, in_progress, in_review, done
       --complexity <level>  Filter by complexity: low, medium, high
@@ -144,13 +144,13 @@ Commands:
       lightsprint describe create
 
   open
-    Open the project board in your browser
+    Open the repo board in your browser
 
   status
     Show Lightsprint connection status for the current repository
 
   whoami
-    Display current project and authentication info
+    Display current repo and authentication info
 
   connect [--base-url <url>]
     Authenticate and connect to Lightsprint (run this first if not authenticated)
@@ -181,7 +181,7 @@ Global Flags:
 // ─── tasks ───────────────────────────────────────────────────────────────
 
 async function cmdTasks(args, opts) {
-	const projectId = await getProjectId();
+	const repoId = await getRepoId();
 	const params = new URLSearchParams();
 
 	// Parse args
@@ -236,7 +236,7 @@ async function cmdTasks(args, opts) {
 	if (mine) params.set('assignee', 'me');
 	else if (assigneeFilter) params.set('assignee', assigneeFilter);
 
-	validateId(projectId, 'Project ID');
+	validateId(repoId, 'Repo ID');
 
 	// --page-all: stream all pages as NDJSON (one task per line)
 	if (pageAll) {
@@ -246,7 +246,7 @@ async function cmdTasks(args, opts) {
 		while (hasMore) {
 			params.set('limit', String(pageLimit));
 			params.set('offset', String(pageOffset));
-			const pageData = await apiRequest(`/api/repos/${projectId}/tasks?${params}`);
+			const pageData = await apiRequest(`/api/repos/${repoId}/tasks?${params}`);
 			const pageTasks = pageData.tasks || [];
 			const prefix = pageData.taskPrefix || 'LS';
 			for (const task of pageTasks) {
@@ -270,7 +270,7 @@ async function cmdTasks(args, opts) {
 		return;
 	}
 
-	const data = await apiRequest(`/api/repos/${projectId}/tasks?${params}`);
+	const data = await apiRequest(`/api/repos/${repoId}/tasks?${params}`);
 	let tasks = data.tasks || [];
 
 	const prefix = data.taskPrefix || 'LS';
@@ -328,7 +328,7 @@ async function cmdCreate(args, opts) {
 		throw new Error('Usage: lightsprint create <title> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <id1,id2,...>]');
 	}
 
-	const projectId = await getProjectId();
+	const repoId = await getRepoId();
 
 	// Check for --json-body
 	let jsonBody = null;
@@ -400,11 +400,11 @@ async function cmdCreate(args, opts) {
 
 	// Dry-run: validate only, don't call API
 	if (opts.dryRun) {
-		return outputDryRun('create', body, `POST /api/repos/${projectId}/tasks`, opts);
+		return outputDryRun('create', body, `POST /api/repos/${repoId}/tasks`, opts);
 	}
 
-	validateId(projectId, 'Project ID');
-	const data = await apiRequest(`/api/repos/${projectId}/tasks`, {
+	validateId(repoId, 'Repo ID');
+	const data = await apiRequest(`/api/repos/${repoId}/tasks`, {
 		method: 'POST',
 		body: JSON.stringify(body)
 	});
@@ -836,19 +836,19 @@ async function cmdComment(args, opts) {
 // ─── whoami ──────────────────────────────────────────────────────────────
 
 async function cmdWhoami(opts) {
-	const info = await getProjectInfo();
+	const info = await getRepoInfo();
 
-	const proj = info.repo || info.project;
+	const repo = info.repo || info.project;
 	const result = {
 		user: info.user ? {
 			name: info.user.name,
 			email: info.user.email,
 			id: info.user.id
 		} : null,
-		project: {
-			name: proj.name,
-			fullName: proj.fullName || null,
-			id: proj.id
+		repo: {
+			name: repo.name,
+			fullName: repo.fullName || null,
+			id: repo.id
 		},
 		scopes: info.scopes
 	};
@@ -858,9 +858,9 @@ async function cmdWhoami(opts) {
 			console.log(`User: ${info.user.name}`);
 			if (info.user.email) console.log(`Email: ${info.user.email}`);
 		}
-		console.log(`Project: ${proj.name}`);
-		if (proj.fullName) console.log(`Repository: ${proj.fullName}`);
-		console.log(`Project ID: ${proj.id}`);
+		console.log(`Repo: ${repo.name}`);
+		if (repo.fullName) console.log(`Repository: ${repo.fullName}`);
+		console.log(`Repo ID: ${repo.id}`);
 		console.log(`Scopes: ${info.scopes.join(', ')}`);
 	});
 }
@@ -875,7 +875,7 @@ function cmdOpen(opts) {
 		throw new Error('Not connected to Lightsprint. Run "lightsprint connect" first.');
 	}
 
-	const url = `${cfg.baseUrl}/projects/${cfg.projectId}`;
+	const url = `${cfg.baseUrl}/repos/${cfg.repoId}`;
 
 	let opened = false;
 	const platform = process.platform;
@@ -915,7 +915,7 @@ function cmdStatus(opts) {
 			console.log('To get started:\n');
 			console.log('  1. Run:  lightsprint connect');
 			console.log('  2. Authorize in the browser when prompted');
-			console.log('  3. Select the project to link to this repository\n');
+			console.log('  3. Select the repo to link to this repository\n');
 			console.log('For a custom instance:\n');
 			console.log('  lightsprint connect --base-url https://your-instance.lightsprint.ai');
 		});
@@ -930,16 +930,16 @@ function cmdStatus(opts) {
 
 	const result = {
 		connected: true,
-		projectName: cfg.projectName || 'unknown',
-		projectId: cfg.projectId,
+		repoName: cfg.repoName || 'unknown',
+		repoId: cfg.repoId,
 		repo: cfg.repo,
 		baseUrl: cfg.baseUrl,
 		token: { valid: tokenValid, remainingMs: remainingMs != null ? Math.max(0, remainingMs) : null }
 	};
 
 	outputResult(result, opts, () => {
-		console.log(`Project:    ${cfg.projectName || 'unknown'}`);
-		console.log(`Project ID: ${cfg.projectId}`);
+		console.log(`Repo:       ${cfg.repoName || 'unknown'}`);
+		console.log(`Repo ID:    ${cfg.repoId}`);
 		console.log(`Repository: ${cfg.repo}`);
 		console.log(`Base URL:   ${cfg.baseUrl}`);
 		if (cfg.expiresAt) {
@@ -973,8 +973,8 @@ async function cmdConnect(args, opts) {
 	if (cfg && opts.outputFormat === 'json') {
 		const result = {
 			connected: true,
-			projectName: cfg.projectName || null,
-			projectId: cfg.projectId,
+			repoName: cfg.repoName || null,
+			repoId: cfg.repoId,
 			repo: cfg.repo
 		};
 		console.log(JSON.stringify(result));
@@ -984,16 +984,16 @@ async function cmdConnect(args, opts) {
 // ─── disconnect ──────────────────────────────────────────────────────
 
 async function cmdDisconnect(args, opts) {
-	const projects = readProjectsFile();
+	const repos = readReposFile();
 	const cwd = process.cwd();
 
 	// Find matching entries: repo name + walk up from cwd
 	const toRemove = [];
 	const repoName = getGitRepoFullName(cwd);
-	if (repoName && projects[repoName]) {
+	if (repoName && repos[repoName]) {
 		toRemove.push(repoName);
 	}
-	for (const [folder] of Object.entries(projects)) {
+	for (const [folder] of Object.entries(repos)) {
 		if (!cwd.startsWith(folder) && folder !== cwd) continue;
 		toRemove.push(folder);
 	}
@@ -1005,18 +1005,18 @@ async function cmdDisconnect(args, opts) {
 
 	const disconnected = [];
 	for (const folder of toRemove) {
-		const entry = projects[folder];
-		const projectName = entry.projectName || entry.baseUrl || 'unknown';
-		delete projects[folder];
-		disconnected.push({ key: folder, projectName });
+		const entry = repos[folder];
+		const repoDisplayName = entry.repoName || entry.baseUrl || 'unknown';
+		delete repos[folder];
+		disconnected.push({ key: folder, repoName: repoDisplayName });
 	}
 
-	writeProjectsFile(projects);
+	writeReposFile(repos);
 
 	const result = { disconnected };
 	outputResult(result, opts, () => {
 		for (const d of disconnected) {
-			console.log(`Disconnected: ${d.projectName} (${d.key})`);
+			console.log(`Disconnected: ${d.repoName} (${d.key})`);
 		}
 	});
 }
@@ -1213,8 +1213,8 @@ function ensureInstalledPluginsJson(version, { logger = console.log } = {}) {
  *   - Raw ID: "YCRFHw7OeZUbogdOtYnFh" (returned as-is)
  */
 async function resolveTaskId(input) {
-	const projectId = await getProjectId();
-	const data = await apiRequest(`/api/repos/${projectId}/tasks/resolve?ref=${encodeURIComponent(input)}`);
+	const repoId = await getRepoId();
+	const data = await apiRequest(`/api/repos/${repoId}/tasks/resolve?ref=${encodeURIComponent(input)}`);
 	return data.taskId;
 }
 

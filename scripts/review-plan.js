@@ -26,7 +26,7 @@ import { appendFileSync, mkdirSync, existsSync, readFileSync, realpathSync } fro
 import { join, resolve, normalize } from 'path';
 import { homedir } from 'os';
 import { getConfig } from './lib/config.js';
-import { apiRequest, getProjectId } from './lib/client.js';
+import { apiRequest, getRepoId } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
 import { findFreePort } from './lib/cc-utils.js';
@@ -188,7 +188,7 @@ This subcommand is typically invoked automatically as a Claude Code hook when yo
 call the ExitPlanMode action. It:
 
   1. Reads plan content from stdin or a file
-  2. Uploads the plan to your Lightsprint project board
+  2. Uploads the plan to your Lightsprint repo board
   3. Opens your browser for interactive review
   4. Allows you to approve or reject the plan
   5. Returns the decision back to Claude Code
@@ -419,14 +419,14 @@ export async function reviewPlanMain(args) {
 
 	try {
 		// 3. Upload plan
-		log('info', 'Getting project ID...');
-		const projectId = await getProjectId();
-		log('info', 'Got project ID', { projectId });
+		log('info', 'Getting repo ID...');
+		const repoId = await getRepoId();
+		log('info', 'Got repo ID', { repoId });
 		let planId;
 
 		const activePlan = getActivePlan();
 
-		if (activePlan && activePlan.projectId === projectId && activePlan.sessionId === sessionId) {
+		if (activePlan && activePlan.repoId === repoId && activePlan.sessionId === sessionId) {
 			// Try PUT to create a new version on the existing plan
 			try {
 				validateId(activePlan.planId, 'Plan ID');
@@ -445,8 +445,8 @@ export async function reviewPlanMain(args) {
 
 		if (!planId) {
 			// POST new plan
-			validateId(projectId, 'Project ID');
-			const createResult = await apiRequest(`/api/repos/${projectId}/plans`, {
+			validateId(repoId, 'Repo ID');
+			const createResult = await apiRequest(`/api/repos/${repoId}/plans`, {
 				method: 'POST',
 				body: JSON.stringify({ content: plan, allowedPrompts })
 			});
@@ -458,11 +458,11 @@ export async function reviewPlanMain(args) {
 				process.exit(0);
 			}
 
-			log('info', 'Created new plan', { planId, projectId });
+			log('info', 'Created new plan', { planId, repoId });
 		}
 
 		// Update active plan tracker
-		setActivePlan(planId, projectId, sessionId);
+		setActivePlan(planId, repoId, sessionId);
 
 		// 4. Start callback server
 		const port = await findFreePort();

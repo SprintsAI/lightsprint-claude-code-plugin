@@ -1,12 +1,12 @@
 # Lightsprint Claude Code Plugin
 
-Claude Code plugin for Lightsprint — plan review, task management skills, and project board integration.
+Claude Code plugin for Lightsprint — plan review, task management skills, and repo board integration.
 
 ## Prerequisites
 
 - **Claude Code** CLI installed
 - **Node.js >= 18** (for built-in `fetch`)
-- A **Lightsprint project** at [lightsprint.ai](https://lightsprint.ai)
+- A **Lightsprint repo** at [lightsprint.ai](https://lightsprint.ai)
 
 ## Quick Start
 
@@ -22,7 +22,7 @@ Then use any `/lightsprint:` command — the plugin opens your browser to connec
 /lightsprint:tasks
 ```
 
-That's it. Each new project folder auto-prompts for authorization when you first use a command there.
+That's it. Each new repo folder auto-prompts for authorization when you first use a command there.
 
 ---
 
@@ -42,13 +42,13 @@ If you're installing from a non-interactive environment (e.g., Claude Code, CI, 
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh)" <<< $'Y\nY'
 ```
 
-The plugin will be installed but the project connection step will be skipped. You can connect later by running `/lightsprint:tasks` inside a git repository.
+The plugin will be installed but the repo connection step will be skipped. You can connect later by running `/lightsprint:tasks` inside a git repository.
 
 ---
 
 ## Authentication
 
-Authentication is **on-demand** — the first time you use a `/lightsprint:` command in an unconnected folder, the plugin opens your browser to authorize. You pick a Lightsprint project, and tokens are saved locally. Tokens refresh automatically.
+Authentication is **on-demand** — the first time you use a `/lightsprint:` command in an unconnected folder, the plugin opens your browser to authorize. You pick a Lightsprint repo, and tokens are saved locally. Tokens refresh automatically.
 
 ### Token resolution
 
@@ -60,9 +60,9 @@ The plugin resolves tokens by:
 
 A single authorization at your repo root works for all subdirectories and worktrees. Hooks silently skip if no authorization exists (they never prompt).
 
-### Multiple projects
+### Multiple repos
 
-Each folder can connect to a different Lightsprint project. The plugin prompts automatically when you use a command in a new folder.
+Each folder can connect to a different Lightsprint repo. The plugin prompts automatically when you use a command in a new folder.
 
 ### Optional: Custom base URL
 
@@ -137,7 +137,7 @@ Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
 
 | File | Purpose |
 |---|---|
-| `~/.lightsprint/projects.json` | Per-folder OAuth tokens (access + refresh + expiry + project ID) |
+| `~/.lightsprint/repos.json` | Per-folder OAuth tokens (access + refresh + expiry + repo ID) |
 | `~/.lightsprint/active-task.json` | Currently in-progress task |
 
 ---
@@ -148,7 +148,7 @@ Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
 curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/uninstall.sh | bash
 ```
 
-This removes the plugin from Claude Code and deletes the authorization for the current folder. Other folders' authorizations in `~/.lightsprint/projects.json` are preserved.
+This removes the plugin from Claude Code and deletes the authorization for the current folder. Other folders' authorizations in `~/.lightsprint/repos.json` are preserved.
 
 ---
 

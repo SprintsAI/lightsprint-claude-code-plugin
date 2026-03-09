@@ -77,14 +77,14 @@ export async function main(args) {
 			ccPid: existingDaemonState.ccPid,
 			ccSessionId,
 			lsSessionId: existingDaemonState.lsSessionId,
-			projectId: existingDaemonState.projectId,
+			repoId: existingDaemonState.repoId,
 		});
 		return;
 	}
 
 	// Spawn cc-daemon as detached child
 	const gitBranch = getGitBranch(cwd);
-	log('Spawning daemon', { ccSessionId, projectId: cfg.projectId, ccPid, cwd });
+	log('Spawning daemon', { ccSessionId, repoId: cfg.repoId, ccPid, cwd });
 
 	// Write credentials to a temp file (0o600) so they don't leak via /proc/pid/environ
 	const credsDir = join(homedir(), '.lightsprint', 'cc-sessions');
@@ -107,7 +107,7 @@ export async function main(args) {
 			LIGHTSPRINT_BASE_URL: process.env.LIGHTSPRINT_BASE_URL || '',
 			LS_CREDS_FILE: credsPath,
 			LS_BASE_URL: cfg.baseUrl,
-			LS_PROJECT_ID: cfg.projectId,
+			LS_REPO_ID: cfg.repoId,
 			LS_SESSION_ID: ccSessionId,
 			LS_CWD: cwd,
 			LS_CC_PID: String(ccPid),

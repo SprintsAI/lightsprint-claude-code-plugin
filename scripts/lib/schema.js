@@ -9,7 +9,7 @@ import { VALID_STATUSES, VALID_COMPLEXITIES, MAX_TITLE_LENGTH, MAX_DESCRIPTION_L
 
 const COMMAND_SCHEMAS = {
 	tasks: {
-		description: 'List tasks from the project board',
+		description: 'List tasks from the repo board',
 		params: {
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'Filter by status' },
 			assignee: { type: 'string', flag: '--assignee', description: 'Filter by assignee name/email (case-insensitive substring)' },
@@ -98,13 +98,13 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	whoami: {
-		description: 'Show current project and auth info',
+		description: 'Show current repo and auth info',
 		params: {},
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
 	open: {
-		description: 'Open project board in browser',
+		description: 'Open repo board in browser',
 		params: {},
 		supportsDryRun: false,
 		supportsJsonBody: false

@@ -1,6 +1,6 @@
 ---
 name: tasks
-description: List tasks from the Lightsprint (ls) project board. Use when you need to see what work is available.
+description: List tasks from the Lightsprint (ls) repo board. Use when you need to see what work is available.
 ---
 
 Run this command to list tasks from Lightsprint:

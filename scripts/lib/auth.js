@@ -2,11 +2,11 @@
  * On-demand OAuth flow for Lightsprint.
  *
  * Opens the browser to authorize-cli, waits for the callback,
- * and saves tokens to ~/.lightsprint/projects.json.
+ * and saves tokens to ~/.lightsprint/repos.json.
  */
 
 import { createServer } from 'http';
-import { readProjectsFile, writeProjectsFile, ensureConfigDir, getGitRepoFullName } from './config.js';
+import { readReposFile, writeReposFile, ensureConfigDir, getGitRepoFullName } from './config.js';
 import { findBrowserProfileForEmail, openBrowser } from './browser.js';
 import { findFreePort } from './cc-utils.js';
 
@@ -14,7 +14,7 @@ import { findFreePort } from './cc-utils.js';
  * Start a local HTTP server and wait for the OAuth callback.
  * @param {number} port
  * @param {number} [timeoutMs=120000]
- * @returns {Promise<{ skipped?: boolean, accessToken?: string, refreshToken?: string, expiresIn?: string, project?: string, projectId?: string }>}
+ * @returns {Promise<{ skipped?: boolean, accessToken?: string, refreshToken?: string, expiresIn?: string, repoDisplayName?: string, repoId?: string }>}
  */
 function waitForCallback(port, timeoutMs = 120000) {
 	return new Promise((resolve, reject) => {
@@ -58,8 +58,8 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 					accessToken: url.searchParams.get('access_token'),
 					refreshToken: url.searchParams.get('refresh_token'),
 					expiresIn: url.searchParams.get('expires_in'),
-					project: url.searchParams.get('repo'),
-					projectId: url.searchParams.get('repo_id'),
+					repoDisplayName: url.searchParams.get('repo'),
+					repoId: url.searchParams.get('repo_id'),
 					email: url.searchParams.get('email')
 				};
 				res.writeHead(200, { 'Content-Type': 'text/html', 'Connection': 'close' });
@@ -119,7 +119,7 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 /**
  * Run the full OAuth flow: open browser, wait for callback, save tokens.
  * @param {string} [baseUrl='https://lightsprint.ai']
- * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, repo: string, baseUrl: string }>}
+ * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, repoId: string, repoName: string, repo: string, baseUrl: string }>}
  */
 export async function authenticate(baseUrl = 'https://lightsprint.ai', options = {}) {
 	const { cwd, quiet } = options;
@@ -143,9 +143,9 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai', options =
 	const result = await waitForCallback(port);
 
 	if (result.skipped) {
-		const projects = readProjectsFile();
-		projects[repoFullName] = { skipped: true };
-		writeProjectsFile(projects);
+		const repos = readReposFile();
+		repos[repoFullName] = { skipped: true };
+		writeReposFile(repos);
 		if (!quiet) console.log('Lightsprint skipped for this repository.');
 		return { skipped: true, repo: repoFullName, baseUrl };
 	}
@@ -161,18 +161,18 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai', options =
 		accessToken: result.accessToken,
 		refreshToken: result.refreshToken,
 		expiresAt: Date.now() + (parseInt(result.expiresIn) * 1000),
-		projectId: result.projectId,
-		projectName: result.project,
+		repoId: result.repoId,
+		repoName: result.repoDisplayName,
 		baseUrl,
 		...(result.email ? { email: result.email } : {}),
 		...(browserProfile || {}),
 	};
 
-	const projects = readProjectsFile();
-	projects[repoFullName] = entry;
-	writeProjectsFile(projects);
+	const repos = readReposFile();
+	repos[repoFullName] = entry;
+	writeReposFile(repos);
 
-	if (!quiet) console.log(`Connected to project: ${result.project}`);
+	if (!quiet) console.log(`Connected to repo: ${result.repoDisplayName}`);
 
 	return { ...entry, repo: repoFullName, baseUrl };
 }

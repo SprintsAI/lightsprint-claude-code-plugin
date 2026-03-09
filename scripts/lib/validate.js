@@ -10,7 +10,7 @@
 const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
- * Validate that an ID (task, plan, project) contains only safe characters.
+ * Validate that an ID (task, plan, repo) contains only safe characters.
  * Rejects path traversal, query params, and control characters.
  * @param {string} id - The ID to validate
  * @param {string} [label='ID'] - Label for error messages (e.g. 'Task ID', 'Plan ID')

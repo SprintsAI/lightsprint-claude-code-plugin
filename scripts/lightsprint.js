@@ -4,15 +4,15 @@
  *
  * Subcommands:
  *   review-plan [input]    Plan review hook handler (invoked by Claude Code hooks)
- *   tasks [options]         List tasks from the project board
+ *   tasks [options]         List tasks from the repo board
  *   create <title> [opts]   Create a new task
  *   update <taskId> [opts]  Update an existing task
  *   get <taskId>            Show full task details
  *   claim <taskId>          Claim a task (set to in_progress)
  *   comment <taskId> <body> Add a comment to a task
- *   open                    Open project board in the browser
+ *   open                    Open repo board in the browser
  *   status                  Show connection status
- *   whoami                  Show project/auth info
+ *   whoami                  Show repo/auth info
  *   connect [--base-url]    Authenticate and connect
  *   disconnect              Remove credentials for this folder
  *   upgrade                 Upgrade to the latest version
@@ -70,16 +70,16 @@ Usage:
 
 Commands:
   review-plan [input]     Review an implementation plan (Claude Code hook)
-  tasks [options]         List tasks from the project board
+  tasks [options]         List tasks from the repo board
   create <title> [opts]   Create a new task
   update <taskId> [opts]  Update an existing task
   get <taskId>            Show full task details
   claim <taskId>          Claim a task (set to in_progress)
   comment <taskId> <body> Add a comment to a task
   describe [command]      Show accepted parameters/types as JSON
-  open                    Open the project board in your browser
+  open                    Open the repo board in your browser
   status                  Show connection status for this repository
-  whoami                  Show project/auth info
+  whoami                  Show repo/auth info
   connect [--base-url]    Authenticate and connect to Lightsprint
   disconnect              Remove Lightsprint credentials for this repository
   upgrade                 Upgrade to the latest version

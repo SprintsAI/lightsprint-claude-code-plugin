@@ -17,7 +17,7 @@
  *
  * Env vars (set by cc-start.js):
  *   LS_ACCESS_TOKEN, LS_REFRESH_TOKEN, LS_EXPIRES_AT, LS_BASE_URL,
- *   LS_PROJECT_ID, LS_SESSION_ID, LS_CWD, LS_CC_PID, LS_GIT_BRANCH
+ *   LS_REPO_ID, LS_SESSION_ID, LS_CWD, LS_CC_PID, LS_GIT_BRANCH
  */
 
 import { createServer } from 'http';
@@ -26,7 +26,7 @@ import { outputAllow, outputDeny, extractPlanFromTranscript, readPlanFromFile, w
 import { apiRequest, setConfig } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
-import { getConfig, readProjectsFile, writeProjectsFile } from './lib/config.js';
+import { getConfig, readReposFile, writeReposFile } from './lib/config.js';
 import { createHash, randomBytes } from 'crypto';
 import { hostname, homedir } from 'os';
 import { resolve, normalize } from 'path';
@@ -34,9 +34,9 @@ import { validateId } from './lib/validate.js';
 
 import { readFileSync, unlinkSync, realpathSync } from 'fs';
 
-// Resolve config: credentials file (secure) > env vars (legacy) > projects.json
+// Resolve config: credentials file (secure) > env vars (legacy) > repos.json
 const CWD = process.env.LS_CWD || process.cwd();
-const projectConfig = getConfig(CWD);
+const repoConfig = getConfig(CWD);
 
 let _accessToken, _refreshToken, _expiresAt;
 const credsFile = process.env.LS_CREDS_FILE;
@@ -53,11 +53,11 @@ if (credsFile) {
 	}
 }
 
-let ACCESS_TOKEN = _accessToken || process.env.LS_ACCESS_TOKEN || projectConfig?.accessToken;
-let REFRESH_TOKEN = _refreshToken || process.env.LS_REFRESH_TOKEN || projectConfig?.refreshToken;
-let EXPIRES_AT = _expiresAt || (process.env.LS_EXPIRES_AT ? parseInt(process.env.LS_EXPIRES_AT, 10) : projectConfig?.expiresAt);
-const BASE_URL = process.env.LS_BASE_URL || projectConfig?.baseUrl;
-const PROJECT_ID = process.env.LS_PROJECT_ID || projectConfig?.projectId;
+let ACCESS_TOKEN = _accessToken || process.env.LS_ACCESS_TOKEN || repoConfig?.accessToken;
+let REFRESH_TOKEN = _refreshToken || process.env.LS_REFRESH_TOKEN || repoConfig?.refreshToken;
+let EXPIRES_AT = _expiresAt || (process.env.LS_EXPIRES_AT ? parseInt(process.env.LS_EXPIRES_AT, 10) : repoConfig?.expiresAt);
+const BASE_URL = process.env.LS_BASE_URL || repoConfig?.baseUrl;
+const REPO_ID = process.env.LS_REPO_ID || repoConfig?.repoId;
 const CC_SESSION_ID = process.env.LS_SESSION_ID;
 const CC_PID = parseInt(process.env.LS_CC_PID, 10);
 const GIT_BRANCH = process.env.LS_GIT_BRANCH || null;
@@ -155,16 +155,16 @@ async function refreshTokenIfNeeded() {
 		REFRESH_TOKEN = data.refresh_token;
 		EXPIRES_AT = Date.now() + (data.expires_in * 1000);
 
-		// Persist to projects.json so other processes pick up the new tokens
-		if (projectConfig?.repo) {
+		// Persist to repos.json so other processes pick up the new tokens
+		if (repoConfig?.repo) {
 			try {
-				const projects = readProjectsFile();
-				const key = projectConfig.repo;
-				if (projects[key]) {
-					projects[key].accessToken = ACCESS_TOKEN;
-					projects[key].refreshToken = REFRESH_TOKEN;
-					projects[key].expiresAt = EXPIRES_AT;
-					writeProjectsFile(projects);
+				const repos = readReposFile();
+				const key = repoConfig.repo;
+				if (repos[key]) {
+					repos[key].accessToken = ACCESS_TOKEN;
+					repos[key].refreshToken = REFRESH_TOKEN;
+					repos[key].expiresAt = EXPIRES_AT;
+					writeReposFile(repos);
 				}
 			} catch (err) {
 				log('Failed to persist refreshed tokens', { error: err.message });
@@ -423,7 +423,7 @@ async function handlePlanReview(data) {
 	let planId;
 	const activePlan = getActivePlan();
 
-	if (activePlan && activePlan.projectId === PROJECT_ID && activePlan.sessionId === hookSessionId) {
+	if (activePlan && activePlan.repoId === REPO_ID && activePlan.sessionId === hookSessionId) {
 		try {
 			validateId(activePlan.planId, 'Plan ID');
 			await apiRequest(`/api/plans/${activePlan.planId}/versions`, {
@@ -437,8 +437,8 @@ async function handlePlanReview(data) {
 	}
 
 	if (!planId) {
-		validateId(PROJECT_ID, 'Project ID');
-		const createResult = await apiRequest(`/api/repos/${PROJECT_ID}/plans`, {
+		validateId(REPO_ID, 'Repo ID');
+		const createResult = await apiRequest(`/api/repos/${REPO_ID}/plans`, {
 			method: 'POST',
 			body: JSON.stringify({ content: planContent, allowedPrompts, ccSessionId: lsSessionId || undefined })
 		});
@@ -446,7 +446,7 @@ async function handlePlanReview(data) {
 		if (!planId) return { decision: 'allow' };
 	}
 
-	setActivePlan(planId, PROJECT_ID, hookSessionId);
+	setActivePlan(planId, REPO_ID, hookSessionId);
 
 	// Start callback server and open browser
 	const callbackPort = await findFreePort();
@@ -490,9 +490,9 @@ function startWatchdog() {
 // -- Main --
 
 export async function main() {
-	log('Starting daemon', { ccSessionId: CC_SESSION_ID, projectId: PROJECT_ID, ccPid: CC_PID });
+	log('Starting daemon', { ccSessionId: CC_SESSION_ID, repoId: REPO_ID, ccPid: CC_PID });
 
-	if (!ACCESS_TOKEN || !BASE_URL || !PROJECT_ID || !CC_SESSION_ID) {
+	if (!ACCESS_TOKEN || !BASE_URL || !REPO_ID || !CC_SESSION_ID) {
 		log('Missing required env vars');
 		process.exit(1);
 	}
@@ -503,8 +503,8 @@ export async function main() {
 		get refreshToken() { return REFRESH_TOKEN; },
 		get expiresAt() { return EXPIRES_AT; },
 		baseUrl: BASE_URL,
-		projectId: PROJECT_ID,
-		repo: projectConfig?.repo,
+		repoId: REPO_ID,
+		repo: repoConfig?.repo,
 	});
 
 	// Start local HTTP server
@@ -521,7 +521,7 @@ export async function main() {
 		ccPid: CC_PID,
 		ccSessionId: CC_SESSION_ID,
 		lsSessionId: null, // Updated after session:start ack
-		projectId: PROJECT_ID,
+		repoId: REPO_ID,
 		daemonToken: DAEMON_AUTH_TOKEN,
 	});
 

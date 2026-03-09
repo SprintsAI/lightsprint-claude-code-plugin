@@ -63,7 +63,7 @@ function sessionFilePath(ccSessionId) {
 /**
  * Write session state atomically.
  * @param {string} ccSessionId
- * @param {object} state - { port, pid, ccPid, lsSessionId, projectId }
+ * @param {object} state - { port, pid, ccPid, lsSessionId, repoId }
  */
 export function writeSessionState(ccSessionId, state) {
 	mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
@@ -76,7 +76,7 @@ export function writeSessionState(ccSessionId, state) {
 /**
  * Read session state for a CC session.
  * @param {string} ccSessionId
- * @returns {object|null} - { port, pid, ccPid, lsSessionId, projectId } or null
+ * @returns {object|null} - { port, pid, ccPid, lsSessionId, repoId } or null
  */
 export function readSessionState(ccSessionId) {
 	try {

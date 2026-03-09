@@ -282,7 +282,7 @@ if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
 fi
 echo ""
 
-# ─── Interactive project connection ───────────────────────────────────────
+# ─── Interactive repo connection ──────────────────────────────────────────
 
 CURRENT_DIR="$(pwd)"
 
@@ -312,12 +312,12 @@ else
   echo "  No git repository detected"
   echo "─────────────────────────────────────────"
   echo ""
-  echo "  To connect a project to Lightsprint, open Claude Code"
+  echo "  To connect a repo to Lightsprint, open Claude Code"
   echo "  inside a git repository and run:"
   echo ""
   echo "    /lightsprint:tasks"
   echo ""
-  echo "  This will trigger the OAuth flow and link that project."
+  echo "  This will trigger the OAuth flow and link that repo."
 fi
 
 echo ""

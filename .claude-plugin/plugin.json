@@ -1,7 +1,7 @@
 {
   "name": "lightsprint",
   "version": "0.4.20",
-  "description": "Sync Claude Code tasks to Lightsprint project board for team visibility",
+  "description": "Sync Claude Code tasks to Lightsprint repo board for team visibility",
   "author": {
     "name": "Lightsprint",
     "url": "https://lightsprint.com"
@@ -9,7 +9,7 @@
   "repository": "https://github.com/SprintsAI/lightsprint-claude-code-plugin",
   "keywords": [
     "tasks",
-    "project-management",
+    "repo-management",
     "team"
   ]
 }

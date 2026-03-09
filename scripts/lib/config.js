@@ -1,8 +1,8 @@
 /**
  * Configuration loader for Lightsprint plugin.
  *
- * Per-project auth resolution:
- * 1. Git repo full name lookup (owner/repo) in ~/.lightsprint/projects.json
+ * Per-repo auth resolution:
+ * 1. Git repo full name lookup (owner/repo) in ~/.lightsprint/repos.json
  * 2. If no match found, trigger browser-based OAuth (interactive only)
  */
 
@@ -12,7 +12,7 @@ import { homedir } from 'os';
 import { execSync } from 'child_process';
 
 const CONFIG_DIR = join(homedir(), '.lightsprint');
-const PROJECTS_FILE = join(CONFIG_DIR, 'projects.json');
+const REPOS_FILE = join(CONFIG_DIR, 'repos.json');
 const PLUGIN_CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 
 export function ensureConfigDir() {
@@ -64,10 +64,10 @@ export function getDefaultBaseUrl() {
 	return url;
 }
 
-export function readProjectsFile() {
+export function readReposFile() {
 	try {
-		if (existsSync(PROJECTS_FILE)) {
-			return JSON.parse(readFileSync(PROJECTS_FILE, 'utf-8'));
+		if (existsSync(REPOS_FILE)) {
+			return JSON.parse(readFileSync(REPOS_FILE, 'utf-8'));
 		}
 	} catch {
 		// Corrupted file, ignore
@@ -75,9 +75,9 @@ export function readProjectsFile() {
 	return {};
 }
 
-export function writeProjectsFile(data) {
+export function writeReposFile(data) {
 	ensureConfigDir();
-	writeFileSync(PROJECTS_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
+	writeFileSync(REPOS_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
 /**
@@ -97,17 +97,17 @@ export function getGitRepoFullName(cwd) {
 }
 
 /**
- * Find the project config by git repo full name (owner/repo).
+ * Find the repo config by git repo full name (owner/repo).
  *
- * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, repo: string } | null}
+ * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, repoId: string, repoName: string, repo: string } | null}
  */
-function findProjectConfig(startDir) {
-	const projects = readProjectsFile();
+function findRepoConfig(startDir) {
+	const repos = readReposFile();
 	const dir = startDir || process.cwd();
 
 	const repoName = getGitRepoFullName(dir);
-	if (repoName && projects[repoName]) {
-		return { ...projects[repoName], repo: repoName };
+	if (repoName && repos[repoName]) {
+		return { ...repos[repoName], repo: repoName };
 	}
 
 	return null;
@@ -116,16 +116,16 @@ function findProjectConfig(startDir) {
 /**
  * Get the Lightsprint config for the current repo.
  * Returns null for unconfigured and skipped repos (hooks should skip silently).
- * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, repo: string, baseUrl: string } | null}
+ * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, repoId: string, repoName: string, repo: string, baseUrl: string } | null}
  */
 export function getConfig(cwd) {
-	const project = findProjectConfig(cwd);
-	if (!project || project.skipped) return null;
+	const repo = findRepoConfig(cwd);
+	if (!repo || repo.skipped) return null;
 
-	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || project.baseUrl || getDefaultBaseUrl();
+	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || repo.baseUrl || getDefaultBaseUrl();
 
 	return {
-		...project,
+		...repo,
 		baseUrl
 	};
 }
@@ -134,11 +134,11 @@ export function getConfig(cwd) {
  * Get config or trigger on-demand OAuth.
  * Only call from interactive contexts (skills/CLI), not hooks.
  * Returns null if the user previously skipped this repo.
- * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, projectId: string, projectName: string, repo: string, baseUrl: string } | null>}
+ * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, repoId: string, repoName: string, repo: string, baseUrl: string } | null>}
  */
 export async function requireConfig() {
-	const project = findProjectConfig();
-	if (project?.skipped) {
+	const repo = findRepoConfig();
+	if (repo?.skipped) {
 		console.log('Lightsprint is not connected for this repository (previously skipped).');
 		return null;
 	}
