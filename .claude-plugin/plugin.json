@@ -1,6 +1,6 @@
 {
   "name": "lightsprint",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Sync Claude Code tasks to Lightsprint repo board for team visibility",
   "author": {
     "name": "Lightsprint",
