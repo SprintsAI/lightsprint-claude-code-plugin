@@ -4,7 +4,7 @@
  *
  * Commands:
  *   tasks [--status todo|in_progress|in_review|done] [--assignee <name>] [--limit N] [--offset N]
- *   create <title> [--description <text>] [--complexity <level>] [--status <status>] [--depends-on <id1,id2,...>]
+ *   create <title> [--description <text>] [--complexity <level>] [--status <status>] [--depends-on <id1,id2,...>] [--cc-pid <pid>]
  *   update <taskId> [--title <text>] [--description <text>] [--status <status>] [--complexity <level>] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]
  *   get <taskId>
  *   claim <taskId> [--cc-pid <pid>]
@@ -325,7 +325,7 @@ async function cmdTasks(args, opts) {
 
 async function cmdCreate(args, opts) {
 	if (args.length === 0) {
-		throw new Error('Usage: lightsprint create <title> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <id1,id2,...>]');
+		throw new Error('Usage: lightsprint create <title> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <id1,id2,...>] [--cc-pid <pid>]');
 	}
 
 	const repoId = await getRepoId();
@@ -339,6 +339,7 @@ async function cmdCreate(args, opts) {
 	let complexity = null;
 	let status = 'todo';
 	let dependsOn = null;
+	let ccPidArg;
 
 	for (let i = 0; i < args.length; i++) {
 		if ((args[i] === '--json-body' || args[i] === '--json') && args[i + 1]) {
@@ -351,6 +352,8 @@ async function cmdCreate(args, opts) {
 			status = args[++i];
 		} else if (args[i] === '--depends-on' && args[i + 1]) {
 			dependsOn = args[++i];
+		} else if (args[i] === '--cc-pid' && args[i + 1]) {
+			ccPidArg = parseInt(args[++i], 10);
 		} else {
 			titleParts.push(args[i]);
 		}
@@ -397,6 +400,19 @@ async function cmdCreate(args, opts) {
 		dependencyTaskIds = await Promise.all(rawIds.map(id => resolveTaskId(id)));
 	}
 	if (dependencyTaskIds) body.dependencyTaskIds = dependencyTaskIds;
+
+	// Best-effort: discover the active CC session's Lightsprint session ID
+	let lsSessionId;
+	try {
+		const ccPid = ccPidArg || getClaudeCodePid();
+		const daemonState = findRunningDaemonForCcPid(ccPid);
+		if (daemonState?.lsSessionId) {
+			lsSessionId = daemonState.lsSessionId;
+		}
+	} catch {
+		// Session discovery failed — continue without linking
+	}
+	if (lsSessionId) body.lsSessionId = lsSessionId;
 
 	// Dry-run: validate only, don't call API
 	if (opts.dryRun) {

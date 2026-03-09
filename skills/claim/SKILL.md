@@ -11,6 +11,8 @@ lightsprint claim --cc-pid $PPID $ARGUMENTS
 
 Task ID can be a display ID (e.g. `LIG-024`), bare task number (e.g. `24`), or raw ID. All formats are resolved server-side.
 
+**Important:** Only root tasks (tasks with no parent) can be claimed. Subtasks cannot be claimed directly — claim their parent task instead.
+
 After claiming, show the user the task details and ask if they want to start working on it now. Do NOT automatically begin working on the task.
 
 If the user confirms they want to start working:

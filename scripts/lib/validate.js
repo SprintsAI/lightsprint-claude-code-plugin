@@ -30,7 +30,7 @@ export function validateId(id, label = 'ID') {
 
 export const VALID_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'done'];
 export const VALID_COMPLEXITIES = ['low', 'medium', 'high'];
-export const VALID_DEPS_FILTERS = ['has-dependencies', 'has-dependents', 'unblocked'];
+export const VALID_DEPS_FILTERS = ['has-dependencies', 'has-no-dependencies', 'has-dependents', 'unblocked'];
 
 /**
  * Validate a value against an allowed set.

@@ -544,7 +544,7 @@ async function handleTaskCreate(payload) {
 		validateId(REPO_ID, 'Repo ID');
 		const data = await apiRequest(`/api/repos/${REPO_ID}/tasks`, {
 			method: 'POST',
-			body: JSON.stringify({ title, description, status: ccToLsStatus('pending') })
+			body: JSON.stringify({ title, description, status: ccToLsStatus('pending'), ccSessionId: lsSessionId || undefined })
 		});
 		const newLsId = data?.task?.id;
 		if (!newLsId) {

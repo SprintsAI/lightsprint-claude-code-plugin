@@ -6,7 +6,7 @@ description: Create a new task on the Lightsprint (ls) repo board. Use to add wo
 Run this command to create a new Lightsprint task:
 
 ```bash
-lightsprint create $ARGUMENTS
+lightsprint create --cc-pid $PPID $ARGUMENTS
 ```
 
 Usage: `create <title> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <taskId1,taskId2,...>]`
