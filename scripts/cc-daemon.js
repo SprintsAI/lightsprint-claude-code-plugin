@@ -24,6 +24,8 @@ import { createServer } from 'http';
 import { readSessionState, writeSessionState, deleteSessionState, isPidAlive, createLogger, findFreePort } from './lib/cc-utils.js';
 import { outputAllow, outputDeny, extractPlanFromTranscript, readPlanFromFile, waitForCallback } from './review-plan.js';
 import { apiRequest, setConfig } from './lib/client.js';
+import { setMapping, getMapping, removeSessionMappings } from './lib/task-map.js';
+import { ccToLsStatus } from './lib/status-mapper.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
 import { getConfig, readReposFile, writeReposFile } from './lib/config.js';
@@ -78,6 +80,10 @@ const DAEMON_AUTH_TOKEN = randomBytes(32).toString('hex');
 let msgIdCounter = 0;
 const pendingRequests = new Map(); // id -> { resolve, reject, timer }
 
+// -- Task Sync State --
+let cachedParentLsTaskId = null; // null=unchecked, ''=none found
+const ccTaskBuffer = new Map(); // ccTaskId → { subject, description }
+
 const log = createLogger('cc-daemon');
 
 function sendRequest(type, data, timeoutMs = 10000) {
@@ -119,6 +125,9 @@ async function shutdown(reason) {
 	}
 
 	// Cleanup
+	try { removeSessionMappings(CC_SESSION_ID); } catch (err) {
+		log('Failed to clean task mappings', { error: err.message });
+	}
 	if (ws) { try { ws.close(1000, 'shutdown'); } catch { /* ignore */ } ws = null; }
 	if (httpServer) httpServer.close();
 	deleteSessionState(CC_SESSION_ID);
@@ -324,6 +333,8 @@ async function startHttpServer() {
 				const body = await readBody(req);
 				const data = JSON.parse(body);
 				log('Event received', { eventType: data.eventType });
+
+				// Stream to WS (existing behavior)
 				if (ws?.readyState === WebSocket.OPEN && lsSessionId) {
 					sendFireAndForget('events', {
 						events: [{
@@ -333,6 +344,23 @@ async function startHttpServer() {
 						}]
 					});
 				}
+
+				// Task sync handlers (fire-and-forget, non-blocking)
+				if (lsSessionId) {
+					const hookEvent = data.payload?.hook_event_name;
+					const toolName = data.payload?.tool_name;
+					if (hookEvent === 'PostToolUse' && toolName === 'TaskCreate') {
+						handleTaskCreate(data.payload).catch(err =>
+							log('handleTaskCreate error', { error: err.message }));
+					} else if (hookEvent === 'PostToolUse' && toolName === 'TaskUpdate') {
+						handleTaskUpdate(data.payload).catch(err =>
+							log('handleTaskUpdate error', { error: err.message }));
+					} else if (hookEvent === 'TaskCompleted') {
+						handleTaskCompleted(data.payload).catch(err =>
+							log('handleTaskCompleted error', { error: err.message }));
+					}
+				}
+
 				res.writeHead(200, { 'Content-Type': 'application/json' });
 				res.end(JSON.stringify({ ok: true }));
 			} catch (err) {
@@ -472,6 +500,159 @@ async function handlePlanReview(data) {
 
 	clearActivePlan();
 	return { decision: 'allow' };
+}
+
+// -- Task Sync Handlers --
+
+/**
+ * Get the LS task ID linked to this CC session.
+ * Caches result: null=unchecked, ''=checked but none found, string=found.
+ */
+async function getParentLsTaskId() {
+	if (cachedParentLsTaskId !== null) return cachedParentLsTaskId || null;
+	if (!lsSessionId) { cachedParentLsTaskId = ''; return null; }
+	try {
+		const data = await apiRequest(`/api/cc-sessions/${lsSessionId}/task`);
+		if (data?.task?.id) {
+			cachedParentLsTaskId = data.task.id;
+			return cachedParentLsTaskId;
+		}
+	} catch (err) {
+		log('Failed to fetch session task', { error: err.message });
+	}
+	cachedParentLsTaskId = '';
+	return null;
+}
+
+/**
+ * Handle PostToolUse:TaskCreate — create LS child task of the session's current task.
+ * Every CC task becomes an LS subtask linked as a dependency of the parent.
+ */
+async function handleTaskCreate(payload) {
+	const ccTaskId = String(payload.tool_response?.task?.id || '');
+	if (!ccTaskId) return;
+
+	// Buffer task info (still useful for handleTaskUpdate dependency chains)
+	ccTaskBuffer.set(ccTaskId, {
+		subject: payload.tool_input?.subject || 'Untitled',
+		description: payload.tool_input?.description || '',
+	});
+
+	// Skip if already mapped (idempotency)
+	if (getMapping(CC_SESSION_ID, ccTaskId)) return;
+
+	const parentLsTaskId = await getParentLsTaskId();
+	if (!parentLsTaskId) return; // No LS task linked to session — skip silently
+
+	const title = payload.tool_input?.subject || 'Untitled';
+	const description = payload.tool_input?.description || '';
+
+	try {
+		const data = await apiRequest(`/api/repos/${REPO_ID}/tasks`, {
+			method: 'POST',
+			body: JSON.stringify({ title, description, status: 'todo' })
+		});
+		const newLsId = data?.task?.id;
+		if (!newLsId) {
+			log('TaskCreate: no task ID in create response');
+			return;
+		}
+		setMapping(CC_SESSION_ID, ccTaskId, newLsId);
+		log('Subtask created in LS', { ccTaskId, lsTaskId: newLsId, parentLsTaskId });
+
+		// Link as dependency: parent depends-on subtask
+		try {
+			await apiRequest(`/api/tasks/${parentLsTaskId}/dependencies`, {
+				method: 'POST',
+				body: JSON.stringify({ dependsOnTaskId: newLsId })
+			});
+		} catch (err) {
+			log('TaskCreate: failed to add dependency link', { error: err.message });
+		}
+	} catch (err) {
+		log('TaskCreate: failed to create LS subtask', { error: err.message });
+	}
+}
+
+/**
+ * Handle PostToolUse:TaskUpdate — reparent on addBlockedBy, sync status changes.
+ */
+async function handleTaskUpdate(payload) {
+	const ccTaskId = String(payload.tool_input?.taskId);
+	if (!ccTaskId) return;
+
+	const lsTaskId = getMapping(CC_SESSION_ID, ccTaskId);
+	if (!lsTaskId) return;
+
+	// Reparent: when addBlockedBy is set, move this task from session parent to blocker
+	const addBlockedBy = payload.tool_input?.addBlockedBy;
+	if (Array.isArray(addBlockedBy) && addBlockedBy.length > 0) {
+		const parentLsTaskId = await getParentLsTaskId();
+		for (const blockerCcId of addBlockedBy) {
+			const blockerLsId = getMapping(CC_SESSION_ID, String(blockerCcId));
+			if (!blockerLsId) continue;
+
+			// Remove dep: session parent depends-on this task
+			if (parentLsTaskId) {
+				try {
+					await apiRequest(`/api/tasks/${parentLsTaskId}/dependencies`, {
+						method: 'DELETE',
+						body: JSON.stringify({ dependsOnTaskId: lsTaskId })
+					});
+				} catch (err) {
+					log('TaskUpdate: failed to remove parent dep', { error: err.message });
+				}
+			}
+
+			// Add dep: blocker depends-on this task
+			try {
+				await apiRequest(`/api/tasks/${blockerLsId}/dependencies`, {
+					method: 'POST',
+					body: JSON.stringify({ dependsOnTaskId: lsTaskId })
+				});
+				log('TaskUpdate: reparented', { ccTaskId, from: parentLsTaskId, to: blockerLsId });
+			} catch (err) {
+				log('TaskUpdate: failed to add blocker dep', { error: err.message });
+			}
+			break; // Reparent to first mapped blocker
+		}
+	}
+
+	// Status sync
+	const ccStatus = payload.tool_input?.status;
+	if (!ccStatus) return;
+
+	const lsStatus = ccToLsStatus(ccStatus);
+	if (!lsStatus) return;
+
+	try {
+		await apiRequest(`/api/tasks/${lsTaskId}`, {
+			method: 'PATCH',
+			body: JSON.stringify({ status: lsStatus })
+		});
+		log('TaskUpdate synced', { ccTaskId, lsTaskId, lsStatus });
+	} catch (err) {
+		log('TaskUpdate: status sync failed', { error: err.message, lsTaskId });
+	}
+}
+
+/**
+ * Handle TaskCompleted — mark LS task as done.
+ */
+async function handleTaskCompleted(payload) {
+	const ccTaskId = String(payload.task_id);
+	if (!ccTaskId) return;
+	const lsTaskId = getMapping(CC_SESSION_ID, ccTaskId);
+	if (!lsTaskId) return;
+	try {
+		await apiRequest(`/api/tasks/${lsTaskId}`, {
+			method: 'PATCH',
+			body: JSON.stringify({ status: 'done' })
+		});
+		log('TaskCompleted synced', { ccTaskId, lsTaskId });
+	} catch (err) {
+		log('TaskCompleted: sync failed', { error: err.message, lsTaskId });
+	}
 }
 
 // -- PID Watchdog --
