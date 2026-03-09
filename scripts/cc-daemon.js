@@ -82,7 +82,6 @@ const pendingRequests = new Map(); // id -> { resolve, reject, timer }
 
 // -- Task Sync State --
 let cachedParentLsTaskId = null; // null=unchecked, ''=none found
-const ccTaskBuffer = new Map(); // ccTaskId → { subject, description }
 
 const log = createLogger('cc-daemon');
 
@@ -532,12 +531,6 @@ async function handleTaskCreate(payload) {
 	const ccTaskId = String(payload.tool_response?.task?.id || '');
 	if (!ccTaskId) return;
 
-	// Buffer task info (still useful for handleTaskUpdate dependency chains)
-	ccTaskBuffer.set(ccTaskId, {
-		subject: payload.tool_input?.subject || 'Untitled',
-		description: payload.tool_input?.description || '',
-	});
-
 	// Skip if already mapped (idempotency)
 	if (getMapping(CC_SESSION_ID, ccTaskId)) return;
 
@@ -548,20 +541,23 @@ async function handleTaskCreate(payload) {
 	const description = payload.tool_input?.description || '';
 
 	try {
+		validateId(REPO_ID, 'Repo ID');
 		const data = await apiRequest(`/api/repos/${REPO_ID}/tasks`, {
 			method: 'POST',
-			body: JSON.stringify({ title, description, status: 'todo' })
+			body: JSON.stringify({ title, description, status: ccToLsStatus('pending') })
 		});
 		const newLsId = data?.task?.id;
 		if (!newLsId) {
 			log('TaskCreate: no task ID in create response');
 			return;
 		}
+		validateId(newLsId, 'New LS task ID');
 		setMapping(CC_SESSION_ID, ccTaskId, newLsId);
 		log('Subtask created in LS', { ccTaskId, lsTaskId: newLsId, parentLsTaskId });
 
 		// Link as dependency: parent depends-on subtask
 		try {
+			validateId(parentLsTaskId, 'Parent LS task ID');
 			await apiRequest(`/api/tasks/${parentLsTaskId}/dependencies`, {
 				method: 'POST',
 				body: JSON.stringify({ dependsOnTaskId: newLsId })
@@ -578,7 +574,7 @@ async function handleTaskCreate(payload) {
  * Handle PostToolUse:TaskUpdate — reparent on addBlockedBy, sync status changes.
  */
 async function handleTaskUpdate(payload) {
-	const ccTaskId = String(payload.tool_input?.taskId);
+	const ccTaskId = String(payload.tool_input?.taskId || '');
 	if (!ccTaskId) return;
 
 	const lsTaskId = getMapping(CC_SESSION_ID, ccTaskId);
@@ -595,6 +591,8 @@ async function handleTaskUpdate(payload) {
 			// Remove dep: session parent depends-on this task
 			if (parentLsTaskId) {
 				try {
+					validateId(parentLsTaskId, 'Parent LS task ID');
+					validateId(lsTaskId, 'LS task ID');
 					await apiRequest(`/api/tasks/${parentLsTaskId}/dependencies`, {
 						method: 'DELETE',
 						body: JSON.stringify({ dependsOnTaskId: lsTaskId })
@@ -606,6 +604,8 @@ async function handleTaskUpdate(payload) {
 
 			// Add dep: blocker depends-on this task
 			try {
+				validateId(blockerLsId, 'Blocker LS task ID');
+				validateId(lsTaskId, 'LS task ID');
 				await apiRequest(`/api/tasks/${blockerLsId}/dependencies`, {
 					method: 'POST',
 					body: JSON.stringify({ dependsOnTaskId: lsTaskId })
@@ -620,19 +620,20 @@ async function handleTaskUpdate(payload) {
 
 	// Status sync
 	const ccStatus = payload.tool_input?.status;
-	if (!ccStatus) return;
-
-	const lsStatus = ccToLsStatus(ccStatus);
-	if (!lsStatus) return;
-
-	try {
-		await apiRequest(`/api/tasks/${lsTaskId}`, {
-			method: 'PATCH',
-			body: JSON.stringify({ status: lsStatus })
-		});
-		log('TaskUpdate synced', { ccTaskId, lsTaskId, lsStatus });
-	} catch (err) {
-		log('TaskUpdate: status sync failed', { error: err.message, lsTaskId });
+	if (ccStatus) {
+		const lsStatus = ccToLsStatus(ccStatus);
+		if (lsStatus) {
+			try {
+				validateId(lsTaskId, 'LS task ID');
+				await apiRequest(`/api/tasks/${lsTaskId}`, {
+					method: 'PATCH',
+					body: JSON.stringify({ status: lsStatus })
+				});
+				log('TaskUpdate synced', { ccTaskId, lsTaskId, lsStatus });
+			} catch (err) {
+				log('TaskUpdate: status sync failed', { error: err.message, lsTaskId });
+			}
+		}
 	}
 }
 
@@ -640,14 +641,15 @@ async function handleTaskUpdate(payload) {
  * Handle TaskCompleted — mark LS task as done.
  */
 async function handleTaskCompleted(payload) {
-	const ccTaskId = String(payload.task_id);
+	const ccTaskId = String(payload.task_id || '');
 	if (!ccTaskId) return;
 	const lsTaskId = getMapping(CC_SESSION_ID, ccTaskId);
 	if (!lsTaskId) return;
 	try {
+		validateId(lsTaskId, 'LS task ID');
 		await apiRequest(`/api/tasks/${lsTaskId}`, {
 			method: 'PATCH',
-			body: JSON.stringify({ status: 'done' })
+			body: JSON.stringify({ status: ccToLsStatus('completed') })
 		});
 		log('TaskCompleted synced', { ccTaskId, lsTaskId });
 	} catch (err) {
