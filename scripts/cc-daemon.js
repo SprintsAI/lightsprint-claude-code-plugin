@@ -438,7 +438,7 @@ async function handlePlanReview(data) {
 
 	if (!planId) {
 		validateId(PROJECT_ID, 'Project ID');
-		const createResult = await apiRequest(`/api/projects/${PROJECT_ID}/plans`, {
+		const createResult = await apiRequest(`/api/repos/${PROJECT_ID}/plans`, {
 			method: 'POST',
 			body: JSON.stringify({ content: planContent, allowedPrompts, ccSessionId: lsSessionId || undefined })
 		});

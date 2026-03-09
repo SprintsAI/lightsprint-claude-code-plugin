@@ -28,8 +28,9 @@ export function validateId(id, label = 'ID') {
 
 // ─── Enum validation ────────────────────────────────────────────────────
 
-const VALID_STATUSES = ['todo', 'in_progress', 'in_review', 'done'];
-const VALID_COMPLEXITIES = ['trivial', 'low', 'medium', 'high', 'critical'];
+export const VALID_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'done'];
+export const VALID_COMPLEXITIES = ['low', 'medium', 'high'];
+export const VALID_DEPS_FILTERS = ['has-dependencies', 'has-dependents', 'unblocked'];
 
 /**
  * Validate a value against an allowed set.
@@ -80,9 +81,9 @@ export function validatePid(pid) {
 
 // ─── Length validation ──────────────────────────────────────────────────
 
-const MAX_TITLE_LENGTH = 500;
-const MAX_DESCRIPTION_LENGTH = 50000;
-const MAX_COMMENT_LENGTH = 10000;
+export const MAX_TITLE_LENGTH = 500;
+export const MAX_DESCRIPTION_LENGTH = 50000;
+export const MAX_COMMENT_LENGTH = 10000;
 
 /**
  * Validate string length and reject control characters (except newlines/tabs in bodies).
@@ -169,11 +170,9 @@ export function validateBaseUrl(url) {
  * @returns {string}
  */
 export function validateVersion(version) {
-	if (!/^\d+\.\d+\.\d+/.test(version)) {
+	// Strict: only allow semver with optional pre-release/build metadata (alphanumeric, dots, hyphens)
+	if (!/^\d+\.\d+\.\d+([.a-zA-Z0-9-]*)$/.test(version)) {
 		throw new Error(`Invalid version format: "${version}". Expected semver (e.g. 1.2.3).`);
-	}
-	if (/[\\/]|\.\./.test(version)) {
-		throw new Error(`Invalid characters in version: "${version}".`);
 	}
 	return version;
 }

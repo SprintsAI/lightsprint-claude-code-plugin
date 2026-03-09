@@ -446,7 +446,7 @@ export async function reviewPlanMain(args) {
 		if (!planId) {
 			// POST new plan
 			validateId(projectId, 'Project ID');
-			const createResult = await apiRequest(`/api/projects/${projectId}/plans`, {
+			const createResult = await apiRequest(`/api/repos/${projectId}/plans`, {
 				method: 'POST',
 				body: JSON.stringify({ content: plan, allowedPrompts })
 			});

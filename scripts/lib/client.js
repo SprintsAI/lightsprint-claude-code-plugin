@@ -124,7 +124,7 @@ async function readBodyCapped(response) {
 /**
  * Make an authenticated request to the Lightsprint API.
  * Automatically refreshes the access token if expired.
- * @param {string} path - API path (e.g., '/api/projects/abc/tasks')
+ * @param {string} path - API path (e.g., '/api/repos/abc/tasks')
  * @param {object} [options] - fetch options
  * @returns {Promise<any>} Parsed JSON response
  */
@@ -167,7 +167,7 @@ export async function apiRequest(path, options = {}) {
 let _projectInfo = null;
 export async function getProjectInfo() {
 	if (_projectInfo) return _projectInfo;
-	_projectInfo = await apiRequest('/api/project-key/info');
+	_projectInfo = await apiRequest('/api/repo-key/info');
 	return _projectInfo;
 }
 
@@ -181,5 +181,5 @@ export async function getProjectId() {
 	if (cfg.projectId) return cfg.projectId;
 
 	const info = await getProjectInfo();
-	return info.project.id;
+	return info.repo?.id || info.project?.id;
 }

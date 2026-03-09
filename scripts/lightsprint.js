@@ -16,6 +16,7 @@
  *   connect [--base-url]    Authenticate and connect
  *   disconnect              Remove credentials for this folder
  *   upgrade                 Upgrade to the latest version
+ *   version                 Show version and build info
  *   help                    Show this help message
  */
 
@@ -49,11 +50,12 @@ if (subcommand === 'review-plan') {
 	await ccReviewMain(args);
 } else if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
 	showHelp();
-} else if (subcommand === '--version' || subcommand === '-v') {
-	console.log(`lightsprint v${BUILD_VERSION} (${BUILD_HASH})`);
+} else if (subcommand === 'version') {
+	console.log(`lightsprint v${BUILD_VERSION} (${BUILD_HASH}) — built ${BUILD_TIME}`);
 } else {
-	cliMain(subcommand, args, { version: BUILD_VERSION }).catch(err => {
-		console.error(`Error: ${err.message}`);
+	cliMain(subcommand, args, { version: BUILD_VERSION }).catch(() => {
+		// cliMain handles its own error output via outputError + process.exit(1).
+		// This catch is a safety net for any edge cases where the process hasn't exited yet.
 		process.exit(1);
 	});
 }
@@ -74,6 +76,7 @@ Commands:
   get <taskId>            Show full task details
   claim <taskId>          Claim a task (set to in_progress)
   comment <taskId> <body> Add a comment to a task
+  describe [command]      Show accepted parameters/types as JSON
   open                    Open the project board in your browser
   status                  Show connection status for this repository
   whoami                  Show project/auth info
@@ -81,9 +84,15 @@ Commands:
   disconnect              Remove Lightsprint credentials for this repository
   upgrade                 Upgrade to the latest version
 
-Flags:
+Global Flags:
+  --output json|text      Output format (default: text)
+  --json                  Shorthand for --output json
+  --dry-run               Validate without making API calls
+  --fields f1,f2          Return only specified fields (implies --output json)
   --help, -h              Show this help message
-  --version, -v           Show version
+
+Other Commands:
+  version                 Show version and build info
 
 Run 'lightsprint <command> --help' for command-specific help.
 
