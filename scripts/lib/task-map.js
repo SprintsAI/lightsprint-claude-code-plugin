@@ -1,6 +1,7 @@
 /**
  * Task ID mapping: Claude Code task IDs ↔ Lightsprint task IDs.
  * Stored in ~/.lightsprint/task-map.json.
+ * Keys are session-scoped: "{ccSessionId}:{ccTaskId}" to avoid collisions.
  * Uses atomic writes (write tmp + rename) for safety.
  */
 
@@ -36,13 +37,47 @@ function writeMap(map) {
 	renameSync(tmp, MAP_FILE);
 }
 
+function makeKey(ccSessionId, ccTaskId) {
+	return `${ccSessionId}:${ccTaskId}`;
+}
+
 /**
- * Store a mapping from CC task ID to LS task ID.
+ * Store a mapping from CC task ID to LS task ID, scoped by session.
+ * @param {string} ccSessionId
  * @param {string} ccTaskId
  * @param {string} lsTaskId
  */
-export function setMapping(ccTaskId, lsTaskId) {
+export function setMapping(ccSessionId, ccTaskId, lsTaskId) {
 	const map = readMap();
-	map[ccTaskId] = lsTaskId;
+	map[makeKey(ccSessionId, ccTaskId)] = lsTaskId;
 	writeMap(map);
+}
+
+/**
+ * Look up the LS task ID for a CC task.
+ * @param {string} ccSessionId
+ * @param {string} ccTaskId
+ * @returns {string | null}
+ */
+export function getMapping(ccSessionId, ccTaskId) {
+	const map = readMap();
+	return map[makeKey(ccSessionId, ccTaskId)] || null;
+}
+
+/**
+ * Remove all mappings for a given CC session.
+ * Called on session shutdown to prevent stale entries.
+ * @param {string} ccSessionId
+ */
+export function removeSessionMappings(ccSessionId) {
+	const map = readMap();
+	const prefix = `${ccSessionId}:`;
+	let changed = false;
+	for (const key of Object.keys(map)) {
+		if (key.startsWith(prefix)) {
+			delete map[key];
+			changed = true;
+		}
+	}
+	if (changed) writeMap(map);
 }
