@@ -18,11 +18,29 @@ Usage: `create <title> [--description <text>] [--complexity low|medium|high] [--
 | `<title>` | Yes | Task title (positional, all non-flag tokens are joined). Max 500 chars. |
 | `--description <text>` | No | Task description. Supports multiline text. Max 50000 chars. |
 | `--complexity <level>` | No | Complexity estimate: `low`, `medium`, or `high`. |
-| `--status <status>` | No | Initial status: `backlog`, `todo` (default), `in_progress`, `in_review`, or `done`. |
+| `--status <status>` | No | Initial status: `backlog` (default), `todo`, `in_progress`, `in_review`, or `done`. |
 | `--depends-on <ids>` | No | Comma-separated list of task IDs this task depends on. Supports raw IDs, display IDs (e.g. `LIG-024`), or bare task numbers (e.g. `6`). All formats are resolved server-side. |
 | `--json-body <json>` | No | Raw JSON request body (replaces individual flags). Cannot combine with positional title or other field flags. |
 | `--dry-run` | No | Validate inputs without calling the API. |
 | `--output json` | No | Return structured JSON instead of human-readable text. |
+
+## Dependency vocabulary (IMPORTANT)
+
+Lightsprint uses a specific dependency direction:
+- A **parent task** **depends on** its listed dependencies.
+- A **root task** is a **parent task with no parent**.
+- Those **dependencies** are the **child tasks** (or **prerequisite tasks**) that must be done first.
+- This is intentionally the inverse of some real-world phrasing where a child "depends on" a parent.
+
+Equivalent terms used in docs or conversations:
+- **depends on** = **blocked by** = **requires** = **has prerequisites**
+- **dependency** = **prerequisite** = **child task** (in Lightsprint terminology)
+- **dependent task** = **parent task** = **root task** = the task that waits
+
+For `--depends-on <ids>` on `create`:
+- The IDs are tasks that the new task will wait for.
+- Example: `create "Ship feature" --depends-on LIG-024,LIG-031`
+- Meaning: `"Ship feature"` is the parent/root task and is blocked by (depends on) `LIG-024` and `LIG-031`.
 
 ## Output
 
