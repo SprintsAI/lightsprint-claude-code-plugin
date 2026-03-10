@@ -6,6 +6,7 @@
  */
 
 const LS_TO_CC = {
+	'backlog': 'pending',
 	'todo': 'pending',
 	'in_progress': 'in_progress',
 	'in_review': 'in_progress',
@@ -13,7 +14,7 @@ const LS_TO_CC = {
 };
 
 const CC_TO_LS = {
-	'pending': 'todo',
+	'pending': 'backlog',
 	'in_progress': 'in_progress',
 	'completed': 'done'
 };

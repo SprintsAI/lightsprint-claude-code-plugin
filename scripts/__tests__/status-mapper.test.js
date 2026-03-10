@@ -2,6 +2,10 @@ import { describe, test, expect } from 'bun:test';
 import { lsToCcStatus } from '../lib/status-mapper.js';
 
 describe('lsToCcStatus', () => {
+	test('maps backlog to pending', () => {
+		expect(lsToCcStatus('backlog')).toBe('pending');
+	});
+
 	test('maps todo to pending', () => {
 		expect(lsToCcStatus('todo')).toBe('pending');
 	});
