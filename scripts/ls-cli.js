@@ -3,7 +3,7 @@
  * lightsprint — CLI for Lightsprint skills.
  *
  * Commands:
- *   tasks [--status todo|in_progress|in_review|done] [--assignee <name>] [--limit N] [--offset N]
+ *   tasks [--status backlog|todo|in_progress|in_review|done] [--assignee <name>] [--limit N] [--offset N]
  *   create <title> [--description <text>] [--complexity <level>] [--status <status>] [--depends-on <id1,id2,...>] [--cc-pid <pid>]
  *   update <taskId> [--title <text>] [--description <text>] [--status <status>] [--complexity <level>] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]
  *   get <taskId>

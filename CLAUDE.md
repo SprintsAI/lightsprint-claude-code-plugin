@@ -33,7 +33,7 @@ The `lightsprint` CLI is primarily consumed by AI agents (via skills), not human
 
 ### 5. Schema Introspection (Priority: Medium)
 - Add a `lightsprint describe <command>` subcommand that dumps the accepted parameters, types, required fields, and valid enum values as JSON. Agents can self-serve at runtime instead of relying on stale documentation baked into skill prompts.
-- Example: `lightsprint describe create` → `{"command":"create","params":{"title":{"type":"string","required":true},"status":{"type":"enum","values":["todo","in_progress","in_review","done"],"default":"todo"},...}}`
+- Example: `lightsprint describe create` → `{"command":"create","params":{"title":{"type":"string","required":true},"status":{"type":"enum","values":["backlog","todo","in_progress","in_review","done"],"default":"backlog"},...}}`
 
 ### 6. Context Window Discipline (Priority: Medium)
 - `lightsprint get` and `lightsprint tasks` return everything. Support `--fields <field1,field2>` to let agents request only what they need. A full task with description, todo list, related files, and comments can consume significant context window budget.

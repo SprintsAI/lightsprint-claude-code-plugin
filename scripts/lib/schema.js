@@ -24,7 +24,7 @@ const COMMAND_SCHEMAS = {
 		params: {
 			title: { type: 'string', required: true, positional: true, maxLength: MAX_TITLE_LENGTH, description: 'Task title' },
 			description: { type: 'string', flag: '--description', maxLength: MAX_DESCRIPTION_LENGTH, description: 'Task description' },
-			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, default: 'todo', description: 'Initial status' },
+			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, default: 'backlog', description: 'Initial status' },
 			complexity: { type: 'enum', flag: '--complexity', values: VALID_COMPLEXITIES, description: 'Complexity estimate' },
 			dependsOn: { type: 'string[]', flag: '--depends-on', description: 'Comma-separated task IDs this task depends on' },
 			ccPid: { type: 'integer', flag: '--cc-pid', description: 'Claude Code PID for session linking' }
