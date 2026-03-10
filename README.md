@@ -82,8 +82,8 @@ Defaults to `https://lightsprint.ai`.
 
 | Command | Description |
 |---|---|
-| `/lightsprint:tasks` | List tasks from the board. Options: `--status todo\|in_progress\|in_review\|done`, `--limit N` |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity trivial\|low\|medium\|high\|critical`, `--status todo\|in_progress\|in_review\|done` |
+| `/lightsprint:tasks` | List tasks from the board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--limit N` |
+| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity trivial\|low\|medium\|high\|critical`, `--status backlog\|todo\|in_progress\|in_review\|done` |
 | `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |

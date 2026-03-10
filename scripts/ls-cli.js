@@ -98,7 +98,7 @@ Commands:
     Options:
       --description <text>        Task description
       --complexity <level>        low, medium, or high
-      --status <status>           backlog, todo, in_progress, in_review, or done (default: todo)
+      --status <status>           backlog, todo, in_progress, in_review, or done (default: backlog)
       --depends-on <ids>          Comma-separated task IDs this task depends on
       --json-body <json>          Raw JSON request body (replaces individual flags)
     Example:
@@ -337,7 +337,7 @@ async function cmdCreate(args, opts) {
 	const titleParts = [];
 	let description = null;
 	let complexity = null;
-	let status = 'todo';
+	let status = 'backlog';
 	let dependsOn = null;
 	let ccPidArg;
 
