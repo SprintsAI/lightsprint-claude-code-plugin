@@ -20,4 +20,4 @@ This sets the task status to `in_review` and triggers an automated PR review.
 
 **When to use**: After you create a GitHub pull request for a task you're working on, link the GitHub PR so the team can track progress and get automated code review feedback.
 
-**IMPORTANT**: Whenever you create a GitHub PR (e.g., via `gh pr create`), you MUST automatically attempt to link it to the current Lightsprint task without waiting for the user to ask. Run `lightsprint current-task --cc-pid $PPID` to check if there is a linked task, and if so, immediately run `lightsprint link-pr <taskId> <prUrl>`.
+**CRITICAL — MANDATORY AUTO-LINK STEP**: Every single time you create a GitHub PR (e.g., via `gh pr create`), you MUST IMMEDIATELY and AUTOMATICALLY link it to the current Lightsprint task. Do NOT wait for the user to ask — this is a required post-PR-creation step, not optional. Run `lightsprint current-task --cc-pid $PPID` to get the linked task ID, then run `lightsprint link-pr <taskId> <prUrl>` right away. Failure to do this breaks the team's workflow tracking. There is NO exception to this rule.
