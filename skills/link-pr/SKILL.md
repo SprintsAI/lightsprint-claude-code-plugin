@@ -24,7 +24,7 @@ This sets the task status to `in_review` and triggers an automated PR review.
 
 1. Run `lightsprint current-task --cc-pid $PPID` to check for a linked task.
 2. **If a task is found**: Run `lightsprint link-pr <taskId> <prUrl>` right away.
-3. **If NO task is found**: Before linking, you must create one. Follow the "No Task Found" flow below.
+3. **If NO task is found**: Prompt the user with the options in the "No Task Found" flow below.
 
 Failure to do this breaks the team's workflow tracking. There is NO exception to this rule.
 

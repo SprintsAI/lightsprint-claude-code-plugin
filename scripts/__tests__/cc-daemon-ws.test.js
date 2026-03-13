@@ -20,8 +20,8 @@ describe('WebSocket URL construction', () => {
 	});
 
 	test('converts https base URL to wss', () => {
-		const url = buildWsUrl('https://app.lightsprint.com', 'lsat_test');
-		expect(url).toStartWith('wss://app.lightsprint.com/');
+		const url = buildWsUrl('https://lightsprint.ai', 'lsat_test');
+		expect(url).toStartWith('wss://lightsprint.ai/');
 	});
 
 	test('includes token as query parameter', () => {
