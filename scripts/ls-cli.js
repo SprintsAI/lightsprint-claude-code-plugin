@@ -19,8 +19,6 @@ import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, wr
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
 import { apiRequest, getRepoId, getRepoInfo } from './lib/client.js';
-import { setMapping } from './lib/task-map.js';
-import { lsToCcStatus } from './lib/status-mapper.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion } from './lib/validate.js';
