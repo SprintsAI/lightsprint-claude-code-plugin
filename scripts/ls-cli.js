@@ -145,6 +145,8 @@ Commands:
       config set <key> <value>  Set a preference
       config delete <key>       Remove a preference
       config list               Show all preferences
+    Known keys:
+      link-pr.no-task-behavior   prompt | always-skip (default: prompt)
     Example:
       lightsprint config set link-pr.no-task-behavior always-skip
       lightsprint config get link-pr.no-task-behavior
