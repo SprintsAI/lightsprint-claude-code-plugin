@@ -33,7 +33,8 @@ export async function main(args) {
 
 	// Output additionalContext so the agent is forced to run link-pr
 	const output = {
-		additionalContext: [
+		hookSpecificOutput: {
+			additionalContext: [
 			`<system-reminder>`,
 			`MANDATORY: A GitHub PR was just created at ${prUrl}.`,
 			`You MUST now run the link-pr flow. Do this IMMEDIATELY before responding to the user:`,
@@ -47,6 +48,7 @@ export async function main(args) {
 			`This is a required step. Do NOT skip it. Do NOT wait for the user to ask.`,
 			`</system-reminder>`,
 		].join('\n'),
+		},
 	};
 
 	console.log(JSON.stringify(output));
