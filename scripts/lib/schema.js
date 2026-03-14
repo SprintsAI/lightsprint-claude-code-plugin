@@ -14,7 +14,8 @@ const COMMAND_SCHEMAS = {
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'Filter by status' },
 			assignee: { type: 'string', flag: '--assignee', description: 'Filter by assignee name/email (case-insensitive substring)' },
 			limit: { type: 'integer', flag: '--limit', default: 20, description: 'Max results (server max: 100)' },
-			offset: { type: 'integer', flag: '--offset', default: 0, description: 'Skip first N results' }
+			offset: { type: 'integer', flag: '--offset', default: 0, description: 'Skip first N results' },
+			sort: { type: 'enum', flag: '--sort', values: ['position', 'updated_at', 'created_at'], default: 'position', description: 'Sort order: position (board order), updated_at, created_at' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false

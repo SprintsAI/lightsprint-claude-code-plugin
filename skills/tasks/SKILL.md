@@ -9,7 +9,7 @@ Run this command to list tasks from Lightsprint. By default, only root tasks (no
 lightsprint tasks $ARGUMENTS
 ```
 
-Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--mine] [--unassigned] [--deps <filter>] [--limit N] [--offset N]`
+Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--mine] [--unassigned] [--deps <filter>] [--sort <field>] [--limit N] [--offset N]`
 
 ## Flags
 
@@ -21,6 +21,7 @@ Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--
 | `--mine` | — | Show only tasks assigned to the current user. |
 | `--unassigned` | — | Show only tasks with no assignee. |
 | `--deps <filter>` | all | Filter by dependencies: `has-dependencies`, `has-no-dependencies`, `has-dependents`, `unblocked`. |
+| `--sort <field>` | `position` | Sort order: `position` (board order), `updated_at` (most recently updated first), `created_at` (newest first). |
 | `--limit N` | 20 | Maximum number of tasks to return (server max: 100). |
 | `--offset N` | 0 | Skip first N tasks (for pagination). |
 | `--page-all` | — | Stream all tasks as NDJSON (one JSON object per line). Ignores `--limit`/`--offset`. |

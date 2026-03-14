@@ -3,7 +3,7 @@
  * lightsprint — CLI for Lightsprint skills.
  *
  * Commands:
- *   tasks [--status backlog|todo|in_progress|in_review|done] [--assignee <name>] [--limit N] [--offset N]
+ *   tasks [--status backlog|todo|in_progress|in_review|done] [--assignee <name>] [--sort position|updated_at|created_at] [--limit N] [--offset N]
  *   create <title> [--description <text>] [--complexity <level>] [--status <status>] [--depends-on <id1,id2,...>] [--cc-pid <pid>]
  *   update <taskId> [--title <text>] [--description <text>] [--status <status>] [--complexity <level>] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]
  *   get <taskId>
@@ -83,6 +83,7 @@ Commands:
       --mine                Show only tasks assigned to me
       --unassigned           Only show tasks with no assignee
       --deps <filter>       Filter by dependencies: has-dependencies, has-dependents, unblocked
+      --sort <field>        Sort tasks by: position (default), updated_at, created_at
       --limit <N>           Limit number of results (default: 20)
       --offset <N>          Skip first N results (for pagination)
       --page-all            Stream all tasks as NDJSON (one JSON object per line)
@@ -192,6 +193,7 @@ async function cmdTasks(args, opts) {
 	let unassigned = false;
 	let mine = false;
 	let pageAll = false;
+	let sort = null;
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--status' && args[i + 1]) {
 			status = args[++i];
@@ -205,6 +207,8 @@ async function cmdTasks(args, opts) {
 			complexity = args[++i];
 		} else if (args[i] === '--deps' && args[i + 1]) {
 			depsFilter = args[++i];
+		} else if (args[i] === '--sort' && args[i + 1]) {
+			sort = args[++i];
 		} else if (args[i] === '--unassigned') {
 			unassigned = true;
 		} else if (args[i] === '--mine') {
@@ -223,6 +227,10 @@ async function cmdTasks(args, opts) {
 	if (depsFilter) {
 		validateEnum(depsFilter, VALID_DEPS_FILTERS, 'deps filter');
 	}
+	const VALID_SORT_FIELDS = new Set(['position', 'updated_at', 'created_at']);
+	if (sort) {
+		validateEnum(sort, VALID_SORT_FIELDS, 'sort field');
+	}
 
 	// All filtering is server-side — build query params
 	params.set('limit', String(limit));
@@ -231,6 +239,7 @@ async function cmdTasks(args, opts) {
 	if (complexity) params.set('complexity', complexity);
 	if (unassigned) params.set('unassigned', 'true');
 	if (depsFilter) params.set('deps', depsFilter);
+	if (sort) params.set('sort', sort);
 	if (mine) params.set('assignee', 'me');
 	else if (assigneeFilter) params.set('assignee', assigneeFilter);
 
