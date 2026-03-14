@@ -6,8 +6,10 @@ description: Claim an existing Lightsprint (ls) task to work on. Sets the task t
 Run this command to claim a Lightsprint task:
 
 ```bash
-lightsprint claim --cc-pid $PPID $ARGUMENTS
+lightsprint claim --cc-pid $PPID --task $ARGUMENTS
 ```
+
+Usage: `claim --task <taskId>`
 
 Task ID can be a display ID (e.g. `LIG-024`), bare task number (e.g. `24`), or raw ID. All formats are resolved server-side.
 

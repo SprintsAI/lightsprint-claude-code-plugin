@@ -9,7 +9,7 @@ Run this command to add a comment to a Lightsprint task:
 lightsprint comment $ARGUMENTS
 ```
 
-Usage: `comment <taskId> <comment body>`
+Usage: `comment --task <taskId> --body <comment body>`
 
 Task ID can be a display ID (e.g. `LIG-024`), bare task number (e.g. `24`), or raw ID. All formats are resolved server-side.
 

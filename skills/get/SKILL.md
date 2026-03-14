@@ -9,7 +9,7 @@ Run this command to get a Lightsprint task's details:
 lightsprint get $ARGUMENTS
 ```
 
-Usage: `get <taskId> [--fields <field1,field2,...>]`
+Usage: `get --task <taskId> [--fields <field1,field2,...>]`
 
 Task ID can be a display ID (e.g. `LIG-024`), bare task number (e.g. `24`), or raw ID. All formats are resolved server-side.
 
@@ -33,14 +33,14 @@ The `--fields` flag accepts a comma-separated list of field names to return only
 ## Examples
 
 ```bash
-lightsprint get LIG-003
-lightsprint get 3
-lightsprint get abc123def
-lightsprint get LIG-003 --fields task,dependencies
+lightsprint get --task LIG-003
+lightsprint get --task 3
+lightsprint get --task abc123def
+lightsprint get --task LIG-003 --fields task,dependencies
 ```
 
 ## Invariants
 
 - This is a read-only command — it does not modify any tasks
-- Always use `lightsprint get <taskId>` before `lightsprint update` to confirm current state
+- Always use `lightsprint get --task <taskId>` before `lightsprint update` to confirm current state
 - Task ID can be a display ID (e.g. `LIG-003`), bare number (e.g. `3`), or raw ID — all formats are resolved server-side

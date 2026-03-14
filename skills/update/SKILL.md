@@ -9,13 +9,13 @@ Run this command to update a Lightsprint task:
 lightsprint update $ARGUMENTS
 ```
 
-Usage: `update <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]`
+Usage: `update --task <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]`
 
 ## Flags
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `<taskId>` | Yes | Task ID (positional, first arg). Supports display IDs (e.g. `LIG-024`), bare task numbers (e.g. `24`), or raw IDs. All formats are resolved server-side. |
+| `--task <taskId>` | Yes | Task ID. Supports display IDs (e.g. `LIG-024`), bare task numbers (e.g. `24`), or raw IDs. All formats are resolved server-side. |
 | `--title <text>` | No | New task title. Max 500 chars. |
 | `--description <text>` | No | New task description. Supports multiline. Max 50000 chars. |
 | `--status <status>` | No | New status: `backlog`, `todo`, `in_progress`, `in_review`, or `done`. |
@@ -31,6 +31,6 @@ At least one flag is required. Only the provided fields will be updated. Field u
 
 ## Invariants
 
-- Always run `lightsprint get <taskId>` before updating to confirm current state
-- Prefer `lightsprint claim <taskId>` over `lightsprint update <taskId> --status in_progress` — claim also assigns the task and links the CC session
+- Always run `lightsprint get --task <taskId>` before updating to confirm current state
+- Prefer `lightsprint claim --task <taskId>` over `lightsprint update --task <taskId> --status in_progress` — claim also assigns the task and links the CC session
 - Title: max 500 chars. Description: max 50,000 chars
