@@ -1,9 +1,18 @@
 {
-  "name": "lightsprint-claude-code-plugin",
+  "name": "lightsprint",
   "version": "0.5.13",
   "description": "Sync Claude Code tasks to Lightsprint repo board",
-  "private": true,
   "type": "module",
+  "bin": {
+    "lightsprint": "scripts/lightsprint.js"
+  },
+  "files": [
+    "scripts/**/*.js",
+    "!scripts/__tests__/",
+    "skills/",
+    "hooks/",
+    ".claude-plugin/"
+  ],
   "scripts": {
     "build": "bash scripts/compile.sh",
     "test": "bun test",
