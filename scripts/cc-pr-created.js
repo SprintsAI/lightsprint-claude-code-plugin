@@ -70,6 +70,7 @@ export async function main(args) {
 				`3. If NO task is found: Check preference with: lightsprint config get link-pr.no-task-behavior`,
 				`   - If "always-skip": skip silently`,
 				`   - Otherwise: ask the user with the 4 options (create new / link existing / skip / always skip)`,
+				`   - If creating a new task, use --status in_review (NOT done or in_progress)`,
 				``,
 				`This is a required step. Do NOT skip it. Do NOT wait for the user to ask.`,
 				`</system-reminder>`,
