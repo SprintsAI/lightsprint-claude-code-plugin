@@ -59,6 +59,7 @@ export async function main(args) {
 		// Output additionalContext so the agent is forced to run link-pr
 		const output = {
 			hookSpecificOutput: {
+				hookEventName: 'PostToolUse',
 				additionalContext: [
 				`<system-reminder>`,
 				`MANDATORY: A GitHub PR was just created at ${prUrl}.`,
@@ -76,7 +77,9 @@ export async function main(args) {
 			},
 		};
 
-		console.log(JSON.stringify(output));
+		const json = JSON.stringify(output);
+		log('Output', { json: json.substring(0, 200) });
+		process.stdout.write(json);
 	} catch (err) {
 		log('Hook error', { error: err.message, stack: err.stack });
 		// Re-throw so Claude Code sees the failure
