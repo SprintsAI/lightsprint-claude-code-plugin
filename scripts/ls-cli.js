@@ -748,7 +748,7 @@ async function cmdCurrentTask(args, opts) {
 	const task = data.task;
 
 	if (!task) {
-		const result = { task: null, message: 'No task is linked to the current CC session. Claim a task with /lightsprint:claim.' };
+		const result = { task: null, message: 'No task is linked to the current CC session.' };
 		return outputResult(result, opts, () => console.log(result.message));
 	}
 
