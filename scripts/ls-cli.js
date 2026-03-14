@@ -1035,6 +1035,7 @@ function cmdStatus(opts) {
 
 	const result = {
 		connected: true,
+		workspace: cwd,
 		repoName: cfg.repoName || 'unknown',
 		repoId: cfg.repoId,
 		repo: cfg.repo,
@@ -1043,6 +1044,7 @@ function cmdStatus(opts) {
 	};
 
 	outputResult(result, opts, () => {
+		console.log(`Workspace:  ${cwd}`);
 		console.log(`Repo ID:    ${cfg.repoId}`);
 		console.log(`Repository: ${cfg.repo}`);
 		console.log(`Base URL:   ${cfg.baseUrl}`);
