@@ -964,7 +964,6 @@ async function cmdWhoami(opts) {
 			console.log(`User: ${info.user.name}`);
 			if (info.user.email) console.log(`Email: ${info.user.email}`);
 		}
-		console.log(`Repo: ${repo.name}`);
 		if (repo.fullName) console.log(`Repository: ${repo.fullName}`);
 		console.log(`Repo ID: ${repo.id}`);
 		console.log(`Scopes: ${info.scopes.join(', ')}`);
@@ -1044,7 +1043,6 @@ function cmdStatus(opts) {
 	};
 
 	outputResult(result, opts, () => {
-		console.log(`Repo:       ${cfg.repoName || 'unknown'}`);
 		console.log(`Repo ID:    ${cfg.repoId}`);
 		console.log(`Repository: ${cfg.repo}`);
 		console.log(`Base URL:   ${cfg.baseUrl}`);
