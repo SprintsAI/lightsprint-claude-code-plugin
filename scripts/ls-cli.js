@@ -945,6 +945,7 @@ async function cmdComment(args, opts) {
 
 async function cmdWhoami(opts) {
 	const info = await getRepoInfo();
+	const cfg = getConfig(process.cwd());
 
 	const repo = info.repo || info.project;
 	const result = {
@@ -958,6 +959,7 @@ async function cmdWhoami(opts) {
 			fullName: repo.fullName || null,
 			id: repo.id
 		},
+		baseUrl: cfg?.baseUrl || null,
 		scopes: info.scopes
 	};
 
@@ -968,6 +970,7 @@ async function cmdWhoami(opts) {
 		}
 		if (repo.fullName) console.log(`Repository: ${repo.fullName}`);
 		console.log(`Repo ID: ${repo.id}`);
+		if (cfg?.baseUrl) console.log(`Base URL: ${cfg.baseUrl}`);
 		console.log(`Scopes: ${info.scopes.join(', ')}`);
 	});
 }
