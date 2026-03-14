@@ -9,18 +9,19 @@ Run this command to create a new Lightsprint task:
 lightsprint create --cc-pid $PPID $ARGUMENTS
 ```
 
-Usage: `create <title> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <taskId1,taskId2,...>]`
+Usage: `create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <taskId1,taskId2,...>] [--parent <taskId>]`
 
 ## Flags
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `<title>` | Yes | Task title (positional, all non-flag tokens are joined). Max 500 chars. |
+| `--title <text>` | Yes | Task title. Max 500 chars. |
 | `--description <text>` | No | Task description. Supports multiline text. Max 50000 chars. |
 | `--complexity <level>` | No | Complexity estimate: `low`, `medium`, or `high`. |
 | `--status <status>` | No | Initial status: `backlog` (default), `todo`, `in_progress`, `in_review`, or `done`. |
 | `--depends-on <ids>` | No | Comma-separated list of task IDs this task depends on. Supports raw IDs, display IDs (e.g. `LIG-024`), or bare task numbers (e.g. `6`). All formats are resolved server-side. |
-| `--json-body <json>` | No | Raw JSON request body (replaces individual flags). Cannot combine with positional title or other field flags. |
+| `--parent <taskId>` | No | Parent task ID. Links the new task as a subtask (dependency) of the specified parent. Supports raw IDs and display IDs (e.g. `LS-1100`). |
+| `--json-body <json>` | No | Raw JSON request body (replaces all other flags). Cannot combine with `--title` or other field flags. |
 | `--dry-run` | No | Validate inputs without calling the API. |
 | `--output json` | No | Return structured JSON instead of human-readable text. |
 

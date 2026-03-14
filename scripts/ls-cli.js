@@ -325,7 +325,7 @@ async function cmdTasks(args, opts) {
 
 async function cmdCreate(args, opts) {
 	if (args.length === 0) {
-		throw new Error('Usage: lightsprint create <title> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <id1,id2,...>] [--cc-pid <pid>]');
+		throw new Error('Usage: lightsprint create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <id1,id2,...>] [--parent <taskId>] [--cc-pid <pid>]');
 	}
 
 	const repoId = await getRepoId();
@@ -333,17 +333,20 @@ async function cmdCreate(args, opts) {
 	// Check for --json-body
 	let jsonBody = null;
 
-	// Parse args: collect title tokens and flags
-	const titleParts = [];
+	// Parse args: all inputs must use explicit flags
+	let title = null;
 	let description = null;
 	let complexity = null;
 	let status = 'backlog';
 	let dependsOn = null;
+	let parentId = null;
 	let ccPidArg;
 
 	for (let i = 0; i < args.length; i++) {
 		if ((args[i] === '--json-body' || args[i] === '--json') && args[i + 1]) {
 			jsonBody = args[++i];
+		} else if (args[i] === '--title' && args[i + 1]) {
+			title = args[++i];
 		} else if (args[i] === '--description' && args[i + 1]) {
 			description = args[++i];
 		} else if (args[i] === '--complexity' && args[i + 1]) {
@@ -352,10 +355,12 @@ async function cmdCreate(args, opts) {
 			status = args[++i];
 		} else if (args[i] === '--depends-on' && args[i + 1]) {
 			dependsOn = args[++i];
+		} else if (args[i] === '--parent' && args[i + 1]) {
+			parentId = args[++i];
 		} else if (args[i] === '--cc-pid' && args[i + 1]) {
 			ccPidArg = parseInt(args[++i], 10);
 		} else {
-			titleParts.push(args[i]);
+			throw new Error(`Unknown argument: ${args[i]}. Use --title to set the task title.`);
 		}
 	}
 
@@ -363,8 +368,8 @@ async function cmdCreate(args, opts) {
 
 	if (jsonBody) {
 		// Raw JSON mode — reject if combined with individual flags
-		if (titleParts.length > 0 || description || complexity) {
-			throw new Error('Cannot combine --json/--json-body with --description, --complexity, or positional title. Use --json/--json-body alone.');
+		if (title || description || complexity) {
+			throw new Error('Cannot combine --json/--json-body with --title, --description, --complexity. Use --json/--json-body alone.');
 		}
 		try {
 			body = JSON.parse(jsonBody);
@@ -377,9 +382,8 @@ async function cmdCreate(args, opts) {
 		if ('complexity' in body) validateComplexity(body.complexity);
 		if ('description' in body) validateDescription(body.description);
 	} else {
-		const title = titleParts.join(' ');
 		if (!title) {
-			throw new Error('Error: title is required.');
+			throw new Error('Error: --title is required.');
 		}
 
 		validateTitle(title);
@@ -400,6 +404,13 @@ async function cmdCreate(args, opts) {
 		dependencyTaskIds = await Promise.all(rawIds.map(id => resolveTaskId(id)));
 	}
 	if (dependencyTaskIds) body.dependencyTaskIds = dependencyTaskIds;
+
+	// Resolve parent task ID (supports display IDs like LS-1100)
+	let resolvedParentId = null;
+	if (parentId) {
+		validateId(parentId, 'Parent task ID');
+		resolvedParentId = await resolveTaskId(parentId);
+	}
 
 	// Best-effort: discover the active CC session's Lightsprint session ID
 	let lsSessionId;
@@ -426,9 +437,28 @@ async function cmdCreate(args, opts) {
 	});
 
 	const task = data.task;
+
+	// Link as subtask: parent depends-on this new task
+	let parentLinked = false;
+	if (resolvedParentId && task.id) {
+		try {
+			validateId(resolvedParentId, 'Parent task ID');
+			validateId(task.id, 'New task ID');
+			await apiRequest(`/api/tasks/${resolvedParentId}/dependencies`, {
+				method: 'POST',
+				body: JSON.stringify({ dependsOnTaskId: task.id })
+			});
+			parentLinked = true;
+		} catch (err) {
+			// Include error in output but don't fail the whole command
+			console.error(`Warning: task created but failed to link to parent ${parentId}: ${err.message}`);
+		}
+	}
+
 	const result = {
 		task: buildTaskData(task),
-		dependenciesAdded: dependencyTaskIds ? dependencyTaskIds.length : 0
+		dependenciesAdded: dependencyTaskIds ? dependencyTaskIds.length : 0,
+		...(resolvedParentId ? { parent: { id: resolvedParentId, linked: parentLinked } } : {})
 	};
 
 	outputResult(result, opts, () => {
@@ -444,6 +474,9 @@ async function cmdCreate(args, opts) {
 		if (dependencyTaskIds && dependencyTaskIds.length > 0) {
 			console.log(`\nDependencies added: ${dependencyTaskIds.length}`);
 		}
+		if (parentLinked) {
+			console.log(`\nLinked as subtask of: ${parentId}`);
+		}
 		console.log(`\nTo link this task in Claude Code, create a task with:`);
 		console.log(`  metadata: { lightsprint_task_id: "${task.id}" }`);
 	});
@@ -452,18 +485,16 @@ async function cmdCreate(args, opts) {
 // ─── update ──────────────────────────────────────────────────────────────
 
 async function cmdUpdate(args, opts) {
-	const taskIdInput = args[0];
-	if (!taskIdInput || taskIdInput.startsWith('--')) {
-		throw new Error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]');
-	}
-
 	// Parse flags
+	let taskIdInput = null;
 	let patch = {};
 	const addDeps = [];
 	const removeDeps = [];
 	let jsonBody = null;
-	for (let i = 1; i < args.length; i++) {
-		if ((args[i] === '--json-body' || args[i] === '--json') && args[i + 1]) {
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if ((args[i] === '--json-body' || args[i] === '--json') && args[i + 1]) {
 			jsonBody = args[++i];
 		} else if (args[i] === '--title' && args[i + 1]) {
 			patch.title = args[++i];
@@ -479,7 +510,13 @@ async function cmdUpdate(args, opts) {
 			addDeps.push(args[++i]);
 		} else if (args[i] === '--remove-dep' && args[i + 1]) {
 			removeDeps.push(args[++i]);
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> to specify the task.`);
 		}
+	}
+
+	if (!taskIdInput) {
+		throw new Error('Usage: lightsprint update --task <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]');
 	}
 
 	if (jsonBody) {
@@ -590,9 +627,16 @@ async function cmdUpdate(args, opts) {
 // ─── get ─────────────────────────────────────────────────────────────────
 
 async function cmdGet(args, opts) {
-	const taskIdInput = args[0];
+	let taskIdInput = null;
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId>.`);
+		}
+	}
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint get <taskId>');
+		throw new Error('Usage: lightsprint get --task <taskId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -697,20 +741,20 @@ async function cmdCurrentTask(args, opts) {
 // ─── claim ───────────────────────────────────────────────────────────────
 
 async function cmdClaim(args, opts) {
-	// Parse --cc-pid flag (passed by skill via $PPID)
+	let taskIdInput = null;
 	let ccPidArg;
-	const filteredArgs = [];
 	for (let i = 0; i < args.length; i++) {
-		if (args[i] === '--cc-pid' && i + 1 < args.length) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--cc-pid' && args[i + 1]) {
 			ccPidArg = parseInt(args[++i], 10);
 		} else {
-			filteredArgs.push(args[i]);
+			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId>.`);
 		}
 	}
 
-	const taskIdInput = filteredArgs[0];
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint claim <taskId>');
+		throw new Error('Usage: lightsprint claim --task <taskId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -768,11 +812,20 @@ async function cmdClaim(args, opts) {
 // ─── link-pr ─────────────────────────────────────────────────────────────
 
 async function cmdLinkPr(args, opts) {
-	const taskIdInput = args[0];
-	const prUrl = args[1];
+	let taskIdInput = null;
+	let prUrl = null;
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--pr-url' && args[i + 1]) {
+			prUrl = args[++i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> --pr-url <url>.`);
+		}
+	}
 
 	if (!taskIdInput || !prUrl) {
-		throw new Error('Usage: lightsprint link-pr <taskId> <prUrl>');
+		throw new Error('Usage: lightsprint link-pr --task <taskId> --pr-url <prUrl>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -805,10 +858,17 @@ async function cmdLinkPr(args, opts) {
 // ─── unlink-pr ───────────────────────────────────────────────────────────
 
 async function cmdUnlinkPr(args, opts) {
-	const taskIdInput = args[0];
+	let taskIdInput = null;
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId>.`);
+		}
+	}
 
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint unlink-pr <taskId>');
+		throw new Error('Usage: lightsprint unlink-pr --task <taskId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -824,11 +884,21 @@ async function cmdUnlinkPr(args, opts) {
 // ─── comment ─────────────────────────────────────────────────────────────
 
 async function cmdComment(args, opts) {
-	const taskIdInput = args[0];
-	const body = args.slice(1).join(' ');
+	let taskIdInput = null;
+	let body = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--body' && args[i + 1]) {
+			body = args[++i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> --body <text>.`);
+		}
+	}
 
 	if (!taskIdInput || !body) {
-		throw new Error('Usage: lightsprint comment <taskId> <body>');
+		throw new Error('Usage: lightsprint comment --task <taskId> --body <text>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
