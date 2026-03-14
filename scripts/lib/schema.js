@@ -23,7 +23,7 @@ const COMMAND_SCHEMAS = {
 	create: {
 		description: 'Create a new task',
 		params: {
-			title: { type: 'string', required: true, positional: true, maxLength: MAX_TITLE_LENGTH, description: 'Task title' },
+			title: { type: 'string', required: true, flag: '--title', maxLength: MAX_TITLE_LENGTH, description: 'Task title' },
 			description: { type: 'string', flag: '--description', maxLength: MAX_DESCRIPTION_LENGTH, description: 'Task description' },
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, default: 'backlog', description: 'Initial status' },
 			complexity: { type: 'enum', flag: '--complexity', values: VALID_COMPLEXITIES, description: 'Complexity estimate' },
@@ -36,7 +36,7 @@ const COMMAND_SCHEMAS = {
 	update: {
 		description: 'Update an existing task',
 		params: {
-			taskId: { type: 'string', required: true, positional: true, description: 'Task ID (raw or display ID like LIG-024)' },
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID like LIG-024)' },
 			title: { type: 'string', flag: '--title', maxLength: MAX_TITLE_LENGTH, description: 'New title' },
 			description: { type: 'string', flag: '--description', maxLength: MAX_DESCRIPTION_LENGTH, description: 'New description' },
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'New status' },
@@ -51,7 +51,7 @@ const COMMAND_SCHEMAS = {
 	get: {
 		description: 'Show full task details including dependencies',
 		params: {
-			taskId: { type: 'string', required: true, positional: true, description: 'Task ID (raw or display ID)' }
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
@@ -59,7 +59,7 @@ const COMMAND_SCHEMAS = {
 	claim: {
 		description: 'Claim a task (set to in_progress, assign to you, link CC session)',
 		params: {
-			taskId: { type: 'string', required: true, positional: true, description: 'Task ID' },
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID' },
 			ccPid: { type: 'integer', flag: '--cc-pid', description: 'Claude Code PID for session linking' }
 		},
 		supportsDryRun: true,
@@ -76,8 +76,8 @@ const COMMAND_SCHEMAS = {
 	'link-pr': {
 		description: 'Link a GitHub PR to a task',
 		params: {
-			taskId: { type: 'string', required: true, positional: true, description: 'Task ID' },
-			prUrl: { type: 'string', required: true, positional: true, description: 'GitHub PR URL (https://github.com/owner/repo/pull/N)' }
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID' },
+			prUrl: { type: 'string', required: true, flag: '--pr-url', description: 'GitHub PR URL (https://github.com/owner/repo/pull/N)' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
@@ -85,7 +85,7 @@ const COMMAND_SCHEMAS = {
 	'unlink-pr': {
 		description: 'Remove a linked PR from a task',
 		params: {
-			taskId: { type: 'string', required: true, positional: true, description: 'Task ID' }
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
@@ -93,8 +93,8 @@ const COMMAND_SCHEMAS = {
 	comment: {
 		description: 'Add a comment to a task',
 		params: {
-			taskId: { type: 'string', required: true, positional: true, description: 'Task ID' },
-			body: { type: 'string', required: true, positional: true, maxLength: MAX_COMMENT_LENGTH, description: 'Comment text' }
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID' },
+			body: { type: 'string', required: true, flag: '--body', maxLength: MAX_COMMENT_LENGTH, description: 'Comment text' }
 		},
 		supportsDryRun: true,
 		supportsJsonBody: false
