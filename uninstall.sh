@@ -32,10 +32,17 @@ if [ -f "$INSTALL_DIR/$BINARY_NAME" ]; then
   echo "Removed binary: $INSTALL_DIR/$BINARY_NAME"
 fi
 
-# Remove all authorizations and config
+# Remove authorizations and config, but preserve user preferences
 if [ -d ~/.lightsprint ]; then
-  rm -rf ~/.lightsprint
-  echo "Removed all authorizations and config: ~/.lightsprint"
+  # Remove everything except preferences.json
+  find ~/.lightsprint -maxdepth 1 -type f ! -name 'preferences.json' -delete
+  # Remove subdirectories
+  find ~/.lightsprint -maxdepth 1 -type d ! -path ~/.lightsprint -exec rm -rf {} +
+  echo "Removed authorizations and config from ~/.lightsprint (user preferences preserved)"
+  # Clean up directory if only preferences.json remains or it's empty
+  if [ -z "$(ls -A ~/.lightsprint 2>/dev/null)" ]; then
+    rmdir ~/.lightsprint
+  fi
 fi
 
 echo ""

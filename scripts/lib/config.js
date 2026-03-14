@@ -14,6 +14,12 @@ import { execSync } from 'child_process';
 const CONFIG_DIR = join(homedir(), '.lightsprint');
 const REPOS_FILE = join(CONFIG_DIR, 'repos.json');
 const PLUGIN_CONFIG_FILE = join(CONFIG_DIR, 'config.json');
+const PREFERENCES_FILE = join(CONFIG_DIR, 'preferences.json');
+
+// Known preference keys and their valid values
+const KNOWN_PREFERENCES = {
+	'link-pr.no-task-behavior': ['prompt', 'always-skip'],
+};
 
 export function ensureConfigDir() {
 	if (!existsSync(CONFIG_DIR)) {
@@ -136,6 +142,53 @@ export function getConfig(cwd) {
  * Returns null if the user previously skipped this repo.
  * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, repoId: string, repoName: string, repo: string, baseUrl: string } | null>}
  */
+// ─── User preferences ────────────────────────────────────────────────
+
+export function readPreferences() {
+	try {
+		if (existsSync(PREFERENCES_FILE)) {
+			return JSON.parse(readFileSync(PREFERENCES_FILE, 'utf-8'));
+		}
+	} catch {
+		// Corrupted file, ignore
+	}
+	return {};
+}
+
+function writePreferences(data) {
+	ensureConfigDir();
+	writeFileSync(PREFERENCES_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
+}
+
+export function getPreference(key) {
+	return readPreferences()[key] ?? null;
+}
+
+export function setPreference(key, value) {
+	if (!(key in KNOWN_PREFERENCES)) {
+		const knownKeys = Object.keys(KNOWN_PREFERENCES).join(', ');
+		throw new Error(`Unknown preference key: "${key}". Known keys: ${knownKeys}`);
+	}
+	const validValues = KNOWN_PREFERENCES[key];
+	if (!validValues.includes(value)) {
+		throw new Error(`Invalid value "${value}" for "${key}". Valid values: ${validValues.join(', ')}`);
+	}
+	const prefs = readPreferences();
+	prefs[key] = value;
+	writePreferences(prefs);
+}
+
+export function deletePreference(key) {
+	const prefs = readPreferences();
+	if (!(key in prefs)) {
+		throw new Error(`Preference "${key}" is not set.`);
+	}
+	delete prefs[key];
+	writePreferences(prefs);
+}
+
+export { KNOWN_PREFERENCES };
+
 export async function requireConfig() {
 	const repo = findRepoConfig();
 	if (repo?.skipped) {

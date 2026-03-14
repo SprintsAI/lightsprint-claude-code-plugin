@@ -20,7 +20,7 @@ import { homedir, tmpdir } from 'os';
 import { join } from 'path';
 import { apiRequest, getRepoId, getRepoInfo } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
-import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName } from './lib/config.js';
+import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
@@ -52,6 +52,7 @@ export async function cliMain(command, args, context = {}) {
 			case 'connect': return await cmdConnect(remainingArgs, opts);
 			case 'disconnect': return await cmdDisconnect(remainingArgs, opts);
 			case 'upgrade': return await cmdUpgrade(context.version || 'dev', opts);
+			case 'config': return cmdConfig(remainingArgs, opts);
 			case 'describe': return cmdDescribe(remainingArgs);
 			default:
 				outputError('unknown_command', `Unknown command: ${command}. Use 'lightsprint help' for usage information.`, { command }, opts);
@@ -136,6 +137,18 @@ Commands:
     Add a comment to a task
     Example:
       lightsprint comment abc123 "This is now complete"
+
+  config <subcommand> [key] [value]
+    Manage user preferences (stored in ~/.lightsprint/preferences.json)
+    Subcommands:
+      config get <key>          Get a preference value
+      config set <key> <value>  Set a preference
+      config delete <key>       Remove a preference
+      config list               Show all preferences
+    Example:
+      lightsprint config set link-pr.no-task-behavior always-skip
+      lightsprint config get link-pr.no-task-behavior
+      lightsprint config delete link-pr.no-task-behavior
 
   describe [command]
     Show accepted parameters, types, and valid enum values as JSON
@@ -1254,6 +1267,66 @@ async function cmdUpgrade(currentVersion, opts) {
 	outputResult(result, opts, () => {
 		console.log(`\nUpgraded lightsprint v${currentVersion === 'dev' ? 'dev' : currentVersion} → v${latestVersion}`);
 	});
+}
+
+// ─── config ──────────────────────────────────────────────────────────────
+
+function cmdConfig(args, opts) {
+	const subcommand = args[0];
+	if (!subcommand) {
+		throw new Error('Usage: lightsprint config <get|set|delete|list> [key] [value]');
+	}
+
+	switch (subcommand) {
+		case 'get': {
+			const key = args[1];
+			if (!key) throw new Error('Usage: lightsprint config get <key>');
+			const value = getPreference(key);
+			outputResult({ key, value }, opts, () => {
+				if (value === null) {
+					console.log(`(not set)`);
+				} else {
+					console.log(value);
+				}
+			});
+			break;
+		}
+		case 'set': {
+			const key = args[1];
+			const value = args[2];
+			if (!key || !value) throw new Error('Usage: lightsprint config set <key> <value>');
+			setPreference(key, value);
+			outputResult({ key, value, success: true }, opts, () => {
+				console.log(`Set ${key} = ${value}`);
+			});
+			break;
+		}
+		case 'delete': {
+			const key = args[1];
+			if (!key) throw new Error('Usage: lightsprint config delete <key>');
+			deletePreference(key);
+			outputResult({ key, success: true }, opts, () => {
+				console.log(`Deleted ${key}`);
+			});
+			break;
+		}
+		case 'list': {
+			const prefs = readPreferences();
+			outputResult(prefs, opts, () => {
+				const entries = Object.entries(prefs);
+				if (entries.length === 0) {
+					console.log('No preferences set.');
+				} else {
+					for (const [k, v] of entries) {
+						console.log(`${k} = ${v}`);
+					}
+				}
+			});
+			break;
+		}
+		default:
+			throw new Error(`Unknown config subcommand: "${subcommand}". Use get, set, delete, or list.`);
+	}
 }
 
 // ─── describe ────────────────────────────────────────────────────────────
