@@ -1035,6 +1035,7 @@ function cmdStatus(opts) {
 
 	const result = {
 		connected: true,
+		cwd: cwd,
 		repoName: cfg.repoName || 'unknown',
 		repoId: cfg.repoId,
 		repo: cfg.repo,
