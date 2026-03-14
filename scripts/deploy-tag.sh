@@ -139,6 +139,17 @@ git push origin "$NEW_VERSION"
 echo -e "${GREEN}✓ Tag pushed successfully${NC}"
 
 echo ""
+read -p "Publish to npm? (yes/no): " PUBLISH_NPM
+
+if [[ "$PUBLISH_NPM" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+  echo -e "${BLUE}Publishing to npm...${NC}"
+  npm publish
+  echo -e "${GREEN}✓ Published to npm${NC}"
+else
+  echo -e "${YELLOW}Skipped npm publish${NC}"
+fi
+
+echo ""
 echo -e "${GREEN}✓ Release initiated!${NC}"
 echo ""
 echo -e "${BLUE}Monitor the release:${NC}"
