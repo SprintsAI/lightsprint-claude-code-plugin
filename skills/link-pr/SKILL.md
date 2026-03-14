@@ -43,13 +43,15 @@ When `lightsprint current-task` returns no linked task after PR creation:
      - PR title and description (from the `gh pr create` output or `gh pr view`)
      - Branch name
      - `git log main..HEAD --oneline` for commit summaries
-   - Run `lightsprint create "<title derived from PR>" --description "<summary from PR description and commits>" --status in_review --cc-pid $PPID`
+   - Run `lightsprint create --title "<title derived from PR>" --description "<summary from PR description and commits>" --status in_review --cc-pid $PPID`. **Always include `--description`** — a task without a description is useless for tracking.
    - Use the returned task ID to run `lightsprint link-pr --task <taskId> --pr-url <prUrl>`
 
 **Option 2 — Link existing task**:
    - Run `lightsprint tasks --mine --status backlog,todo,in_progress --limit 10` to fetch the user's tasks.
    - Present the list to the user in a numbered format (e.g., `1. LS-024 — Fix login bug`).
+   - After the list, remind the user: "Or say **create new** to create a fresh task for this PR."
    - Let the user pick a task by number or ID. Do NOT just ask for a task ID without showing the list first.
+   - If the user says "none" or asks to create a new task instead, follow the **Option 1** flow to create one with a description.
    - Run `lightsprint link-pr --task <selectedTaskId> --pr-url <prUrl>`
 
 **Option 3 — Skip**: Inform the user the PR is not tracked in Lightsprint and move on.
