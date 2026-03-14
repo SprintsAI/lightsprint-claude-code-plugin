@@ -48,6 +48,7 @@ export async function cliMain(command, args, context = {}) {
 			case 'comment': return await cmdComment(remainingArgs, opts);
 			case 'whoami': return await cmdWhoami(opts);
 			case 'open': return cmdOpen(opts);
+			case 'plans': return cmdPlans(opts);
 			case 'status': return cmdStatus(opts);
 			case 'connect': return await cmdConnect(remainingArgs, opts);
 			case 'disconnect': return await cmdDisconnect(remainingArgs, opts);
@@ -157,6 +158,9 @@ Commands:
 
   open
     Open the repo board in your browser
+
+  plans
+    Open the plans page in your browser
 
   status
     Show Lightsprint connection status for the current repository
@@ -982,6 +986,43 @@ function cmdOpen(opts) {
 	}
 
 	const url = `${cfg.baseUrl}/repos/${cfg.repoId}`;
+
+	let opened = false;
+	const platform = process.platform;
+	try {
+		if (platform === 'darwin') {
+			execSync(`open ${JSON.stringify(url)}`, { stdio: 'ignore' });
+		} else if (platform === 'win32') {
+			execSync(`start "" ${JSON.stringify(url)}`, { stdio: 'ignore' });
+		} else {
+			execSync(`xdg-open ${JSON.stringify(url)}`, { stdio: 'ignore' });
+		}
+		opened = true;
+	} catch {
+		// Fallback: just print the URL
+	}
+
+	const result = { url, opened };
+	outputResult(result, opts, () => {
+		if (opened) {
+			console.log(`Opened ${url}`);
+		} else {
+			console.log(`Open this URL in your browser:\n  ${url}`);
+		}
+	});
+}
+
+// ─── plans ───────────────────────────────────────────────────────────────
+
+function cmdPlans(opts) {
+	const cwd = process.cwd();
+	const cfg = getConfig(cwd);
+
+	if (!cfg) {
+		throw new Error('Not connected to Lightsprint. Run "lightsprint connect" first.');
+	}
+
+	const url = `${cfg.baseUrl}/repos/${cfg.repoId}/plans`;
 
 	let opened = false;
 	const platform = process.platform;

@@ -111,6 +111,12 @@ const COMMAND_SCHEMAS = {
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
+	plans: {
+		description: 'Open plans page in browser',
+		params: {},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
 	status: {
 		description: 'Show connection status',
 		params: {},
