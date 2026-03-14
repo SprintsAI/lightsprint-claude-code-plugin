@@ -42,7 +42,7 @@ When `lightsprint current-task` returns no linked task after PR creation:
    - Use the returned task ID to run `lightsprint link-pr --task <taskId> --pr-url <prUrl>`
 
 3. **Option 2 — Link existing task**:
-   - Run `lightsprint tasks --mine --status backlog,todo --limit 10` to fetch the user's backlog and todo tasks.
+   - Run `lightsprint tasks --mine --status backlog,todo --sort updated_at --limit 10` to fetch the user's backlog and todo tasks.
    - Present the list to the user in a numbered format (display ID, title).
    - Let the user pick a task by number or ID.
    - Run `lightsprint link-pr --task <selectedTaskId> --pr-url <prUrl>`
