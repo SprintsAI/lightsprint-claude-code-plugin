@@ -1,17 +1,13 @@
 {
   "name": "lightsprint",
-  "version": "0.5.13",
+  "version": "0.5.14",
   "description": "Sync Claude Code tasks to Lightsprint repo board",
   "type": "module",
   "bin": {
-    "lightsprint": "scripts/lightsprint.js"
+    "lightsprint": "npx-install.js"
   },
   "files": [
-    "scripts/**/*.js",
-    "!scripts/__tests__/",
-    "skills/",
-    "hooks/",
-    ".claude-plugin/"
+    "npx-install.js"
   ],
   "scripts": {
     "build": "bash scripts/compile.sh",

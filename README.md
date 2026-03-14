@@ -13,7 +13,7 @@ Claude Code plugin for Lightsprint — plan review, task management skills, and 
 Install the plugin (one time):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh | bash
+npx lightsprint
 ```
 
 Then use any `/lightsprint:` command — the plugin opens your browser to connect on first use:
@@ -28,7 +28,15 @@ That's it. Each new repo folder auto-prompts for authorization when you first us
 
 ## Installation
 
-### One-line install (recommended)
+### npx (recommended)
+
+```bash
+npx lightsprint
+```
+
+### Curl fallback
+
+If you don't have npm/npx available, you can install via curl:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh | bash
@@ -36,7 +44,13 @@ curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-p
 
 ### Non-interactive install
 
-If you're installing from a non-interactive environment (e.g., Claude Code, CI, or a script), download the installer and pipe `yes` to auto-confirm all prompts:
+If you're installing from a non-interactive environment (e.g., Claude Code, CI, or a script):
+
+```bash
+npx -y lightsprint
+```
+
+Or with curl:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh)" <<< $'Y\nY'
