@@ -57,6 +57,14 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Bash",
+        "hooks": [{
+          "type": "command",
+          "command": "lightsprint cc-pr-created",
+          "timeout": 5
+        }]
+      },
+      {
         "matcher": "TaskCreate",
         "hooks": [{
           "type": "command",

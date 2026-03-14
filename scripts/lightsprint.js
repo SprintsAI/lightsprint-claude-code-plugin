@@ -27,6 +27,7 @@ import { main as ccDaemonMain } from './cc-daemon.js';
 import { main as ccEndMain } from './cc-end.js';
 import { main as ccEventMain } from './cc-event.js';
 import { main as ccReviewMain } from './cc-review.js';
+import { main as ccPrCreatedMain } from './cc-pr-created.js';
 
 // Injected at build time via --define
 const BUILD_VERSION = typeof __BUILD_VERSION__ !== 'undefined' ? __BUILD_VERSION__ : 'dev';
@@ -48,6 +49,8 @@ if (subcommand === 'review-plan') {
 	await ccEventMain(args);
 } else if (subcommand === 'cc-review') {
 	await ccReviewMain(args);
+} else if (subcommand === 'cc-pr-created') {
+	await ccPrCreatedMain(args);
 } else if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
 	showHelp();
 } else if (subcommand === 'version') {
