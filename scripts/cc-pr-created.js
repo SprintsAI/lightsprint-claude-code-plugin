@@ -21,8 +21,8 @@ function extractPrMeta(command) {
 	let title = '';
 	let body = '';
 
-	// Extract --title "..."
-	const titleMatch = command.match(/--title\s+"([^"]+)"/);
+	// Extract --title "..." (handles escaped quotes)
+	const titleMatch = command.match(/--title\s+"((?:\\"|[^"`])*)"/);
 	if (titleMatch) title = titleMatch[1];
 
 	// Extract --body: try heredoc first, then simple quotes
@@ -30,7 +30,7 @@ function extractPrMeta(command) {
 	if (heredocMatch) {
 		body = heredocMatch[1];
 	} else {
-		const bodyMatch = command.match(/--body\s+"([^"]+)"/);
+		const bodyMatch = command.match(/--body\s+"((?:\\"|[^"`])*)"/);
 		if (bodyMatch) body = bodyMatch[1];
 	}
 
@@ -86,8 +86,8 @@ export async function main(args) {
 		if (prMeta.title || prMeta.body) {
 			createTaskLines.push(`   - If creating a new task, use the PR metadata below to populate BOTH --title AND --description.`);
 			createTaskLines.push(`     --description is REQUIRED — do NOT omit it. Use --status in_review.`);
-			if (prMeta.title) createTaskLines.push(`     PR title: ${prMeta.title}`);
-			if (prMeta.body) createTaskLines.push(`     PR body:\n${prMeta.body}`);
+			if (prMeta.title) createTaskLines.push(`     PR title:\n\`\`\`\n${prMeta.title}\n\`\`\``);
+			if (prMeta.body) createTaskLines.push(`     PR body:\n\`\`\`\n${prMeta.body}\n\`\`\``);
 		} else {
 			createTaskLines.push(`   - If creating a new task: look at the PR body and commit messages already in this conversation. Create the task with BOTH --title AND --description. --description is REQUIRED. Use --status in_review.`);
 		}

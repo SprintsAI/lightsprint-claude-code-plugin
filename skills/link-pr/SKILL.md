@@ -53,9 +53,8 @@ When `lightsprint current-task` returns no linked task after PR creation:
    - Run: `lightsprint create --title "<title from PR>" --description "<composed description>" --status in_review --cc-pid $PPID`
    - **The `--description` flag is REQUIRED here. DO NOT OMIT IT.** A task without a description is useless for tracking.
 
-   **Step 3 — Link the PR and confirm**:
+   **Step 3 — Link the PR**:
    - Use the returned task ID to run `lightsprint link-pr --task <taskId> --pr-url <prUrl>`
-   - After linking, always tell the user: "To change this behavior, run `lightsprint config set link-pr.no-task-behavior prompt`."
 
 **Option 2 — Link existing task**:
    - Run `lightsprint tasks --mine --status backlog,todo,in_progress --limit 10` to fetch the user's tasks.
