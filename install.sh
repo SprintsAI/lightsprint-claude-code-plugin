@@ -54,12 +54,21 @@ install_binary() {
       return 1
     fi
     chmod +x "$PLUGIN_BIN_DIR/$BINARY_NAME"
+    # Re-sign on macOS (Bun-compiled binaries need ad-hoc signing)
+    if [[ "$(uname)" == "Darwin" ]]; then
+      codesign --force --sign - "$PLUGIN_BIN_DIR/$BINARY_NAME" 2>/dev/null || true
+    fi
     echo "Installed $BINARY_NAME to $PLUGIN_BIN_DIR/"
 
     # Optional: copy to ~/.local/bin for CLI convenience
     mkdir -p "$INSTALL_DIR"
-    cp "$PLUGIN_BIN_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null && \
-      echo "Also copied to $INSTALL_DIR/ for CLI convenience" || true
+    if cp "$PLUGIN_BIN_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null; then
+      # Re-sign after copy (cp invalidates the Mach-O signature)
+      if [[ "$(uname)" == "Darwin" ]]; then
+        codesign --force --sign - "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null || true
+      fi
+      echo "Also copied to $INSTALL_DIR/ for CLI convenience"
+    fi
   else
     # Production mode: download pre-compiled binary from GitHub releases
     # Binary goes into the plugin cache bin/ directory
@@ -137,12 +146,21 @@ install_binary() {
     fi
 
     chmod +x "$PLUGIN_BIN_DIR/$BINARY_NAME"
+    # Re-sign on macOS (downloaded Bun binaries need ad-hoc signing)
+    if [[ "$(uname)" == "Darwin" ]]; then
+      codesign --force --sign - "$PLUGIN_BIN_DIR/$BINARY_NAME" 2>/dev/null || true
+    fi
     echo "Installed $BINARY_NAME to $PLUGIN_BIN_DIR/"
 
     # Optional: copy to ~/.local/bin for CLI convenience
     mkdir -p "$INSTALL_DIR"
-    cp "$PLUGIN_BIN_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null && \
-      echo "Also copied to $INSTALL_DIR/ for CLI convenience" || true
+    if cp "$PLUGIN_BIN_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null; then
+      # Re-sign after copy (cp invalidates the Mach-O signature)
+      if [[ "$(uname)" == "Darwin" ]]; then
+        codesign --force --sign - "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null || true
+      fi
+      echo "Also copied to $INSTALL_DIR/ for CLI convenience"
+    fi
   fi
 
   return 0
