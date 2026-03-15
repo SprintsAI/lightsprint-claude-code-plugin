@@ -13,6 +13,30 @@ import { readHookInput, createLogger } from './lib/cc-utils.js';
 const PR_URL_RE = /https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/;
 const log = createLogger('cc-pr-created');
 
+/**
+ * Extract --title and --body values from a gh pr create command string.
+ * Handles both quoted ("...") and heredoc ($(cat <<'EOF'...EOF)) forms.
+ */
+function extractPrMeta(command) {
+	let title = '';
+	let body = '';
+
+	// Extract --title "..."
+	const titleMatch = command.match(/--title\s+"([^"]+)"/);
+	if (titleMatch) title = titleMatch[1];
+
+	// Extract --body: try heredoc first, then simple quotes
+	const heredocMatch = command.match(/--body\s+"\$\(cat\s+<<'?EOF'?\n([\s\S]*?)\nEOF\s*\)"/);
+	if (heredocMatch) {
+		body = heredocMatch[1];
+	} else {
+		const bodyMatch = command.match(/--body\s+"([^"]+)"/);
+		if (bodyMatch) body = bodyMatch[1];
+	}
+
+	return { title, body };
+}
+
 export async function main(args) {
 	try {
 		const input = readHookInput(args);
@@ -54,7 +78,19 @@ export async function main(args) {
 		}
 
 		const prUrl = match[0];
-		log('PR URL extracted', { prUrl });
+		const prMeta = extractPrMeta(command);
+		log('PR URL extracted', { prUrl, prTitle: prMeta.title?.substring(0, 100), hasBody: !!prMeta.body });
+
+		// Build the "create new task" instruction block
+		const createTaskLines = [];
+		if (prMeta.title || prMeta.body) {
+			createTaskLines.push(`   - If creating a new task, use the PR metadata below to populate BOTH --title AND --description.`);
+			createTaskLines.push(`     --description is REQUIRED — do NOT omit it. Use --status in_review.`);
+			if (prMeta.title) createTaskLines.push(`     PR title: ${prMeta.title}`);
+			if (prMeta.body) createTaskLines.push(`     PR body:\n${prMeta.body}`);
+		} else {
+			createTaskLines.push(`   - If creating a new task: look at the PR body and commit messages already in this conversation. Create the task with BOTH --title AND --description. --description is REQUIRED. Use --status in_review.`);
+		}
 
 		// Output additionalContext so the agent is forced to run link-pr
 		const output = {
@@ -69,9 +105,10 @@ export async function main(args) {
 				`2. If a task is found: Run: lightsprint link-pr --task <taskId> --pr-url ${prUrl}`,
 				`3. If NO task is found: Check preference with: lightsprint config get link-pr.no-task-behavior`,
 				`   - If "always-skip": skip silently`,
-				`   - Otherwise: ask the user with the 4 options (create new / link existing / skip / always skip)`,
+				`   - If "always-create": skip the prompt and directly create a new task from PR context (use Option 1 from link-pr skill), then link it`,
+				`   - Otherwise: ask the user with the 5 options (create new / link existing / skip / always skip / always create)`,
 				`   - IMPORTANT for "link existing" option: run "lightsprint tasks --mine --status backlog,todo,in_progress --limit 10" and show the numbered task list so the user can pick — do NOT just ask for a task ID`,
-				`   - If creating a new task, use --status in_review (NOT done or in_progress)`,
+				...createTaskLines,
 				``,
 				`This is a required step. Do NOT skip it. Do NOT wait for the user to ask.`,
 				`</system-reminder>`,
