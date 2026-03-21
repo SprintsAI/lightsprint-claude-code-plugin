@@ -13,8 +13,8 @@ import { createHash } from 'crypto';
 const BUILD_HASH = typeof __BUILD_HASH__ !== 'undefined' ? __BUILD_HASH__ : 'dev';
 const BUILD_VERSION = typeof __BUILD_VERSION__ !== 'undefined' ? __BUILD_VERSION__ : 'dev';
 
-// Sentry DSN — write-only ingestion key, not a secret
-const SENTRY_DSN = 'https://PLACEHOLDER@o0.ingest.sentry.io/0'; // TODO: replace with real DSN
+// Sentry DSN — injected at build time from .env, falls back to env var at runtime
+const SENTRY_DSN = typeof __SENTRY_DSN__ !== 'undefined' ? __SENTRY_DSN__ : process.env.SENTRY_DSN;
 
 let initialized = false;
 
