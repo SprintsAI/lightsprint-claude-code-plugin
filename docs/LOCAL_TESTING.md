@@ -258,6 +258,8 @@ bun run scripts/lightsprint.js tasks --output json
 npm run build
 ```
 
+> **Note:** When testing as a Claude Code plugin (not via `bun run`), source changes are NOT automatically picked up — Claude loads from the plugin cache at `~/.claude/plugins/cache/lightsprint/`. Use `./dev-local.sh` to sync your local changes to the cache, and `./dev-restore.sh` to restore the original cached version when done.
+
 ---
 
 ## 7. Architecture Reference

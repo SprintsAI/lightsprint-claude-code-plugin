@@ -102,12 +102,19 @@ function enqueueEvent(type, data) {
 
 function flushEventQueue() {
 	if (!ws || ws.readyState !== WebSocket.OPEN || eventQueue.length === 0) return;
-	const events = [...eventQueue];
-	eventQueue.length = 0;
-	for (const evt of events) {
-		sendFireAndForget(evt.type, evt.data);
+	let sent = 0;
+	while (eventQueue.length > 0) {
+		if (!ws || ws.readyState !== WebSocket.OPEN) break;
+		const evt = eventQueue[0];
+		try {
+			ws.send(JSON.stringify({ type: evt.type, data: evt.data }));
+			eventQueue.shift();
+			sent++;
+		} catch {
+			break;
+		}
 	}
-	log('Flushed event queue', { count: events.length });
+	if (sent > 0) log('Flushed event queue', { sent, remaining: eventQueue.length });
 }
 
 function sendRequest(type, data, timeoutMs = 10000) {

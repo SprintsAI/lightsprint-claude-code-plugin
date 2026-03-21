@@ -29,6 +29,7 @@ const REPOS_FILE = join(TEST_CONFIG_DIR, 'repos.json');
 const SESSIONS_DIR = join(TEST_CONFIG_DIR, 'cc-sessions');
 
 // Set env var so all config/session code uses our temp dir
+const ORIG_CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR;
 process.env.LIGHTSPRINT_CONFIG_DIR = TEST_CONFIG_DIR;
 
 // ─── Mock Server ─────────────────────────────────────────────────────────────
@@ -304,6 +305,11 @@ describe('E2E: Mock Server', () => {
 	afterAll(() => {
 		mockServer.server.stop();
 		cleanupTestConfigDir();
+		if (ORIG_CONFIG_DIR) {
+			process.env.LIGHTSPRINT_CONFIG_DIR = ORIG_CONFIG_DIR;
+		} else {
+			delete process.env.LIGHTSPRINT_CONFIG_DIR;
+		}
 	});
 
 	beforeEach(() => {
@@ -621,6 +627,11 @@ describe('E2E: Session Lifecycle', () => {
 	afterAll(() => {
 		mockHttpServer.stop();
 		cleanupTestConfigDir();
+		if (ORIG_CONFIG_DIR) {
+			process.env.LIGHTSPRINT_CONFIG_DIR = ORIG_CONFIG_DIR;
+		} else {
+			delete process.env.LIGHTSPRINT_CONFIG_DIR;
+		}
 	});
 
 	beforeEach(() => {

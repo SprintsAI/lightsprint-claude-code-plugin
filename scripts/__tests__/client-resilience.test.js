@@ -131,6 +131,44 @@ describe('retryableFetch', () => {
 		expect(result.status).toBe(200);
 		expect(attempt).toBe(2);
 	});
+
+	test('handles 429 with Retry-After as HTTP-date', async () => {
+		const { retryableFetch } = await import('../lib/client.js');
+		let attempt = 0;
+		const mockFetch = async () => {
+			attempt++;
+			if (attempt === 1) {
+				// HTTP-date format: a date ~1 second in the future
+				const futureDate = new Date(Date.now() + 1000).toUTCString();
+				return new Response('rate limited', {
+					status: 429,
+					headers: { 'Retry-After': futureDate }
+				});
+			}
+			return new Response('{"ok":true}', { status: 200 });
+		};
+		const result = await retryableFetch('http://test.local/api', {}, mockFetch, { baseDelayMs: 1 });
+		expect(result.status).toBe(200);
+		expect(attempt).toBe(2);
+	});
+
+	test('handles 429 with invalid Retry-After falls back to backoff', async () => {
+		const { retryableFetch } = await import('../lib/client.js');
+		let attempt = 0;
+		const mockFetch = async () => {
+			attempt++;
+			if (attempt === 1) {
+				return new Response('rate limited', {
+					status: 429,
+					headers: { 'Retry-After': 'garbage-value' }
+				});
+			}
+			return new Response('{"ok":true}', { status: 200 });
+		};
+		const result = await retryableFetch('http://test.local/api', {}, mockFetch, { baseDelayMs: 1 });
+		expect(result.status).toBe(200);
+		expect(attempt).toBe(2);
+	});
 });
 
 describe('parseInt safety', () => {
