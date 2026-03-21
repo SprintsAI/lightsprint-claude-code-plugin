@@ -100,6 +100,28 @@ export function deleteSessionState(ccSessionId) {
 }
 
 /**
+ * Find an active session ID by repo ID.
+ * Scans session files for a matching repoId with a live daemon.
+ * @param {string} repoId
+ * @returns {string|null} CC session ID, or null if none found
+ */
+export function findSessionByRepoId(repoId) {
+	try {
+		const files = readdirSync(SESSIONS_DIR);
+		for (const file of files) {
+			if (!file.endsWith('.json')) continue;
+			try {
+				const state = JSON.parse(readFileSync(join(SESSIONS_DIR, file), 'utf-8'));
+				if (state.repoId === repoId && isPidAlive(state.daemonPid)) {
+					return file.replace('.json', '');
+				}
+			} catch { continue; }
+		}
+	} catch { /* dir doesn't exist */ }
+	return null;
+}
+
+/**
  * Find the running daemon state for a given Claude Code PID.
  * Scans all session state files in cc-sessions/.
  * @param {number} ccPid - Claude Code process PID
