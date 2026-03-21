@@ -12,6 +12,7 @@ import { homedir } from 'os';
 import { randomBytes } from 'crypto';
 import { readHookInput, readSessionState, writeSessionState, isPidAlive, deleteSessionState, findRunningDaemonForCcPid, createLogger, getClaudeCodePid } from './lib/cc-utils.js';
 import { getConfig } from './lib/config.js';
+import { withFileLock } from './lib/filelock.js';
 
 const log = createLogger('cc-start');
 
@@ -63,59 +64,70 @@ export async function main(args) {
 		deleteSessionState(ccSessionId);
 	}
 
-	// Check if this Claude Code process already has a running daemon
-	// (handles --continue firing SessionStart for both new and old session IDs)
+	// Use lockfile to prevent concurrent daemon spawning
+	const configDir = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
+	const lockPath = join(configDir, 'cc-start.lock');
 	const ccPid = getClaudeCodePid();
-	const existingDaemonState = findRunningDaemonForCcPid(ccPid);
-	if (existingDaemonState) {
-		// Create a session state file for the new session ID pointing to the existing daemon,
-		// so hooks using this session_id can still find the daemon's port.
-		log('Daemon already running for this CC process, aliasing session', { ccPid, ccSessionId });
-		writeSessionState(ccSessionId, {
-			port: existingDaemonState.port,
-			daemonPid: existingDaemonState.daemonPid,
-			ccPid: existingDaemonState.ccPid,
-			ccSessionId,
-			lsSessionId: existingDaemonState.lsSessionId,
-			repoId: existingDaemonState.repoId,
-		});
-		return;
-	}
 
-	// Spawn cc-daemon as detached child
-	const gitBranch = getGitBranch(cwd);
-	log('Spawning daemon', { ccSessionId, repoId: cfg.repoId, ccPid, cwd });
-
-	// Write credentials to a temp file (0o600) so they don't leak via /proc/pid/environ
-	const credsDir = join(homedir(), '.lightsprint', 'cc-sessions');
-	mkdirSync(credsDir, { recursive: true, mode: 0o700 });
-	const credsPath = join(credsDir, `.creds-${randomBytes(8).toString('hex')}.json`);
-	writeFileSync(credsPath, JSON.stringify({
-		accessToken: cfg.accessToken,
-		refreshToken: cfg.refreshToken || '',
-		expiresAt: cfg.expiresAt ? String(cfg.expiresAt) : '',
-	}), { mode: 0o600 });
-
-	// Only pass non-sensitive env vars + path to credentials file
-	const daemon = spawn(process.execPath, ['cc-daemon'], {
-		detached: true,
-		stdio: 'ignore',
-		env: {
-			PATH: process.env.PATH,
-			HOME: process.env.HOME,
-			NODE_ENV: process.env.NODE_ENV || '',
-			LIGHTSPRINT_BASE_URL: process.env.LIGHTSPRINT_BASE_URL || '',
-			LS_CREDS_FILE: credsPath,
-			LS_BASE_URL: cfg.baseUrl,
-			LS_REPO_ID: cfg.repoId,
-			LS_SESSION_ID: ccSessionId,
-			LS_CWD: cwd,
-			LS_CC_PID: String(ccPid),
-			LS_GIT_BRANCH: gitBranch || '',
+	await withFileLock(lockPath, async () => {
+		// Check if this Claude Code process already has a running daemon
+		// (handles --continue firing SessionStart for both new and old session IDs)
+		const existingDaemonState = findRunningDaemonForCcPid(ccPid);
+		if (existingDaemonState) {
+			// Create a session state file for the new session ID pointing to the existing daemon,
+			// so hooks using this session_id can still find the daemon's port.
+			log('Daemon already running for this CC process, aliasing session', { ccPid, ccSessionId });
+			writeSessionState(ccSessionId, {
+				port: existingDaemonState.port,
+				daemonPid: existingDaemonState.daemonPid,
+				ccPid: existingDaemonState.ccPid,
+				ccSessionId,
+				lsSessionId: existingDaemonState.lsSessionId,
+				repoId: existingDaemonState.repoId,
+			});
+			return;
 		}
+
+		// Spawn cc-daemon as detached child
+		const gitBranch = getGitBranch(cwd);
+		log('Spawning daemon', { ccSessionId, repoId: cfg.repoId, ccPid, cwd });
+
+		// Write credentials to a temp file (0o600) so they don't leak via /proc/pid/environ
+		const credsDir = join(configDir, 'cc-sessions');
+		mkdirSync(credsDir, { recursive: true, mode: 0o700 });
+		const credsPath = join(credsDir, `.creds-${randomBytes(8).toString('hex')}.json`);
+		writeFileSync(credsPath, JSON.stringify({
+			accessToken: cfg.accessToken,
+			refreshToken: cfg.refreshToken || '',
+			expiresAt: cfg.expiresAt ? String(cfg.expiresAt) : '',
+		}), { mode: 0o600 });
+
+		// Only pass non-sensitive env vars + path to credentials file
+		// When running from source (bun lightsprint.js cc-start), we need to pass
+		// the script path so the daemon spawns as `bun lightsprint.js cc-daemon`.
+		// When running as a compiled binary, process.execPath IS the binary.
+		const scriptPath = process.argv[1]?.endsWith('.js') ? process.argv[1] : null;
+		const daemonArgs = scriptPath ? [scriptPath, 'cc-daemon'] : ['cc-daemon'];
+		const daemon = spawn(process.execPath, daemonArgs, {
+			detached: true,
+			stdio: 'ignore',
+			env: {
+				PATH: process.env.PATH,
+				HOME: process.env.HOME,
+				NODE_ENV: process.env.NODE_ENV || '',
+				LIGHTSPRINT_BASE_URL: process.env.LIGHTSPRINT_BASE_URL || '',
+				LS_CREDS_FILE: credsPath,
+				LS_BASE_URL: cfg.baseUrl,
+				LS_REPO_ID: cfg.repoId,
+				LS_SESSION_ID: ccSessionId,
+				LS_CWD: cwd,
+				LS_CC_PID: String(ccPid),
+				LS_GIT_BRANCH: gitBranch || '',
+			}
+		});
+		daemon.unref();
+		log('Daemon spawned', { daemonPid: daemon.pid });
 	});
-	daemon.unref();
-	log('Daemon spawned', { daemonPid: daemon.pid });
 
 	// Poll daemon health endpoint until ready (or timeout)
 	const maxWaitMs = 5000;

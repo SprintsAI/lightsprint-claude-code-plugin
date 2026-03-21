@@ -6,12 +6,13 @@
  * 2. If no match found, trigger browser-based OAuth (interactive only)
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs';
+import { randomBytes } from 'crypto';
 import { join } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 
-const CONFIG_DIR = join(homedir(), '.lightsprint');
+const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
 const REPOS_FILE = join(CONFIG_DIR, 'repos.json');
 const PLUGIN_CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 const PREFERENCES_FILE = join(CONFIG_DIR, 'preferences.json');
@@ -83,7 +84,9 @@ export function readReposFile() {
 
 export function writeReposFile(data) {
 	ensureConfigDir();
-	writeFileSync(REPOS_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
+	const tmp = REPOS_FILE + '.' + randomBytes(4).toString('hex');
+	writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
+	renameSync(tmp, REPOS_FILE);
 }
 
 /**

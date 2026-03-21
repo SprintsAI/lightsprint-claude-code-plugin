@@ -21,7 +21,7 @@ import { join } from 'path';
 import { apiRequest, getRepoId, getRepoInfo } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
-import { validateId, validateStatus, validateComplexity, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion } from './lib/validate.js';
+import { validateId, validateStatus, validateComplexity, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
@@ -233,16 +233,21 @@ async function cmdTasks(args, opts) {
 		}
 	}
 
+	// Validate numeric inputs
+	limit = validatePositiveInt(limit, 'limit');
+	offset = validatePositiveInt(offset, 'offset');
+	if (assigneeFilter) validateAssignee(assigneeFilter);
+
 	// Validate enum inputs
 	if (status) {
-		// Support comma-separated statuses
-		for (const s of status.split(',')) validateStatus(s);
+		// Support comma-separated statuses (trim whitespace)
+		for (const s of status.split(',').map(v => v.trim())) validateStatus(s);
 	}
 	if (complexity) validateComplexity(complexity);
 	if (depsFilter) {
 		validateEnum(depsFilter, VALID_DEPS_FILTERS, 'deps filter');
 	}
-	const VALID_SORT_FIELDS = new Set(['position', 'updated_at', 'created_at']);
+	const VALID_SORT_FIELDS = ['position', 'updated_at', 'created_at'];
 	if (sort) {
 		validateEnum(sort, VALID_SORT_FIELDS, 'sort field');
 	}
@@ -381,6 +386,7 @@ async function cmdCreate(args, opts) {
 			parentId = args[++i];
 		} else if (args[i] === '--cc-pid' && args[i + 1]) {
 			ccPidArg = parseInt(args[++i], 10);
+			validatePid(ccPidArg);
 		} else {
 			throw new Error(`Unknown argument: ${args[i]}. Use --title to set the task title.`);
 		}
@@ -733,6 +739,7 @@ async function cmdCurrentTask(args, opts) {
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--cc-pid' && i + 1 < args.length) {
 			ccPidArg = parseInt(args[++i], 10);
+			validatePid(ccPidArg);
 		}
 	}
 
@@ -770,6 +777,7 @@ async function cmdClaim(args, opts) {
 			taskIdInput = args[++i];
 		} else if (args[i] === '--cc-pid' && args[i + 1]) {
 			ccPidArg = parseInt(args[++i], 10);
+			validatePid(ccPidArg);
 		} else {
 			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId>.`);
 		}

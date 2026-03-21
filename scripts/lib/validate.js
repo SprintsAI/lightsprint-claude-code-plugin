@@ -40,8 +40,9 @@ export const VALID_DEPS_FILTERS = ['has-dependencies', 'has-no-dependencies', 'h
  * @returns {string} The validated value
  */
 export function validateEnum(value, allowed, fieldName) {
-	if (!allowed.includes(value)) {
-		throw new Error(`Invalid ${fieldName}: "${value}". Allowed values: ${allowed.join(', ')}`);
+	const arr = allowed instanceof Set ? [...allowed] : allowed;
+	if (!arr.includes(value)) {
+		throw new Error(`Invalid ${fieldName}: "${value}". Allowed values: ${arr.join(', ')}`);
 	}
 	return value;
 }
@@ -77,6 +78,37 @@ export function validatePid(pid) {
 		throw new Error(`Invalid PID: "${pid}". Must be a positive integer.`);
 	}
 	return s;
+}
+
+/**
+ * Validate a non-negative integer (for --limit, --offset).
+ * @param {number} value
+ * @param {string} fieldName
+ * @returns {number}
+ */
+export function validatePositiveInt(value, fieldName) {
+	if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
+		throw new Error(`${fieldName} must be a non-negative integer.`);
+	}
+	return value;
+}
+
+/**
+ * Validate an assignee filter string.
+ * @param {string} value
+ * @returns {string}
+ */
+export function validateAssignee(value) {
+	if (!value || typeof value !== 'string') {
+		throw new Error('Assignee is required.');
+	}
+	if (value.length > 200) {
+		throw new Error('Assignee exceeds maximum length of 200 characters.');
+	}
+	if (/[\x00-\x1F]/.test(value)) {
+		throw new Error('Assignee contains invalid control characters.');
+	}
+	return value;
 }
 
 // ─── Length validation ──────────────────────────────────────────────────

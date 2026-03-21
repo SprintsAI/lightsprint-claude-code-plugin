@@ -5,8 +5,12 @@
  */
 
 import { requireConfig, readReposFile, writeReposFile } from './config.js';
+import { withFileLock } from './filelock.js';
+import { join } from 'path';
+import { homedir } from 'os';
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024; // 10MB
+export const DEFAULT_TIMEOUT_MS = 30_000;
 
 let _config = null;
 
@@ -49,6 +53,7 @@ async function refreshTokenIfNeeded() {
 	try {
 		const response = await fetch(`${cfg.baseUrl}/oauth/token`, {
 			method: 'POST',
+			signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: new URLSearchParams({
 				grant_type: 'refresh_token',
@@ -63,15 +68,19 @@ async function refreshTokenIfNeeded() {
 
 		const data = await response.json();
 
-		// Update repos.json atomically
-		const repos = readReposFile();
-		const key = cfg.repo;
-		if (repos[key]) {
-			repos[key].accessToken = data.access_token;
-			repos[key].refreshToken = data.refresh_token;
-			repos[key].expiresAt = Date.now() + (data.expires_in * 1000);
-			writeReposFile(repos);
-		}
+		// Update repos.json atomically with file lock
+		const configDir = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
+		const lockPath = join(configDir, 'repos.json.lock');
+		await withFileLock(lockPath, () => {
+			const repos = readReposFile();
+			const key = cfg.repo;
+			if (repos[key]) {
+				repos[key].accessToken = data.access_token;
+				repos[key].refreshToken = data.refresh_token;
+				repos[key].expiresAt = Date.now() + (data.expires_in * 1000);
+				writeReposFile(repos);
+			}
+		});
 
 		// Update in-memory config
 		cfg.accessToken = data.access_token;
@@ -122,6 +131,79 @@ async function readBodyCapped(response) {
 }
 
 /**
+ * Parse JSON with descriptive errors for non-JSON responses.
+ * @param {string} body - Response body text
+ * @returns {any} Parsed JSON
+ */
+export function safeJsonParse(body) {
+	if (!body || body.length === 0) {
+		throw new Error('Lightsprint API: empty response body');
+	}
+	try {
+		return JSON.parse(body);
+	} catch {
+		if (body.trimStart().startsWith('<')) {
+			throw new Error(`Lightsprint API: unexpected non-JSON response (HTML). First 200 chars: ${body.slice(0, 200)}`);
+		}
+		throw new Error(`Lightsprint API: failed to parse response as JSON. First 200 chars: ${body.slice(0, 200)}`);
+	}
+}
+
+/**
+ * Fetch with retry for 5xx and network errors.
+ * @param {string} url
+ * @param {object} options - fetch options
+ * @param {Function} [fetchFn=fetch] - fetch implementation (for testing)
+ * @param {{ maxRetries?: number, baseDelayMs?: number }} [retryOpts]
+ * @returns {Promise<Response>}
+ */
+export async function retryableFetch(url, options = {}, fetchFn = fetch, retryOpts = {}) {
+	const maxRetries = retryOpts.maxRetries ?? 3;
+	const baseDelayMs = retryOpts.baseDelayMs ?? 1000;
+	let lastResponse;
+	let lastError;
+
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		try {
+			const response = await fetchFn(url, options);
+
+			// Don't retry client errors (4xx) except 429
+			if (response.status === 429) {
+				const retryAfter = response.headers.get('Retry-After');
+				const delayMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : baseDelayMs * Math.pow(2, attempt);
+				if (attempt < maxRetries) {
+					await new Promise(r => setTimeout(r, delayMs));
+					continue;
+				}
+				return response;
+			}
+
+			if (response.status < 500) return response;
+
+			// 5xx — retry with backoff
+			lastResponse = response;
+			if (attempt < maxRetries) {
+				const jitter = 0.8 + Math.random() * 0.4;
+				await new Promise(r => setTimeout(r, baseDelayMs * Math.pow(2, attempt) * jitter));
+				continue;
+			}
+			return response;
+		} catch (err) {
+			lastError = err;
+			if (attempt < maxRetries) {
+				const jitter = 0.8 + Math.random() * 0.4;
+				await new Promise(r => setTimeout(r, baseDelayMs * Math.pow(2, attempt) * jitter));
+				continue;
+			}
+			throw err;
+		}
+	}
+
+	if (lastResponse) return lastResponse;
+	throw lastError;
+}
+
+/**
  * Make an authenticated request to the Lightsprint API.
  * Automatically refreshes the access token if expired.
  * @param {string} path - API path (e.g., '/api/repos/abc/tasks')
@@ -138,9 +220,12 @@ export async function apiRequest(path, options = {}) {
 	}
 
 	const url = `${cfg.baseUrl}${path}`;
+	const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
+	const { timeoutMs: _, ...fetchOptions } = options;
 
-	const response = await fetch(url, {
-		...options,
+	const response = await retryableFetch(url, {
+		...fetchOptions,
+		signal: options.signal || AbortSignal.timeout(timeoutMs),
 		headers: {
 			'Authorization': `Bearer ${cfg.accessToken}`,
 			'Content-Type': 'application/json',
@@ -157,7 +242,7 @@ export async function apiRequest(path, options = {}) {
 
 	if (response.status === 204) return null;
 	const body = await readBodyCapped(response);
-	return JSON.parse(body);
+	return safeJsonParse(body);
 }
 
 /**

@@ -15,7 +15,8 @@ import { createServer as createNetServer } from 'net';
 import { execSync } from 'child_process';
 import { validatePid } from './validate.js';
 
-const SESSIONS_DIR = join(homedir(), '.lightsprint', 'cc-sessions');
+const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
+const SESSIONS_DIR = join(CONFIG_DIR, 'cc-sessions');
 
 /**
  * Create a logger that writes to ~/.lightsprint/daemon.log.
@@ -24,7 +25,7 @@ const SESSIONS_DIR = join(homedir(), '.lightsprint', 'cc-sessions');
  * @returns {(msg: string, data?: object) => void}
  */
 export function createLogger(tag) {
-	const logDir = join(homedir(), '.lightsprint');
+	const logDir = CONFIG_DIR;
 	const logFile = join(logDir, 'daemon.log');
 	mkdirSync(logDir, { recursive: true, mode: 0o700 });
 	return function log(msg, data) {
@@ -207,6 +208,29 @@ export function getClaudeCodePid() {
 		pid = ppid;
 	}
 	return process.ppid;
+}
+
+/**
+ * Clean up stale session files (dead daemon PIDs).
+ * Call on daemon startup to prevent orphan accumulation.
+ * @returns {number} Number of stale sessions cleaned
+ */
+export function cleanupStaleSessions() {
+	let cleaned = 0;
+	try {
+		const files = readdirSync(SESSIONS_DIR);
+		for (const file of files) {
+			if (!file.endsWith('.json') || file.startsWith('.')) continue;
+			try {
+				const state = JSON.parse(readFileSync(join(SESSIONS_DIR, file), 'utf-8'));
+				if (state.daemonPid && !isPidAlive(state.daemonPid)) {
+					unlinkSync(join(SESSIONS_DIR, file));
+					cleaned++;
+				}
+			} catch { /* skip corrupted files */ }
+		}
+	} catch { /* dir doesn't exist yet */ }
+	return cleaned;
 }
 
 /**
