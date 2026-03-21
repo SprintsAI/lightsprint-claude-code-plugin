@@ -4,7 +4,7 @@
  * Tells the daemon to shut down gracefully.
  */
 
-import { readHookInput, readSessionState } from './lib/cc-utils.js';
+import { readHookInput, readSessionState, reportError } from './lib/cc-utils.js';
 
 export async function main(args) {
 	const input = readHookInput(args);
@@ -26,7 +26,8 @@ export async function main(args) {
 			body: JSON.stringify({}),
 			signal: AbortSignal.timeout(3000),
 		});
-	} catch {
+	} catch (err) {
 		// Daemon may already be dead — that's fine
+		reportError(ccSessionId, err, 'cc-end').catch(() => {});
 	}
 }

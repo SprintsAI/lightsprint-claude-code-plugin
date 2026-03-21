@@ -8,7 +8,7 @@
  * Output: JSON with hookSpecificOutput.additionalContext (if PR detected)
  */
 
-import { readHookInput, createLogger } from './lib/cc-utils.js';
+import { readHookInput, createLogger, reportError } from './lib/cc-utils.js';
 
 const PR_URL_RE = /https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/;
 const log = createLogger('cc-pr-created');
@@ -38,8 +38,9 @@ function extractPrMeta(command) {
 }
 
 export async function main(args) {
+	let input;
 	try {
-		const input = readHookInput(args);
+		input = readHookInput(args);
 		if (!input) {
 			log('No hook input received');
 			return;
@@ -121,6 +122,10 @@ export async function main(args) {
 		process.stdout.write(json);
 	} catch (err) {
 		log('Hook error', { error: err.message, stack: err.stack });
+		const ccSessionId = input?.session_id;
+		if (ccSessionId) {
+			reportError(ccSessionId, err, 'cc-pr-created').catch(() => {});
+		}
 		// Re-throw so Claude Code sees the failure
 		throw err;
 	}

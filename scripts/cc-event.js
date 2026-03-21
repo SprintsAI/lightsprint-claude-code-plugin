@@ -7,7 +7,7 @@
  * Reads hook JSON → sends raw event to daemon via HTTP.
  */
 
-import { readHookInput, readSessionState } from './lib/cc-utils.js';
+import { readHookInput, readSessionState, reportError } from './lib/cc-utils.js';
 
 export async function main(args) {
 	const input = readHookInput(args);
@@ -40,6 +40,7 @@ export async function main(args) {
 		});
 	} catch (err) {
 		// Daemon may be busy or dead — never block Claude Code
+		reportError(ccSessionId, err, 'cc-event').catch(() => {});
 		if (process.env.LIGHTSPRINT_DEBUG) {
 			process.stderr.write(`[lightsprint:cc-event] ${err.message}\n`);
 		}
