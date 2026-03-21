@@ -59,7 +59,7 @@ if (credsFile) {
 let ACCESS_TOKEN = _accessToken || process.env.LS_ACCESS_TOKEN || repoConfig?.accessToken;
 let REFRESH_TOKEN = _refreshToken || process.env.LS_REFRESH_TOKEN || repoConfig?.refreshToken;
 let EXPIRES_AT = _expiresAt || (process.env.LS_EXPIRES_AT ? parseInt(process.env.LS_EXPIRES_AT, 10) : repoConfig?.expiresAt);
-if (EXPIRES_AT && !Number.isFinite(EXPIRES_AT)) EXPIRES_AT = 0; // force refresh
+if (EXPIRES_AT != null && !Number.isFinite(EXPIRES_AT)) EXPIRES_AT = 0; // force refresh
 const BASE_URL = process.env.LS_BASE_URL || repoConfig?.baseUrl;
 const REPO_ID = process.env.LS_REPO_ID || repoConfig?.repoId;
 const CC_SESSION_ID = process.env.LS_SESSION_ID;
