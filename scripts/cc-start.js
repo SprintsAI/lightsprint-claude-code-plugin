@@ -17,6 +17,22 @@ import { withFileLock } from './lib/filelock.js';
 const log = createLogger('cc-start');
 
 /**
+ * Output a connection message visible to the user on session start.
+ * Uses systemMessage (user-visible) + additionalContext (AI context).
+ */
+function outputConnectedMessage(cfg) {
+	const repoLabel = cfg.repo || cfg.repoName || cfg.repoId;
+	const output = {
+		systemMessage: `Connected to Lightsprint repo: ${repoLabel}`,
+		hookSpecificOutput: {
+			hookEventName: 'SessionStart',
+			additionalContext: `Connected to Lightsprint repo: ${repoLabel}`,
+		},
+	};
+	process.stdout.write(JSON.stringify(output));
+}
+
+/**
  * Detect git branch from cwd.
  */
 function getGitBranch(cwd) {
@@ -58,6 +74,7 @@ export async function main(args) {
 	if (existing) {
 		if (isPidAlive(existing.daemonPid)) {
 			// Daemon already running for this session
+			outputConnectedMessage(cfg);
 			return;
 		}
 		// Stale session file → clean up
@@ -85,6 +102,7 @@ export async function main(args) {
 				lsSessionId: existingDaemonState.lsSessionId,
 				repoId: existingDaemonState.repoId,
 			});
+			outputConnectedMessage(cfg);
 			return;
 		}
 
@@ -150,4 +168,7 @@ export async function main(args) {
 		}
 		await new Promise(r => setTimeout(r, pollIntervalMs));
 	}
+
+	// Output connection message to the user
+	outputConnectedMessage(cfg);
 }
