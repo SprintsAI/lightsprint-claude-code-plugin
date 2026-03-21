@@ -34,6 +34,7 @@ import { createHash, randomBytes } from 'crypto';
 import { hostname, homedir } from 'os';
 import { resolve, normalize, join } from 'path';
 import { validateId } from './lib/validate.js';
+import { initSentry, setSentryContext, addBreadcrumb, captureException, shutdownSentry, wireCrashHandlers } from './lib/sentry.js';
 
 import { readFileSync, unlinkSync, realpathSync } from 'fs';
 
@@ -162,6 +163,7 @@ async function shutdown(reason) {
 	if (ws) { try { ws.close(1000, 'shutdown'); } catch { /* ignore */ } ws = null; }
 	if (httpServer) httpServer.close();
 	deleteSessionState(CC_SESSION_ID);
+	await shutdownSentry();
 	log('Cleanup complete');
 	process.exit(0);
 }
@@ -440,6 +442,27 @@ async function _tryListenOnPort(port) {
 				log('Plan review error', { error: err.message });
 				res.writeHead(200, { 'Content-Type': 'application/json' });
 				res.end(JSON.stringify({ decision: 'allow' }));
+			}
+			return;
+		}
+
+		if (url.pathname === '/error' && req.method === 'POST') {
+			try {
+				const body = await readBody(req);
+				const data = JSON.parse(body);
+				log('Error report received', { source: data.source, error: data.error });
+				const err = new Error(data.message || 'Unknown error');
+				err.name = data.error || 'Error';
+				if (data.stack) err.stack = data.stack;
+				captureException(err, {
+					source: data.source,
+					extras: data.context,
+				});
+				res.writeHead(200, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ ok: true }));
+			} catch (err) {
+				res.writeHead(400, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ ok: false, error: err.message }));
 			}
 			return;
 		}
@@ -733,6 +756,16 @@ function startWatchdog() {
 
 export async function main() {
 	log('Starting daemon', { ccSessionId: CC_SESSION_ID, repoId: REPO_ID, ccPid: CC_PID });
+
+	// Initialize Sentry crash reporting
+	initSentry({ baseUrl: BASE_URL });
+	wireCrashHandlers();
+	setSentryContext({
+		email: repoConfig?.email,
+		repoId: REPO_ID,
+		sessionId: CC_SESSION_ID,
+		machineId: MACHINE_ID,
+	});
 
 	if (!ACCESS_TOKEN || !BASE_URL || !REPO_ID || !CC_SESSION_ID) {
 		log('Missing required env vars');
