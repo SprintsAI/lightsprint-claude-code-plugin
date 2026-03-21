@@ -10,7 +10,7 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { randomBytes } from 'crypto';
-import { readHookInput, readSessionState, writeSessionState, isPidAlive, deleteSessionState, findRunningDaemonForCcPid, createLogger, getClaudeCodePid } from './lib/cc-utils.js';
+import { readHookInput, readSessionState, writeSessionState, isPidAlive, deleteSessionState, findRunningDaemonForCcPid, createLogger, getClaudeCodePid, reportError } from './lib/cc-utils.js';
 import { getConfig } from './lib/config.js';
 import { withFileLock } from './lib/filelock.js';
 
@@ -86,7 +86,8 @@ export async function main(args) {
 	const lockPath = join(configDir, 'cc-start.lock');
 	const ccPid = getClaudeCodePid();
 
-	await withFileLock(lockPath, async () => {
+	try {
+		await withFileLock(lockPath, async () => {
 		// Check if this Claude Code process already has a running daemon
 		// (handles --continue firing SessionStart for both new and old session IDs)
 		const existingDaemonState = findRunningDaemonForCcPid(ccPid);
@@ -101,6 +102,7 @@ export async function main(args) {
 				ccSessionId,
 				lsSessionId: existingDaemonState.lsSessionId,
 				repoId: existingDaemonState.repoId,
+				daemonToken: existingDaemonState.daemonToken,
 			});
 			outputConnectedMessage(cfg);
 			return;
@@ -167,6 +169,12 @@ export async function main(args) {
 			// Not ready yet
 		}
 		await new Promise(r => setTimeout(r, pollIntervalMs));
+	}
+	} catch (err) {
+		reportError(ccSessionId, err, 'cc-start').catch(() => {});
+		if (process.env.LIGHTSPRINT_DEBUG) {
+			process.stderr.write(`[lightsprint:cc-start] ${err.message}\n`);
+		}
 	}
 
 	// Output connection message to the user

@@ -29,7 +29,7 @@ import { getConfig } from './lib/config.js';
 import { apiRequest, getRepoId } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
-import { findFreePort } from './lib/cc-utils.js';
+import { findFreePort, reportError } from './lib/cc-utils.js';
 import { validateId } from './lib/validate.js';
 
 const LOG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
@@ -505,6 +505,9 @@ export async function reviewPlanMain(args) {
 		}
 	} catch (err) {
 		log('error', 'review-plan failed', { error: err.message });
+		if (sessionId) {
+			reportError(sessionId, err, 'review-plan').catch(() => {});
+		}
 		outputAllow();
 	}
 
