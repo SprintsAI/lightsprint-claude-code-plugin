@@ -1,19 +1,38 @@
 // scripts/__tests__/daemon-hardening.test.js
-import { describe, test, expect, afterEach } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { join } from 'path';
-import { homedir } from 'os';
-import { existsSync, unlinkSync, writeFileSync, statSync, readdirSync } from 'fs';
+import { tmpdir } from 'os';
+import { existsSync, unlinkSync, writeFileSync, statSync, readdirSync, mkdirSync, rmSync } from 'fs';
+import { randomBytes } from 'crypto';
+
+// Use an isolated temp config dir so tests never touch ~/.lightsprint
+const TEST_CONFIG_DIR = join(tmpdir(), `lightsprint-daemon-test-${randomBytes(8).toString('hex')}`);
+const ORIG_CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR;
+process.env.LIGHTSPRINT_CONFIG_DIR = TEST_CONFIG_DIR;
+
 import { withFileLock } from '../lib/filelock.js';
 import { cleanupStaleSessions } from '../lib/cc-utils.js';
 import { writeSessionState, readSessionState, deleteSessionState } from '../lib/cc-utils.js';
-import { randomBytes } from 'crypto';
 
-const SESSIONS_DIR = join(homedir(), '.lightsprint', 'cc-sessions');
+const SESSIONS_DIR = join(TEST_CONFIG_DIR, 'cc-sessions');
+
+beforeAll(() => {
+	mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
+});
+
+afterAll(() => {
+	if (ORIG_CONFIG_DIR) {
+		process.env.LIGHTSPRINT_CONFIG_DIR = ORIG_CONFIG_DIR;
+	} else {
+		delete process.env.LIGHTSPRINT_CONFIG_DIR;
+	}
+	try { rmSync(TEST_CONFIG_DIR, { recursive: true, force: true }); } catch {}
+});
 
 // ─── File Locking ────────────────────────────────────────────────────────────
 
 describe('withFileLock', () => {
-	const lockPath = join(homedir(), '.lightsprint', 'test-lock.lock');
+	const lockPath = join(TEST_CONFIG_DIR, 'test-lock.lock');
 
 	afterEach(() => {
 		try { unlinkSync(lockPath); } catch {}

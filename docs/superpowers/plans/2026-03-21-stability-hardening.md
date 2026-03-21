@@ -148,7 +148,7 @@ describe('validateAssignee', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/validate-fixes.test.js`
+Run: `bun test scripts/__tests__/validate-fixes.test.js`
 Expected: FAIL — `validatePositiveInt` and `validateAssignee` don't exist yet, `validateEnum` crashes on Set
 
 - [ ] **Step 3: Implement validateEnum Set support + new validators**
@@ -200,7 +200,7 @@ export function validateAssignee(value) {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/validate-fixes.test.js`
+Run: `bun test scripts/__tests__/validate-fixes.test.js`
 Expected: ALL PASS
 
 - [ ] **Step 5: Apply validation fixes to ls-cli.js**
@@ -253,7 +253,7 @@ validatePid(ccPidArg);  // ADD THIS
 
 - [ ] **Step 6: Run full test suite**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test`
+Run: `bun test`
 Expected: ALL PASS
 
 - [ ] **Step 7: Commit**
@@ -312,7 +312,7 @@ describe('DEFAULT_TIMEOUT_MS', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/client-resilience.test.js`
+Run: `bun test scripts/__tests__/client-resilience.test.js`
 Expected: FAIL — `safeJsonParse` and `DEFAULT_TIMEOUT_MS` don't exist
 
 - [ ] **Step 3: Implement safeJsonParse and timeout constant**
@@ -386,12 +386,12 @@ const response = await fetch(`${cfg.baseUrl}/oauth/token`, {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/client-resilience.test.js`
+Run: `bun test scripts/__tests__/client-resilience.test.js`
 Expected: ALL PASS
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test`
+Run: `bun test`
 Expected: ALL PASS
 
 - [ ] **Step 6: Commit**
@@ -523,7 +523,7 @@ describe('retryableFetch', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/client-resilience.test.js`
+Run: `bun test scripts/__tests__/client-resilience.test.js`
 Expected: FAIL — `retryableFetch` does not exist
 
 - [ ] **Step 3: Implement retryableFetch**
@@ -597,12 +597,12 @@ const response = await retryableFetch(url, { ... });
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/client-resilience.test.js`
+Run: `bun test scripts/__tests__/client-resilience.test.js`
 Expected: ALL PASS
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test`
+Run: `bun test`
 Expected: ALL PASS
 
 - [ ] **Step 6: Commit**
@@ -654,7 +654,7 @@ describe('parseInt safety', () => {
 
 - [ ] **Step 2: Run tests to verify they pass (these are documentation tests)**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/client-resilience.test.js`
+Run: `bun test scripts/__tests__/client-resilience.test.js`
 Expected: PASS (these test current behavior)
 
 - [ ] **Step 3: Fix auth.js parseInt and daemon NaN guards**
@@ -689,7 +689,7 @@ if (!Number.isFinite(CC_PID) || CC_PID <= 0) {
 
 - [ ] **Step 4: Run full test suite**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test`
+Run: `bun test`
 Expected: ALL PASS
 
 - [ ] **Step 5: Commit**
@@ -773,7 +773,7 @@ describe('writeReposFile atomicity', () => {
 
 - [ ] **Step 2: Run tests — some may pass already (file permissions), temp file test should fail**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/config-atomicity.test.js`
+Run: `bun test scripts/__tests__/config-atomicity.test.js`
 Expected: Temp file test may pass (current impl doesn't use tmp), but validates baseline
 
 - [ ] **Step 3: Make writeReposFile atomic (tmp + rename)**
@@ -798,12 +798,12 @@ Also add `renameSync` and `randomBytes` to the imports at the top of the file.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/config-atomicity.test.js`
+Run: `bun test scripts/__tests__/config-atomicity.test.js`
 Expected: ALL PASS
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test`
+Run: `bun test`
 Expected: ALL PASS
 
 - [ ] **Step 6: Commit**
@@ -849,7 +849,7 @@ describe('task-map.js permissions', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/config-atomicity.test.js`
+Run: `bun test scripts/__tests__/config-atomicity.test.js`
 Expected: FAIL — current writeMap doesn't set mode 0o600
 
 - [ ] **Step 3: Fix permissions in task-map.js**
@@ -864,12 +864,12 @@ writeFileSync(tmp, JSON.stringify(map, null, 2), { mode: 0o600 });
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/config-atomicity.test.js`
+Run: `bun test scripts/__tests__/config-atomicity.test.js`
 Expected: ALL PASS
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test`
+Run: `bun test`
 Expected: ALL PASS
 
 - [ ] **Step 6: Commit**
@@ -913,7 +913,7 @@ In `scripts/cc-event.js`, find the bare `catch {}` or `catch { }` block and repl
 
 - [ ] **Step 3: Run full test suite**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test`
+Run: `bun test`
 Expected: ALL PASS
 
 - [ ] **Step 4: Commit**
@@ -1064,7 +1064,7 @@ describe('Event queue', () => {
 
 - [ ] **Step 2: Run tests to verify they pass (these test patterns, not implementations)**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test scripts/__tests__/daemon-hardening.test.js`
+Run: `bun test scripts/__tests__/daemon-hardening.test.js`
 Expected: ALL PASS (these test the patterns we'll apply)
 
 - [ ] **Step 3: Apply guards in cc-daemon.js**
@@ -1142,7 +1142,7 @@ Then call `flushEventQueue()` after successful `session:start` in the ws.onopen 
 
 - [ ] **Step 4: Run full test suite**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test`
+Run: `bun test`
 Expected: ALL PASS
 
 - [ ] **Step 5: Commit**
@@ -1183,7 +1183,7 @@ const response = await fetch(`${BASE_URL}/oauth/token`, {
 
 - [ ] **Step 2: Run full test suite**
 
-Run: `cd /Users/henghonglee/lightsprint-projects/lightsprint-claude-code-plugin && bun test`
+Run: `bun test`
 Expected: ALL PASS
 
 - [ ] **Step 3: Commit**

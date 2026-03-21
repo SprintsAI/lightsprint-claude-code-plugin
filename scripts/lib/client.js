@@ -170,7 +170,19 @@ export async function retryableFetch(url, options = {}, fetchFn = fetch, retryOp
 			// Don't retry client errors (4xx) except 429
 			if (response.status === 429) {
 				const retryAfter = response.headers.get('Retry-After');
-				const delayMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : baseDelayMs * Math.pow(2, attempt);
+				let delayMs = baseDelayMs * Math.pow(2, attempt);
+				if (retryAfter) {
+					const seconds = Number(retryAfter);
+					if (Number.isFinite(seconds) && seconds > 0) {
+						delayMs = seconds * 1000;
+					} else {
+						// Try HTTP-date format (e.g. "Thu, 01 Dec 1994 16:00:00 GMT")
+						const date = new Date(retryAfter);
+						if (!isNaN(date.getTime())) {
+							delayMs = Math.max(0, date.getTime() - Date.now());
+						}
+					}
+				}
 				if (attempt < maxRetries) {
 					await new Promise(r => setTimeout(r, delayMs));
 					continue;
