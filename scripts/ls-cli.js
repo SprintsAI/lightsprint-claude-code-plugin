@@ -22,7 +22,7 @@ import { apiRequest, getRepoId, getRepoInfo } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid } from './lib/validate.js';
-import { findRunningDaemonForCcPid, getClaudeCodePid } from './lib/cc-utils.js';
+import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByRepoId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
 import { getCommandSchema, getAllCommandNames } from './lib/schema.js';
@@ -59,6 +59,16 @@ export async function cliMain(command, args, context = {}) {
 				process.exit(1);
 		}
 	} catch (err) {
+		// Fire-and-forget error reporting to Sentry via daemon
+		try {
+			const cfg = getConfig();
+			if (cfg?.repoId) {
+				const sessionId = findSessionByRepoId(cfg.repoId);
+				if (sessionId) {
+					reportError(sessionId, err, 'ls-cli').catch(() => {});
+				}
+			}
+		} catch { /* never block exit on error reporting */ }
 		outputError(classifyError(err), err.message, {}, opts);
 		process.exit(1);
 	}
