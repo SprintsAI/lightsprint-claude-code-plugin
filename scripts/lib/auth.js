@@ -160,7 +160,7 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai', options =
 	const entry = {
 		accessToken: result.accessToken,
 		refreshToken: result.refreshToken,
-		expiresAt: Date.now() + (parseInt(result.expiresIn) * 1000),
+		expiresAt: Date.now() + (parseInt(result.expiresIn, 10) * 1000),
 		repoId: result.repoId,
 		repoName: result.repoDisplayName,
 		baseUrl,

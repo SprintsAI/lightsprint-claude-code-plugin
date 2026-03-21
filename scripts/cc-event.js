@@ -38,7 +38,10 @@ export async function main(args) {
 			body: JSON.stringify(event),
 			signal: AbortSignal.timeout(3000),
 		});
-	} catch {
+	} catch (err) {
 		// Daemon may be busy or dead — never block Claude Code
+		if (process.env.LIGHTSPRINT_DEBUG) {
+			process.stderr.write(`[lightsprint:cc-event] ${err.message}\n`);
+		}
 	}
 }

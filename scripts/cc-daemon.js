@@ -21,17 +21,18 @@
  */
 
 import { createServer } from 'http';
-import { readSessionState, writeSessionState, deleteSessionState, isPidAlive, createLogger, findFreePort } from './lib/cc-utils.js';
+import { readSessionState, writeSessionState, deleteSessionState, isPidAlive, createLogger, findFreePort, cleanupStaleSessions } from './lib/cc-utils.js';
 import { outputAllow, outputDeny, extractPlanFromTranscript, readPlanFromFile, waitForCallback } from './review-plan.js';
 import { apiRequest, setConfig } from './lib/client.js';
 import { setMapping, getMapping, removeSessionMappings } from './lib/task-map.js';
 import { ccToLsStatus } from './lib/status-mapper.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
+import { withFileLock } from './lib/filelock.js';
 import { getConfig, readReposFile, writeReposFile } from './lib/config.js';
 import { createHash, randomBytes } from 'crypto';
 import { hostname, homedir } from 'os';
-import { resolve, normalize } from 'path';
+import { resolve, normalize, join } from 'path';
 import { validateId } from './lib/validate.js';
 
 import { readFileSync, unlinkSync, realpathSync } from 'fs';
@@ -58,10 +59,12 @@ if (credsFile) {
 let ACCESS_TOKEN = _accessToken || process.env.LS_ACCESS_TOKEN || repoConfig?.accessToken;
 let REFRESH_TOKEN = _refreshToken || process.env.LS_REFRESH_TOKEN || repoConfig?.refreshToken;
 let EXPIRES_AT = _expiresAt || (process.env.LS_EXPIRES_AT ? parseInt(process.env.LS_EXPIRES_AT, 10) : repoConfig?.expiresAt);
+if (EXPIRES_AT && !Number.isFinite(EXPIRES_AT)) EXPIRES_AT = 0; // force refresh
 const BASE_URL = process.env.LS_BASE_URL || repoConfig?.baseUrl;
 const REPO_ID = process.env.LS_REPO_ID || repoConfig?.repoId;
 const CC_SESSION_ID = process.env.LS_SESSION_ID;
 const CC_PID = parseInt(process.env.LS_CC_PID, 10);
+const CC_PID_VALID = Number.isFinite(CC_PID) && CC_PID > 0;
 const GIT_BRANCH = process.env.LS_GIT_BRANCH || null;
 
 // Compute machine ID (hashed hostname)
@@ -84,6 +87,28 @@ const pendingRequests = new Map(); // id -> { resolve, reject, timer }
 let cachedParentLsTaskId = null; // null=unchecked, ''=none found
 
 const log = createLogger('cc-daemon');
+
+// -- Event Queue (buffers events during WS disconnect) --
+const EVENT_QUEUE_MAX = 100;
+const eventQueue = [];
+
+function enqueueEvent(type, data) {
+	if (eventQueue.length >= EVENT_QUEUE_MAX) {
+		eventQueue.shift();
+		log('Event queue overflow, dropped oldest event');
+	}
+	eventQueue.push({ type, data, ts: Date.now() });
+}
+
+function flushEventQueue() {
+	if (!ws || ws.readyState !== WebSocket.OPEN || eventQueue.length === 0) return;
+	const events = [...eventQueue];
+	eventQueue.length = 0;
+	for (const evt of events) {
+		sendFireAndForget(evt.type, evt.data);
+	}
+	log('Flushed event queue', { count: events.length });
+}
 
 function sendRequest(type, data, timeoutMs = 10000) {
 	return new Promise((resolve, reject) => {
@@ -148,6 +173,7 @@ async function refreshTokenIfNeeded() {
 	try {
 		const response = await fetch(`${BASE_URL}/oauth/token`, {
 			method: 'POST',
+			signal: AbortSignal.timeout(30000),
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: new URLSearchParams({
 				grant_type: 'refresh_token',
@@ -163,17 +189,21 @@ async function refreshTokenIfNeeded() {
 		REFRESH_TOKEN = data.refresh_token;
 		EXPIRES_AT = Date.now() + (data.expires_in * 1000);
 
-		// Persist to repos.json so other processes pick up the new tokens
+		// Persist to repos.json with file lock so other processes pick up the new tokens
 		if (repoConfig?.repo) {
 			try {
-				const repos = readReposFile();
-				const key = repoConfig.repo;
-				if (repos[key]) {
-					repos[key].accessToken = ACCESS_TOKEN;
-					repos[key].refreshToken = REFRESH_TOKEN;
-					repos[key].expiresAt = EXPIRES_AT;
-					writeReposFile(repos);
-				}
+				const configDir = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
+				const lockPath = join(configDir, 'repos.json.lock');
+				await withFileLock(lockPath, () => {
+					const repos = readReposFile();
+					const key = repoConfig.repo;
+					if (repos[key]) {
+						repos[key].accessToken = ACCESS_TOKEN;
+						repos[key].refreshToken = REFRESH_TOKEN;
+						repos[key].expiresAt = EXPIRES_AT;
+						writeReposFile(repos);
+					}
+				});
 			} catch (err) {
 				log('Failed to persist refreshed tokens', { error: err.message });
 			}
@@ -248,6 +278,8 @@ async function connectWebSocket() {
 				if (currentState) {
 					writeSessionState(CC_SESSION_ID, { ...currentState, lsSessionId });
 				}
+				// Flush any events buffered during disconnect
+				flushEventQueue();
 			} else {
 				log('Session start failed, triggering reconnect', { error: response?.error });
 				try { ws.close(4000, 'session_start_failed'); } catch { /* ignore */ }
@@ -305,8 +337,26 @@ async function connectWebSocket() {
 // -- Local HTTP Server --
 
 async function startHttpServer() {
-	const port = await findFreePort();
+	const MAX_PORT_RETRIES = 3;
+	let port;
 
+	for (let attempt = 0; attempt <= MAX_PORT_RETRIES; attempt++) {
+		port = await findFreePort();
+		try {
+			await _tryListenOnPort(port);
+			return port;
+		} catch (err) {
+			if (err.code === 'EADDRINUSE' && attempt < MAX_PORT_RETRIES) {
+				log('Port in use, retrying', { port, attempt });
+				continue;
+			}
+			throw err;
+		}
+	}
+	return port;
+}
+
+async function _tryListenOnPort(port) {
 	httpServer = createServer(async (req, res) => {
 		const url = new URL(req.url, `http://localhost:${port}`);
 
@@ -333,15 +383,18 @@ async function startHttpServer() {
 				const data = JSON.parse(body);
 				log('Event received', { eventType: data.eventType });
 
-				// Stream to WS (existing behavior)
+				// Stream to WS or buffer for later
+				const eventPayload = {
+					events: [{
+						eventType: data.eventType,
+						payload: data.payload,
+						clientTimestamp: new Date().toISOString(),
+					}]
+				};
 				if (ws?.readyState === WebSocket.OPEN && lsSessionId) {
-					sendFireAndForget('events', {
-						events: [{
-							eventType: data.eventType,
-							payload: data.payload,
-							clientTimestamp: new Date().toISOString(),
-						}]
-					});
+					sendFireAndForget('events', eventPayload);
+				} else {
+					enqueueEvent('events', eventPayload);
 				}
 
 				// Task sync handlers (fire-and-forget, non-blocking)
@@ -396,11 +449,10 @@ async function startHttpServer() {
 		res.end('Not found');
 	});
 
-	await new Promise((resolve) => {
+	await new Promise((resolve, reject) => {
+		httpServer.on('error', reject);
 		httpServer.listen(port, '127.0.0.1', resolve);
 	});
-
-	return port;
 }
 
 function readBody(req) {
@@ -660,7 +712,7 @@ async function handleTaskCompleted(payload) {
 // -- PID Watchdog --
 
 function startWatchdog() {
-	if (!CC_PID || isNaN(CC_PID)) return;
+	if (!CC_PID_VALID) return;
 
 	watchdogInterval = setInterval(() => {
 		if (!isPidAlive(CC_PID)) {
@@ -679,6 +731,10 @@ export async function main() {
 		log('Missing required env vars');
 		process.exit(1);
 	}
+
+	// Clean up stale session files from crashed daemons
+	const cleaned = cleanupStaleSessions();
+	if (cleaned > 0) log('Cleaned stale sessions', { count: cleaned });
 
 	// Inject config for API requests — use getters so client.js always sees refreshed tokens
 	setConfig({
@@ -714,6 +770,7 @@ export async function main() {
 	// Handle signals
 	process.on('SIGTERM', () => shutdown('sigterm'));
 	process.on('SIGINT', () => shutdown('sigint'));
+	process.on('SIGHUP', () => shutdown('sighup'));
 
 	log('Daemon running', { port, ccPid: CC_PID });
 }

@@ -10,7 +10,8 @@ import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { randomBytes } from 'crypto';
 
-const MAP_FILE = join(homedir(), '.lightsprint', 'task-map.json');
+const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
+const MAP_FILE = join(CONFIG_DIR, 'task-map.json');
 
 function ensureDir() {
 	const dir = dirname(MAP_FILE);
@@ -33,7 +34,7 @@ function readMap() {
 function writeMap(map) {
 	ensureDir();
 	const tmp = MAP_FILE + '.' + randomBytes(4).toString('hex');
-	writeFileSync(tmp, JSON.stringify(map, null, 2));
+	writeFileSync(tmp, JSON.stringify(map, null, 2), { mode: 0o600 });
 	renameSync(tmp, MAP_FILE);
 }
 

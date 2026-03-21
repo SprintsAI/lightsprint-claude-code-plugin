@@ -32,7 +32,7 @@ import { openBrowser } from './lib/browser.js';
 import { findFreePort } from './lib/cc-utils.js';
 import { validateId } from './lib/validate.js';
 
-const LOG_DIR = join(homedir(), '.lightsprint');
+const LOG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
 const LOG_FILE = join(LOG_DIR, 'sync.log');
 
 // Injected at build time via --define (enables version verification in logs)

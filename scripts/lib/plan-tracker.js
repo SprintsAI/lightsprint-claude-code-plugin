@@ -9,7 +9,8 @@ import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { randomBytes } from 'crypto';
 
-const ACTIVE_FILE = join(homedir(), '.lightsprint', 'active-plan.json');
+const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
+const ACTIVE_FILE = join(CONFIG_DIR, 'active-plan.json');
 
 function ensureDir() {
 	const dir = dirname(ACTIVE_FILE);
