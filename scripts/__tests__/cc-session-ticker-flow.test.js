@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, spyOn } from 'bun:test';
+import { describe, test, expect, beforeAll, beforeEach, afterEach, spyOn } from 'bun:test';
 import { join } from 'path';
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'fs';
 import { homedir } from 'os';
@@ -26,10 +26,15 @@ import {
 	isPidAlive,
 } from '../lib/cc-utils.js';
 
-const SESSIONS_DIR = join(homedir(), '.lightsprint', 'cc-sessions');
+const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
+const SESSIONS_DIR = join(CONFIG_DIR, 'cc-sessions');
 
 describe('Session State I/O', () => {
 	const testSessionId = `test-session-${randomBytes(8).toString('hex')}`;
+
+	beforeAll(() => {
+		mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
+	});
 
 	afterEach(() => {
 		deleteSessionState(testSessionId);
@@ -228,6 +233,10 @@ describe('cc-event forwarding', () => {
 	let server;
 	let receivedEvents;
 	let serverPort;
+
+	beforeAll(() => {
+		mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
+	});
 
 	beforeEach(async () => {
 		receivedEvents = [];
