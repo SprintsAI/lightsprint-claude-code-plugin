@@ -18,7 +18,7 @@ Sentry is initialized once in the daemon process (`cc-daemon.js`). The daemon is
 - Batching and flushing handled naturally by the long-lived process
 - Hooks stay fast (fire-and-forget HTTP to localhost)
 
-**Trade-off:** If the daemon crashes before Sentry flushes, the crash could be lost. Mitigated by wiring `process.on('uncaughtException')` to do a synchronous Sentry flush before exit.
+**Trade-off:** If the daemon crashes before Sentry flushes, the crash could be lost. Mitigated by wiring `process.on('uncaughtException')` to call `Sentry.captureException()` followed by `Sentry.close(2000).then(() => process.exit(1))` — this gives Sentry up to 2 seconds to flush before forcing exit.
 
 ## Sentry Initialization
 
@@ -28,7 +28,7 @@ A new module `scripts/lib/sentry.js` handles all Sentry concerns.
 
 - **DSN** — hardcoded in `sentry.js` (not user-configurable; DSN is a write-only ingestion key, not a secret)
 - **Environment** — derived from `baseUrl` (production vs staging)
-- **Release** — uses existing `BUILD_VERSION` + `BUILD_HASH` injected at compile time
+- **Release** — uses `BUILD_VERSION` + `BUILD_HASH` injected at compile time. `sentry.js` must declare these build-time defines (same pattern as `review-plan.js`)
 
 ### Context (Tags & User)
 
@@ -36,7 +36,7 @@ Set on init, updated when session starts:
 
 | Field | Source |
 |-------|--------|
-| `user.id` | Lightsprint user email (from `repos.json`) |
+| `user.id` | SHA256 hash of Lightsprint user email (privacy-safe; raw email set as `user.email` separately, scrubable via Sentry data scrubbing settings) |
 | `tags.repoId` | Current repo ID |
 | `tags.sessionId` | CC session ID |
 | `tags.machineId` | Existing SHA256 hostname hash |
@@ -45,8 +45,8 @@ Set on init, updated when session starts:
 
 ### Shutdown
 
-- `Sentry.close(2000)` called in daemon's existing cleanup path
-- `process.on('uncaughtException')` captures the error, flushes synchronously, then re-throws
+- `Sentry.close(2000)` called in daemon's existing cleanup path (returns a Promise; await it before exiting)
+- `process.on('uncaughtException')` captures the error via `Sentry.captureException()`, then calls `Sentry.close(2000).then(() => process.exit(1))` — gives Sentry up to 2s to flush before forced exit
 
 ## What Gets Captured
 
@@ -65,7 +65,7 @@ Explicit `Sentry.captureException()` calls at existing error paths:
 |----------|-----------|--------|
 | `client.js` `retryableFetch()` | API errors after retries exhausted | status, endpoint, attempt count |
 | `client.js` `refreshTokenIfNeeded()` | Auth/token refresh failures | — |
-| `validate.js` | Validation errors (captured as warnings) | input source |
+| `validate.js` | Validation errors (captured as breadcrumbs, not events — these are expected behavior from agent hallucinations) | input source |
 | `cc-daemon.js` | WebSocket connection failures, unexpected closes, protocol errors | reconnect attempt count |
 
 ### Tier 3: Daemon Lifecycle Breadcrumbs
@@ -97,39 +97,43 @@ Content-Type: application/json
   "stack": "TypeError: Cannot read property...",
   "context": { "hookInput": "..." }
 }
+Authorization: Bearer <daemonToken>
 ```
 
-Daemon calls `Sentry.captureException()` with `source` as a tag.
+The `/error` endpoint requires the daemon auth token (same as all other daemon endpoints except `/health`). Daemon calls `Sentry.captureException()` with `source` as a tag. Sentry's built-in deduplication handles repeated identical errors; no custom dedup needed.
 
 ### Hook-Side Helper
 
 New `reportError(sessionId, error, source)` function in `cc-utils.js`:
 
-1. Reads session state to get daemon port
-2. POSTs to `localhost:{port}/error`
+1. Reads session state to get daemon port **and `daemonToken`**
+2. POSTs to `localhost:{port}/error` with `Authorization: Bearer <daemonToken>`
 3. Fire-and-forget (no waiting for response)
-4. Wrapped in try-catch — if daemon unreachable, silently fails
+4. Wrapped in try-catch — if daemon unreachable, falls back to appending error to `~/.lightsprint/daemon.log` via existing `createLogger()`
 
 Called from existing catch blocks in:
 - `cc-event.js`
 - `cc-start.js`
 - `cc-end.js`
-- `cc-pr-created.js`
-- `review-plan.js`
+- `cc-pr-created.js` — note: this hook re-throws errors; `reportError()` must be called **before** the re-throw
+- `review-plan.js` — only in the standalone `reviewPlanMain()` path, NOT in the daemon-internal `handlePlanReview()` path (which would create a localhost loop)
 
 ### CLI Error Forwarding
 
-`ls-cli.js` commands that fail after validation (API errors, unexpected responses) call `reportError()` if a session is active. If no session exists, errors are silently dropped.
+`ls-cli.js` commands that fail after validation (API errors, unexpected responses) call `reportError()` if a session is active. Session discovery: scan `~/.lightsprint/cc-sessions/` for a session file whose `ccPid` matches the current process's ancestor (walk up `$PPID` chain), or whose `repoId` matches the current repo. If no matching session exists, errors are silently dropped (this covers standalone CLI usage outside Claude Code).
 
 ## Dependency & Build
 
 ### New Dependency
 
 - `@sentry/node` — production dependency (only new dependency)
+- **Bun compatibility note:** The project compiles to a single Bun binary via `bun build --compile`. Before implementation, verify that `@sentry/node` bundles cleanly — if it pulls in native/WASM bindings that conflict with Bun's compilation, use `@sentry/core` with a custom HTTP transport instead (lighter, no native dependencies). Measure binary size impact.
 
 ### Build Changes
 
-- No changes to `compile.sh` — DSN is hardcoded, not injected
+- `compile.sh` may need `--external` flags if Sentry has unbundleable native modules
+- DSN is hardcoded, not injected
+- `sentry.js` must declare `__BUILD_VERSION__` and `__BUILD_HASH__` build-time defines (same pattern as `review-plan.js`)
 - No source map upload — stack traces from compiled binary reference bundled line numbers (sufficient for single-file bundle; source maps can be added later)
 
 ### Testing
@@ -160,3 +164,4 @@ Called from existing catch blocks in:
 - Sentry source map uploads for better stack traces
 - User opt-out toggle
 - Sentry performance monitoring / tracing
+- Event sampling rate configuration (for cost control at scale)
