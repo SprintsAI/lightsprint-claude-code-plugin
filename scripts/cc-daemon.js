@@ -23,7 +23,7 @@
 import { createServer } from 'http';
 import { readSessionState, writeSessionState, deleteSessionState, isPidAlive, createLogger, findFreePort, cleanupStaleSessions } from './lib/cc-utils.js';
 import { outputAllow, outputDeny, extractPlanFromTranscript, readPlanFromFile, waitForCallback } from './review-plan.js';
-import { apiRequest, setConfig } from './lib/client.js';
+import { apiRequest, setConfig, setErrorReporter } from './lib/client.js';
 import { setMapping, getMapping, removeSessionMappings } from './lib/task-map.js';
 import { ccToLsStatus } from './lib/status-mapper.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
@@ -33,7 +33,7 @@ import { getConfig, readReposFile, writeReposFile } from './lib/config.js';
 import { createHash, randomBytes } from 'crypto';
 import { hostname, homedir } from 'os';
 import { resolve, normalize, join } from 'path';
-import { validateId } from './lib/validate.js';
+import { validateId, setValidationBreadcrumbReporter } from './lib/validate.js';
 import { initSentry, setSentryContext, addBreadcrumb, captureException, shutdownSentry, wireCrashHandlers } from './lib/sentry.js';
 
 import { readFileSync, unlinkSync, realpathSync } from 'fs';
@@ -778,6 +778,8 @@ export async function main() {
 		sessionId: CC_SESSION_ID,
 		machineId: MACHINE_ID,
 	});
+	setErrorReporter((error, context) => captureException(error, context));
+	setValidationBreadcrumbReporter((category, message, level, data) => addBreadcrumb(category, message, level, data));
 
 	if (!ACCESS_TOKEN || !BASE_URL || !REPO_ID || !CC_SESSION_ID) {
 		log('Missing required env vars');

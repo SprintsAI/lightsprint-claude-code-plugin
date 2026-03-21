@@ -5,6 +5,17 @@
  * All validators throw on invalid input with a message naming the valid format/values.
  */
 
+let _onBreadcrumb = null;
+
+/**
+ * Set a breadcrumb callback. Called on validation failures.
+ * Only set in daemon context where Sentry is initialized.
+ * @param {(category: string, message: string, level: string, data: object) => void} fn
+ */
+export function setValidationBreadcrumbReporter(fn) {
+	_onBreadcrumb = fn;
+}
+
 // ─── ID validation ──────────────────────────────────────────────────────
 
 const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -21,6 +32,7 @@ export function validateId(id, label = 'ID') {
 		throw new Error(`${label} is required.`);
 	}
 	if (!ID_PATTERN.test(id)) {
+		if (_onBreadcrumb) _onBreadcrumb('validation', `Invalid ${label}: "${id}"`, 'warning', { label, id });
 		throw new Error(`Invalid ${label}: "${id}". Only alphanumeric characters, hyphens, and underscores are allowed.`);
 	}
 	return id;
@@ -42,6 +54,7 @@ export const VALID_DEPS_FILTERS = ['has-dependencies', 'has-no-dependencies', 'h
 export function validateEnum(value, allowed, fieldName) {
 	const arr = allowed instanceof Set ? [...allowed] : allowed;
 	if (!arr.includes(value)) {
+		if (_onBreadcrumb) _onBreadcrumb('validation', `Invalid ${fieldName}: "${value}"`, 'warning', { fieldName, value, allowed: arr });
 		throw new Error(`Invalid ${fieldName}: "${value}". Allowed values: ${arr.join(', ')}`);
 	}
 	return value;
