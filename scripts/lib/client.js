@@ -14,6 +14,17 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
 
 let _config = null;
 
+let _onError = null;
+
+/**
+ * Set an error reporting callback. Called when retries are exhausted or auth fails.
+ * Only set in daemon context where Sentry is initialized.
+ * @param {(error: Error, context: object) => void} fn
+ */
+export function setErrorReporter(fn) {
+	_onError = fn;
+}
+
 /**
  * Inject config directly (e.g., after fresh OAuth in hook context).
  * @param {object} cfg - Config object with accessToken, baseUrl, etc.
@@ -63,6 +74,7 @@ async function refreshTokenIfNeeded() {
 
 		if (!response.ok) {
 			console.error(`Lightsprint: token refresh failed (${response.status}). Please re-run install.sh.`);
+			if (_onError) _onError(new Error(`Token refresh failed: ${response.status}`), { source: 'client-auth' });
 			return false;
 		}
 
@@ -90,6 +102,7 @@ async function refreshTokenIfNeeded() {
 		return true;
 	} catch (err) {
 		console.error('Lightsprint: token refresh error:', err.message);
+		if (_onError) _onError(err, { source: 'client-auth' });
 		return false;
 	}
 }
@@ -199,6 +212,11 @@ export async function retryableFetch(url, options = {}, fetchFn = fetch, retryOp
 				await new Promise(r => setTimeout(r, baseDelayMs * Math.pow(2, attempt) * jitter));
 				continue;
 			}
+			if (_onError) {
+				_onError(new Error(`API ${response.status} after ${maxRetries} retries: ${url}`), {
+					source: 'client', extras: { status: response.status, url, attempts: maxRetries + 1 },
+				});
+			}
 			return response;
 		} catch (err) {
 			lastError = err;
@@ -206,6 +224,9 @@ export async function retryableFetch(url, options = {}, fetchFn = fetch, retryOp
 				const jitter = 0.8 + Math.random() * 0.4;
 				await new Promise(r => setTimeout(r, baseDelayMs * Math.pow(2, attempt) * jitter));
 				continue;
+			}
+			if (_onError) {
+				_onError(err, { source: 'client', extras: { url, attempts: maxRetries + 1 } });
 			}
 			throw err;
 		}
