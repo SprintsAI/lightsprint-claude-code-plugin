@@ -1,17 +1,21 @@
 // scripts/__tests__/config-atomicity.test.js
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { readFileSync, writeFileSync, existsSync, unlinkSync, readdirSync, statSync } from 'fs';
+import { describe, test, expect, beforeAll, beforeEach, afterEach } from 'bun:test';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, readdirSync, statSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { readReposFile, writeReposFile } from '../lib/config.js';
 import { setMapping, getMapping, removeSessionMappings } from '../lib/task-map.js';
 
-const CONFIG_DIR = join(homedir(), '.lightsprint');
+const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
 const REPOS_FILE = join(CONFIG_DIR, 'repos.json');
 const MAP_FILE = join(CONFIG_DIR, 'task-map.json');
 
 describe('writeReposFile atomicity', () => {
 	let originalContent;
+
+	beforeAll(() => {
+		mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+	});
 
 	beforeEach(() => {
 		try {
@@ -26,12 +30,14 @@ describe('writeReposFile atomicity', () => {
 			writeFileSync(REPOS_FILE, originalContent, { mode: 0o600 });
 		}
 		// Clean up any leftover temp files
-		const files = readdirSync(CONFIG_DIR);
-		for (const f of files) {
-			if (f.startsWith('repos.json.')) {
-				try { unlinkSync(join(CONFIG_DIR, f)); } catch {}
+		try {
+			const files = readdirSync(CONFIG_DIR);
+			for (const f of files) {
+				if (f.startsWith('repos.json.')) {
+					try { unlinkSync(join(CONFIG_DIR, f)); } catch {}
+				}
 			}
-		}
+		} catch { /* CONFIG_DIR may not exist */ }
 	});
 
 	test('writes valid JSON that can be read back', () => {
