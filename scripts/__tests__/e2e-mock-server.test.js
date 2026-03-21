@@ -733,6 +733,88 @@ describe('E2E: Session Lifecycle', () => {
 				cleanupTestSessions('e2e-start-');
 			}
 		}, 25000);
+
+		test('session:start message includes gitBranch and machineId', async () => {
+			const testSessionId = `e2e-startmeta-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid, { gitBranch: 'feature/test-branch' });
+
+				const sessionStart = await waitForWsMessage(m => m.type === 'session:start');
+				expect(sessionStart).toBeDefined();
+				expect(sessionStart.data.gitBranch).toBe('feature/test-branch');
+				expect(sessionStart.data.machineId).toBeDefined();
+				expect(typeof sessionStart.data.machineId).toBe('string');
+				expect(sessionStart.data.machineId.length).toBeGreaterThan(0);
+
+				const state = await waitForSessionState(testSessionId);
+				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-startmeta-');
+			}
+		}, 15000);
+
+		test('session state file includes lsSessionId after WS ack', async () => {
+			const testSessionId = `e2e-startls-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+
+				// Wait for session:start and ack
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+
+				// lsSessionId is initially null in state file, then updated after ack.
+				// Poll until lsSessionId appears (daemon writes it after receiving ack).
+				const stateFile = join(SESSIONS_DIR, `${testSessionId}.json`);
+				const deadline = Date.now() + 5000;
+				let updatedState = null;
+				while (Date.now() < deadline) {
+					try {
+						updatedState = JSON.parse(readFileSync(stateFile, 'utf-8'));
+						if (updatedState.lsSessionId) break;
+					} catch {}
+					await new Promise(r => setTimeout(r, 200));
+				}
+
+				expect(updatedState).not.toBeNull();
+				expect(updatedState.lsSessionId).toBeDefined();
+				expect(updatedState.lsSessionId).toMatch(/^mock-ls-session-/);
+
+				try { process.kill(updatedState.daemonPid, 'SIGTERM'); } catch {}
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-startls-');
+			}
+		}, 15000);
+
+		test('session state file includes daemonToken for auth', async () => {
+			const testSessionId = `e2e-starttoken-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+				expect(state.daemonToken).toBeDefined();
+				expect(typeof state.daemonToken).toBe('string');
+				expect(state.daemonToken.length).toBe(64); // 32 random bytes → 64 hex chars
+
+				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-starttoken-');
+			}
+		}, 15000);
 	});
 
 	// ─── Session End ─────────────────────────────────────────────────────
@@ -785,6 +867,238 @@ describe('E2E: Session Lifecycle', () => {
 				cleanupTestSessions('e2e-end-');
 			}
 		}, 20000);
+
+		test('session:end message has status completed on normal shutdown', async () => {
+			const testSessionId = `e2e-endstatus-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+
+				mockWsMessages.length = 0;
+				await fetch(`http://127.0.0.1:${state.port}/session-end`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						...(state.daemonToken ? { 'Authorization': `Bearer ${state.daemonToken}` } : {}),
+					},
+					body: JSON.stringify({}),
+					signal: AbortSignal.timeout(3000),
+				});
+
+				const sessionEnd = await waitForWsMessage(m => m.type === 'session:end', 5000);
+				expect(sessionEnd).toBeDefined();
+				expect(sessionEnd.data.status).toBe('completed');
+
+				await new Promise(r => setTimeout(r, 1500));
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-endstatus-');
+			}
+		}, 20000);
+
+		test('SIGTERM triggers graceful shutdown with session:end', async () => {
+			const testSessionId = `e2e-sigterm-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+
+				mockWsMessages.length = 0;
+
+				// Send SIGTERM directly to daemon process
+				process.kill(state.daemonPid, 'SIGTERM');
+
+				// Should send session:end before exiting
+				const sessionEnd = await waitForWsMessage(m => m.type === 'session:end', 5000);
+				expect(sessionEnd).toBeDefined();
+
+				// Wait for cleanup
+				await new Promise(r => setTimeout(r, 1500));
+
+				// Verify daemon is dead
+				let isAlive = true;
+				try { process.kill(state.daemonPid, 0); } catch { isAlive = false; }
+				expect(isAlive).toBe(false);
+
+				// Verify session state cleaned up
+				const stateFile = join(SESSIONS_DIR, `${testSessionId}.json`);
+				expect(existsSync(stateFile)).toBe(false);
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-sigterm-');
+			}
+		}, 15000);
+	});
+
+	// ─── HTTP Auth & Error Handling ─────────────────────────────────────
+
+	describe('HTTP Auth & Error Handling', () => {
+		test('mutating endpoints reject requests without auth token', async () => {
+			const testSessionId = `e2e-noauth-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+
+				// /event without auth → 401
+				const eventRes = await fetch(`http://127.0.0.1:${state.port}/event`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ eventType: 'Test', payload: {} }),
+					signal: AbortSignal.timeout(2000),
+				});
+				expect(eventRes.status).toBe(401);
+
+				// /session-end without auth → 401
+				const endRes = await fetch(`http://127.0.0.1:${state.port}/session-end`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({}),
+					signal: AbortSignal.timeout(2000),
+				});
+				expect(endRes.status).toBe(401);
+
+				// /review-plan without auth → 401
+				const planRes = await fetch(`http://127.0.0.1:${state.port}/review-plan`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ plan: 'test' }),
+					signal: AbortSignal.timeout(2000),
+				});
+				expect(planRes.status).toBe(401);
+
+				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-noauth-');
+			}
+		}, 15000);
+
+		test('mutating endpoints reject requests with wrong auth token', async () => {
+			const testSessionId = `e2e-badauth-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+
+				const res = await fetch(`http://127.0.0.1:${state.port}/event`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': 'Bearer wrong-token-value',
+					},
+					body: JSON.stringify({ eventType: 'Test', payload: {} }),
+					signal: AbortSignal.timeout(2000),
+				});
+				expect(res.status).toBe(401);
+				const body = await res.json();
+				expect(body.error).toBe('Unauthorized');
+
+				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-badauth-');
+			}
+		}, 15000);
+
+		test('health endpoint is accessible without auth', async () => {
+			const testSessionId = `e2e-healthnoauth-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+
+				// No Authorization header
+				const resp = await fetch(`http://127.0.0.1:${state.port}/health`, {
+					signal: AbortSignal.timeout(2000),
+				});
+				expect(resp.status).toBe(200);
+				const health = await resp.json();
+				expect(health.ok).toBe(true);
+				expect(health.sessionId).toBeDefined();
+
+				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-healthnoauth-');
+			}
+		}, 15000);
+
+		test('unknown endpoint returns 404', async () => {
+			const testSessionId = `e2e-404-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+
+				const resp = await fetch(`http://127.0.0.1:${state.port}/nonexistent`, {
+					headers: {
+						...(state.daemonToken ? { 'Authorization': `Bearer ${state.daemonToken}` } : {}),
+					},
+					signal: AbortSignal.timeout(2000),
+				});
+				expect(resp.status).toBe(404);
+
+				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-404-');
+			}
+		}, 15000);
+
+		test('/event with invalid JSON returns 400', async () => {
+			const testSessionId = `e2e-badjson-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+
+				const resp = await fetch(`http://127.0.0.1:${state.port}/event`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						...(state.daemonToken ? { 'Authorization': `Bearer ${state.daemonToken}` } : {}),
+					},
+					body: 'not valid json {{{{',
+					signal: AbortSignal.timeout(2000),
+				});
+				expect(resp.status).toBe(400);
+
+				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-badjson-');
+			}
+		}, 15000);
 	});
 
 	// ─── Event Forwarding ────────────────────────────────────────────────
@@ -832,6 +1146,89 @@ describe('E2E: Session Lifecycle', () => {
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-event-');
+			}
+		}, 15000);
+
+		test('multiple events are each forwarded to WS independently', async () => {
+			const testSessionId = `e2e-multievt-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+
+				mockWsMessages.length = 0;
+
+				const headers = {
+					'Content-Type': 'application/json',
+					...(state.daemonToken ? { 'Authorization': `Bearer ${state.daemonToken}` } : {}),
+				};
+
+				// Send three distinct events
+				for (const eventType of ['PreToolUse', 'PostToolUse', 'UserPromptSubmit']) {
+					await fetch(`http://127.0.0.1:${state.port}/event`, {
+						method: 'POST',
+						headers,
+						body: JSON.stringify({
+							eventType,
+							payload: { hook_event_name: eventType, marker: eventType },
+						}),
+						signal: AbortSignal.timeout(3000),
+					});
+				}
+
+				// Wait for all three to arrive
+				const deadline = Date.now() + 5000;
+				while (Date.now() < deadline) {
+					const eventsMsgs = mockWsMessages.filter(m => m.type === 'events');
+					if (eventsMsgs.length >= 3) break;
+					await new Promise(r => setTimeout(r, 200));
+				}
+
+				const eventsMsgs = mockWsMessages.filter(m => m.type === 'events');
+				expect(eventsMsgs.length).toBeGreaterThanOrEqual(3);
+
+				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-multievt-');
+			}
+		}, 15000);
+
+		test('event endpoint returns ok:true on success', async () => {
+			const testSessionId = `e2e-evtresp-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+
+			try {
+				spawnDaemon(testSessionId, dummyProc.pid);
+				await waitForWsMessage(m => m.type === 'session:start');
+				const state = await waitForSessionState(testSessionId);
+				expect(state).not.toBeNull();
+
+				const resp = await fetch(`http://127.0.0.1:${state.port}/event`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						...(state.daemonToken ? { 'Authorization': `Bearer ${state.daemonToken}` } : {}),
+					},
+					body: JSON.stringify({
+						eventType: 'PreToolUse',
+						payload: { hook_event_name: 'PreToolUse', tool_name: 'Read' },
+					}),
+					signal: AbortSignal.timeout(3000),
+				});
+				expect(resp.status).toBe(200);
+				const body = await resp.json();
+				expect(body.ok).toBe(true);
+
+				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
+			} finally {
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-evtresp-');
 			}
 		}, 15000);
 	});
