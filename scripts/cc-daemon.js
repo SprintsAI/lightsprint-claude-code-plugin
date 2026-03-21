@@ -97,6 +97,7 @@ function enqueueEvent(type, data) {
 	if (eventQueue.length >= EVENT_QUEUE_MAX) {
 		eventQueue.shift();
 		log('Event queue overflow, dropped oldest event');
+		addBreadcrumb('eventQueue', 'Event queue overflow, dropped oldest', 'warning', { queueSize: EVENT_QUEUE_MAX });
 	}
 	eventQueue.push({ type, data, ts: Date.now() });
 }
@@ -144,6 +145,7 @@ async function shutdown(reason) {
 	if (shuttingDown) return;
 	shuttingDown = true;
 	log('Shutting down', { reason });
+	addBreadcrumb('session', 'Shutting down', 'info', { reason });
 
 	if (watchdogInterval) clearInterval(watchdogInterval);
 
@@ -191,6 +193,7 @@ async function refreshTokenIfNeeded() {
 		});
 		if (!response.ok) {
 			log('Token refresh failed', { status: response.status });
+			addBreadcrumb('token', 'Token refresh failed', 'error', { status: response.status });
 			return false;
 		}
 		const data = await response.json();
@@ -219,9 +222,11 @@ async function refreshTokenIfNeeded() {
 		}
 
 		log('Token refreshed successfully');
+		addBreadcrumb('token', 'Token refreshed successfully');
 		return true;
 	} catch (err) {
 		log('Token refresh error', { error: err.message });
+		captureException(new Error('Token refresh failed'), { source: 'cc-daemon', extras: { error: err.message } });
 		return false;
 	}
 }
@@ -241,12 +246,14 @@ function getReconnectDelay() {
 function scheduleReconnect() {
 	if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS || shuttingDown) {
 		log('Max reconnect attempts reached, shutting down');
+		captureException(new Error('Max WebSocket reconnect attempts reached'), { source: 'cc-daemon', extras: { attempts: MAX_RECONNECT_ATTEMPTS } });
 		shutdown('max_reconnect');
 		return;
 	}
 	const delay = getReconnectDelay();
 	reconnectAttempts++;
 	log('Scheduling reconnect', { attempt: reconnectAttempts, delayMs: Math.round(delay) });
+	addBreadcrumb('websocket', 'Scheduling reconnect', 'warning', { attempt: reconnectAttempts });
 	setTimeout(connectWebSocket, delay);
 }
 
@@ -272,6 +279,7 @@ async function connectWebSocket() {
 	ws.onopen = async () => {
 		reconnectAttempts = 0;
 		log('WebSocket connected');
+		addBreadcrumb('websocket', 'WebSocket connected');
 
 		try {
 			const response = await sendRequest('session:start', {
@@ -282,6 +290,7 @@ async function connectWebSocket() {
 			if (response?.ok) {
 				lsSessionId = response.sessionId;
 				log('Session started', { lsSessionId });
+				addBreadcrumb('session', 'Session started', 'info', { lsSessionId });
 				// Persist lsSessionId to session file so CLI tools can discover it
 				const currentState = readSessionState(CC_SESSION_ID);
 				if (currentState) {
@@ -325,6 +334,7 @@ async function connectWebSocket() {
 
 	ws.onclose = (event) => {
 		log('WebSocket closed', { code: event.code, reason: event.reason });
+		addBreadcrumb('websocket', 'WebSocket closed', 'warning', { code: event.code, reason: event.reason });
 		// Reject all pending requests
 		for (const [id, pending] of pendingRequests) {
 			clearTimeout(pending.timer);
@@ -339,6 +349,7 @@ async function connectWebSocket() {
 
 	ws.onerror = (event) => {
 		log('WebSocket error');
+		addBreadcrumb('websocket', 'WebSocket error', 'error');
 		// onclose will follow
 	};
 }
@@ -747,6 +758,7 @@ function startWatchdog() {
 	watchdogInterval = setInterval(() => {
 		if (!isPidAlive(CC_PID)) {
 			log('CC process dead, shutting down', { ccPid: CC_PID });
+			addBreadcrumb('watchdog', 'CC process dead', 'error', { ccPid: CC_PID });
 			shutdown('cc_process_dead');
 		}
 	}, 5000);
@@ -775,6 +787,7 @@ export async function main() {
 	// Clean up stale session files from crashed daemons
 	const cleaned = cleanupStaleSessions();
 	if (cleaned > 0) log('Cleaned stale sessions', { count: cleaned });
+	if (cleaned > 0) addBreadcrumb('session', 'Cleaned stale sessions', 'info', { count: cleaned });
 
 	// Inject config for API requests — use getters so client.js always sees refreshed tokens
 	setConfig({
