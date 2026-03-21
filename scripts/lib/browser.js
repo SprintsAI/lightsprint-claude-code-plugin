@@ -182,6 +182,9 @@ export function findBrowserProfileForEmail(email, appSupportPath) {
  * @returns {boolean} true if the browser was launched
  */
 export function openBrowser(url, options = {}) {
+	// Allow tests / CI to suppress browser launches
+	if (process.env.LIGHTSPRINT_NO_BROWSER === '1') return false;
+
 	const { browserApp, profileFlag, profileValue } = options;
 	const platform = process.platform;
 

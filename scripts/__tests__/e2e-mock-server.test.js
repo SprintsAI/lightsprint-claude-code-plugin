@@ -647,6 +647,7 @@ describe('E2E: Session Lifecycle', () => {
 			env: {
 				...process.env,
 				LIGHTSPRINT_CONFIG_DIR: TEST_CONFIG_DIR,
+				LIGHTSPRINT_NO_BROWSER: '1',
 				LS_CREDS_FILE: credsPath,
 				LS_BASE_URL: `http://localhost:${mockPort}`,
 				LS_REPO_ID: 'mock-repo-id',
