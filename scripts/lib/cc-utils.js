@@ -264,3 +264,43 @@ export function readHookInput(args) {
 
 	return null;
 }
+
+/**
+ * Report an error to the daemon for Sentry forwarding.
+ * Fire-and-forget: never blocks, never throws.
+ * Falls back to daemon.log if daemon is unreachable.
+ * @param {string} ccSessionId
+ * @param {Error} error
+ * @param {string} source - e.g. 'cc-event', 'cc-start', 'ls-cli'
+ */
+export async function reportError(ccSessionId, error, source) {
+	try {
+		const state = readSessionState(ccSessionId);
+		if (!state?.port || !state?.daemonToken) {
+			const log = createLogger(source);
+			log('Error (no daemon)', { error: error.message, stack: error.stack });
+			return;
+		}
+
+		await fetch(`http://127.0.0.1:${state.port}/error`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${state.daemonToken}`,
+			},
+			body: JSON.stringify({
+				source,
+				error: error.name || 'Error',
+				message: error.message,
+				stack: error.stack,
+				context: {},
+			}),
+			signal: AbortSignal.timeout(3000),
+		});
+	} catch {
+		try {
+			const log = createLogger(source);
+			log('Error (daemon unreachable)', { error: error.message });
+		} catch { /* never crash on error reporting */ }
+	}
+}
