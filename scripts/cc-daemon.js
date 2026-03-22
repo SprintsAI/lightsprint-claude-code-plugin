@@ -36,6 +36,7 @@ import { resolve, normalize, join } from 'path';
 import { validateId, setValidationBreadcrumbReporter } from './lib/validate.js';
 import { initSentry, setSentryContext, addBreadcrumb, captureException, shutdownSentry, wireCrashHandlers } from './lib/sentry.js';
 
+import { createTailer } from './lib/jsonl-tailer.js';
 import { readFileSync, unlinkSync, realpathSync } from 'fs';
 
 // Resolve config: credentials file (secure) > env vars (legacy) > repos.json
@@ -93,6 +94,14 @@ const log = createLogger('cc-daemon');
 const EVENT_QUEUE_MAX = 100;
 const eventQueue = [];
 
+// Plan room state
+let activePlanRoom = null; // { planRoomId, tailer }
+
+function resolveJsonlPath(ccSessionId) {
+	const projectKey = '-' + CWD.replace(/\//g, '-');
+	return join(homedir(), '.claude', 'projects', projectKey, `${ccSessionId}.jsonl`);
+}
+
 function enqueueEvent(type, data) {
 	if (eventQueue.length >= EVENT_QUEUE_MAX) {
 		eventQueue.shift();
@@ -148,6 +157,17 @@ async function shutdown(reason) {
 	addBreadcrumb('session', 'Shutting down', 'info', { reason });
 
 	if (watchdogInterval) clearInterval(watchdogInterval);
+
+	// Close active plan room before ending session
+	if (activePlanRoom) {
+		activePlanRoom.tailer.stop();
+		if (ws?.readyState === WebSocket.OPEN) {
+			try {
+				await sendRequest('planRoom:end', { planRoomId: activePlanRoom.planRoomId }, 2000);
+			} catch { /* ignore */ }
+		}
+		activePlanRoom = null;
+	}
 
 	// Tell server session ended
 	if (ws?.readyState === WebSocket.OPEN && lsSessionId) {
@@ -298,6 +318,30 @@ async function connectWebSocket() {
 				}
 				// Flush any events buffered during disconnect
 				flushEventQueue();
+
+				// Re-register active plan room after reconnect
+				if (activePlanRoom) {
+					try {
+						const ack = await sendRequest('planRoom:start', {
+							ccSessionId: CC_SESSION_ID,
+							repoId: REPO_ID,
+							gitBranch: GIT_BRANCH,
+						});
+						if (ack.ok) {
+							log('Plan room re-registered after reconnect', { planRoomId: ack.planRoomId });
+							// Flush any buffered conversation:message events
+							const buffered = eventQueue.filter(e => e.type === 'conversation:message');
+							const remaining = eventQueue.filter(e => e.type !== 'conversation:message');
+							eventQueue.length = 0;
+							remaining.forEach(e => eventQueue.push(e));
+							for (const event of buffered) {
+								sendFireAndForget(event.type, event.data);
+							}
+						}
+					} catch (err) {
+						log('Failed to re-register plan room on reconnect', { error: err.message });
+					}
+				}
 			} else {
 				log('Session start failed, triggering reconnect', { error: response?.error });
 				try { ws.close(4000, 'session_start_failed'); } catch { /* ignore */ }
@@ -473,6 +517,103 @@ async function _tryListenOnPort(port) {
 				res.end(JSON.stringify({ ok: true }));
 			} catch (err) {
 				res.writeHead(400, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ ok: false, error: err.message }));
+			}
+			return;
+		}
+
+		if (url.pathname === '/start-room' && req.method === 'POST') {
+			try {
+				if (activePlanRoom) {
+					res.writeHead(409, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ ok: false, error: 'room_already_active' }));
+					return;
+				}
+				if (!ws || ws.readyState !== WebSocket.OPEN) {
+					res.writeHead(503, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ ok: false, error: 'ws_not_connected' }));
+					return;
+				}
+
+				const jsonlPath = resolveJsonlPath(CC_SESSION_ID);
+
+				// Request plan room from server
+				const ack = await sendRequest('planRoom:start', {
+					ccSessionId: CC_SESSION_ID,
+					repoId: REPO_ID,
+					gitBranch: GIT_BRANCH,
+				});
+
+				if (!ack.ok) {
+					res.writeHead(400, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ ok: false, error: ack.error || 'server_rejected' }));
+					return;
+				}
+
+				const planRoomId = ack.planRoomId;
+
+				// Start tailing JSONL
+				const tailer = createTailer(jsonlPath, (record) => {
+					const msg = {
+						planRoomId,
+						uuid: record.uuid,
+						parentUuid: record.parentUuid || null,
+						role: record.type === 'user' ? 'user' : 'assistant',
+						content: record.message?.content || record.message || null,
+						timestamp: record.timestamp,
+					};
+					if (ws?.readyState === WebSocket.OPEN) {
+						sendFireAndForget('conversation:message', msg);
+					} else {
+						// Buffer in the existing event queue (shared 100-event limit)
+						enqueueEvent('conversation:message', msg);
+					}
+				});
+				tailer.start();
+
+				activePlanRoom = { planRoomId, tailer };
+				log('Plan room started', { planRoomId });
+				addBreadcrumb('planRoom', 'Plan room started', 'info', { planRoomId });
+
+				const roomUrl = `${BASE_URL}/repos/${REPO_ID}/sessions?roomId=${planRoomId}`;
+				res.writeHead(200, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ ok: true, planRoomId, url: roomUrl }));
+			} catch (err) {
+				log('start-room error', { error: err.message });
+				res.writeHead(500, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ ok: false, error: err.message }));
+			}
+			return;
+		}
+
+		if (url.pathname === '/stop-room' && req.method === 'POST') {
+			try {
+				if (!activePlanRoom) {
+					res.writeHead(404, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ ok: false, error: 'no_active_room' }));
+					return;
+				}
+
+				const { planRoomId, tailer } = activePlanRoom;
+				tailer.stop();
+
+				// Clear buffered plan room events from queue
+				eventQueue.length = 0; // Simple clear — plan room events are the only fire-and-forget type currently buffered
+
+				// Notify server
+				if (ws?.readyState === WebSocket.OPEN) {
+					try {
+						await sendRequest('planRoom:end', { planRoomId }, 2000);
+					} catch { /* ignore timeout */ }
+				}
+
+				activePlanRoom = null;
+				log('Plan room stopped', { planRoomId });
+
+				res.writeHead(200, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ ok: true }));
+			} catch (err) {
+				res.writeHead(500, { 'Content-Type': 'application/json' });
 				res.end(JSON.stringify({ ok: false, error: err.message }));
 			}
 			return;
