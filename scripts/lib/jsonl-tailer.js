@@ -22,6 +22,7 @@ function filterRecord(record) {
         if (block.type === 'tool_use' && block.input) {
           const inputStr = typeof block.input === 'string' ? block.input : JSON.stringify(block.input);
           if (inputStr.length > TEXT_BLOCK_MAX) {
+            // Note: this intentionally changes input from object to truncated string
             return { ...block, input: inputStr.slice(0, TEXT_BLOCK_MAX) + TRUNCATION_MARKER };
           }
         }
@@ -40,8 +41,16 @@ export function createTailer(filePath, onRecord, onError) {
   let pollInterval = null;
   let fileHandle = null;
   let stopped = false;
+  let reading = false;
+
+  // Resources from the file-not-yet-existing code path
+  let dirWatcher = null;
+  let dirCheckInterval = null;
+  let waitTimeout = null;
 
   async function readNewLines() {
+    if (reading) return;
+    reading = true;
     try {
       if (!existsSync(filePath)) return;
 
@@ -73,7 +82,9 @@ export function createTailer(filePath, onRecord, onError) {
         }
       }
     } catch (err) {
-      // Log but don't crash
+      if (onError) onError(err);
+    } finally {
+      reading = false;
     }
   }
 
@@ -84,25 +95,24 @@ export function createTailer(filePath, onRecord, onError) {
       startWatching();
     } else {
       const dir = filePath.substring(0, filePath.lastIndexOf('/'));
-      let dirWatcher = null;
-      const waitTimeout = setTimeout(() => {
-        if (dirWatcher) { try { dirWatcher.close(); } catch {} }
+      waitTimeout = setTimeout(() => {
+        if (dirWatcher) { try { dirWatcher.close(); } catch {} dirWatcher = null; }
         if (onError) onError(new Error('JSONL file did not appear within 30s'));
       }, 30000);
 
       try {
         dirWatcher = watch(dir, (eventType, filename) => {
           if (existsSync(filePath)) {
-            clearTimeout(waitTimeout);
-            if (dirWatcher) { try { dirWatcher.close(); } catch {} }
+            clearTimeout(waitTimeout); waitTimeout = null;
+            if (dirWatcher) { try { dirWatcher.close(); } catch {} dirWatcher = null; }
             startWatching();
           }
         });
       } catch {
-        const checkInterval = setInterval(() => {
+        dirCheckInterval = setInterval(() => {
           if (existsSync(filePath)) {
-            clearInterval(checkInterval);
-            clearTimeout(waitTimeout);
+            clearInterval(dirCheckInterval); dirCheckInterval = null;
+            clearTimeout(waitTimeout); waitTimeout = null;
             startWatching();
           }
         }, 500);
@@ -130,6 +140,9 @@ export function createTailer(filePath, onRecord, onError) {
     stopped = true;
     if (fsWatcher) { try { fsWatcher.close(); } catch {} fsWatcher = null; }
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    if (dirWatcher) { try { dirWatcher.close(); } catch {} dirWatcher = null; }
+    if (dirCheckInterval) { clearInterval(dirCheckInterval); dirCheckInterval = null; }
+    if (waitTimeout) { clearTimeout(waitTimeout); waitTimeout = null; }
     if (fileHandle) { try { fileHandle.close(); } catch {} fileHandle = null; }
     partialLine = '';
   }
