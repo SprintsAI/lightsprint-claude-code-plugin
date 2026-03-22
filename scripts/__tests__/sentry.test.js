@@ -18,10 +18,11 @@ const sentryMock = {
 mock.module('@sentry/node', () => sentryMock);
 
 // Import after mock is set up
-const { initSentry, setSentryContext, addBreadcrumb, captureException, shutdownSentry } = await import('../lib/sentry.js');
+const { initSentry, setSentryContext, addBreadcrumb, captureException, shutdownSentry, _resetForTesting } = await import('../lib/sentry.js');
 
 describe('sentry module', () => {
 	beforeEach(() => {
+		_resetForTesting();
 		Object.values(sentryMock).forEach(fn => fn.mockClear?.());
 	});
 
@@ -34,16 +35,17 @@ describe('sentry module', () => {
 		expect(initArg.tracesSampleRate).toBe(0);
 	});
 
-	test('initSentry detects staging environment', () => {
-		// initSentry guards against double-init, so we verify that the first call
-		// (production) already set platform/nodeVersion tags via setTag
-		// The staging detection logic is validated by inspecting the init args pattern.
-		// Since initialized=true from previous test, we verify init was called correctly
-		// in the first test with environment='production' and setTag was invoked there.
+	test('initSentry detects staging environment for localhost', () => {
 		initSentry({ baseUrl: 'http://localhost:3000' });
-		// Second call is a no-op due to initialized guard — this is correct behavior.
-		// We verify the guard works: init should NOT be called again.
-		expect(sentryMock.init).not.toHaveBeenCalled();
+		expect(sentryMock.init).toHaveBeenCalledTimes(1);
+		const initArg = sentryMock.init.mock.calls[0][0];
+		expect(initArg.environment).toBe('staging');
+	});
+
+	test('initSentry guards against double initialization', () => {
+		initSentry({ baseUrl: 'https://lightsprint.ai' });
+		initSentry({ baseUrl: 'http://localhost:3000' });
+		expect(sentryMock.init).toHaveBeenCalledTimes(1);
 	});
 
 	test('setSentryContext calls setUser with hashed email and setTag for each field', () => {
@@ -82,6 +84,7 @@ describe('sentry module', () => {
 	});
 
 	test('shutdownSentry calls Sentry.close', async () => {
+		initSentry({ baseUrl: 'https://lightsprint.ai' });
 		await shutdownSentry(1000);
 		expect(sentryMock.close).toHaveBeenCalledWith(1000);
 	});

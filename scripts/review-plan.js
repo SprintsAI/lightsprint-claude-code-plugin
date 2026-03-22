@@ -506,7 +506,7 @@ export async function reviewPlanMain(args) {
 	} catch (err) {
 		log('error', 'review-plan failed', { error: err.message });
 		if (sessionId) {
-			reportError(sessionId, err, 'review-plan').catch(() => {});
+			await reportError(sessionId, err, 'review-plan').catch(() => {});
 		}
 		outputAllow();
 	}
