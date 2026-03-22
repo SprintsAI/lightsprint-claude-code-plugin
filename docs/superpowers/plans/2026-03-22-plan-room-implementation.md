@@ -39,7 +39,8 @@
 |--------|------|----------------|
 | Create | `src/lib/server/db/schema/plan-rooms.ts` | Drizzle schema for planRooms + planRoomMessages |
 | Create | `src/lib/server/dao/plan-room.dao.ts` | Data access for plan rooms and messages |
-| Create | `src/routes/api/plan-rooms/[id]/messages/+server.ts` | REST: GET messages, POST chat |
+| Create | `src/routes/api/plan-rooms/[id]/messages/+server.ts` | REST: GET messages |
+| Create | `src/routes/api/plan-rooms/[id]/chat/+server.ts` | REST: POST chat message |
 | Create | `src/routes/api/plan-rooms/[id]/+server.ts` | REST: GET plan room detail |
 | Create | `src/lib/stores/plan-rooms.svelte.ts` | Client-side store for plan rooms + real-time |
 | Create | `src/lib/components/sessions/PlanRoomCard.svelte` | Plan room card with conversation + chat UI |
@@ -307,7 +308,7 @@ function filterRecord(record) {
   return record;
 }
 
-export function createTailer(filePath, onRecord) {
+export function createTailer(filePath, onRecord, onError) {
   let offset = 0;
   let partialLine = '';
   let fsWatcher = null;
@@ -354,6 +355,40 @@ export function createTailer(filePath, onRecord) {
 
   function start() {
     stopped = false;
+
+    if (existsSync(filePath)) {
+      startWatching();
+    } else {
+      // File doesn't exist yet — watch parent directory for it to appear
+      const dir = filePath.substring(0, filePath.lastIndexOf('/'));
+      let dirWatcher = null;
+      const waitTimeout = setTimeout(() => {
+        if (dirWatcher) { try { dirWatcher.close(); } catch {} }
+        if (onError) onError(new Error('JSONL file did not appear within 30s'));
+      }, 30000);
+
+      try {
+        dirWatcher = watch(dir, (eventType, filename) => {
+          if (existsSync(filePath)) {
+            clearTimeout(waitTimeout);
+            if (dirWatcher) { try { dirWatcher.close(); } catch {} }
+            startWatching();
+          }
+        });
+      } catch {
+        // Fallback: poll for file existence
+        const checkInterval = setInterval(() => {
+          if (existsSync(filePath)) {
+            clearInterval(checkInterval);
+            clearTimeout(waitTimeout);
+            startWatching();
+          }
+        }, 500);
+      }
+    }
+  }
+
+  function startWatching() {
     // Read existing content immediately
     readNewLines();
 
@@ -527,14 +562,76 @@ if (url.pathname === '/stop-room' && req.method === 'POST') {
 }
 ```
 
-- [ ] **Step 5: Add plan room cleanup to shutdown()**
+- [ ] **Step 5: Add WS disconnect buffering for plan room messages**
 
-In the `shutdown()` function (around line 144), before the `session:end` send, add:
+In the `/start-room` handler, replace the `sendFireAndForget` call with a wrapper that buffers when WS is disconnected:
 
 ```javascript
-// Close active plan room
+    // Start tailing JSONL
+    const tailer = createTailer(jsonlPath, (record) => {
+      const msg = {
+        planRoomId,
+        uuid: record.uuid,
+        parentUuid: record.parentUuid || null,
+        role: record.type === 'user' ? 'user' : 'assistant',
+        content: record.message?.content || record.message || null,
+        timestamp: record.timestamp,
+      };
+      if (ws?.readyState === WebSocket.OPEN) {
+        sendFireAndForget('conversation:message', msg);
+      } else {
+        // Buffer in the existing event queue (shared 100-event limit)
+        enqueueEvent({ type: 'conversation:message', data: msg, source: 'planRoom' });
+      }
+    });
+```
+
+On `stop-room` and plan room cleanup, clear plan-room-tagged events from the queue:
+
+```javascript
+// Clear buffered plan room events from queue
+eventQueue = eventQueue.filter(e => e.source !== 'planRoom');
+```
+
+- [ ] **Step 6: Add WS reconnect re-registration for plan rooms**
+
+In the daemon's WS `onopen` callback (around line 100 in `cc-daemon.js`), add logic to re-send `planRoom:start` when reconnecting with an active plan room:
+
+```javascript
+// In WS onopen handler, after existing reconnect logic:
+if (activePlanRoom) {
+  try {
+    const ack = await sendRequest('planRoom:start', {
+      ccSessionId: CC_SESSION_ID,
+      repoId: REPO_ID,
+      gitBranch: GIT_BRANCH,
+    });
+    if (ack.ok) {
+      // Server returns existing planRoomId (idempotent)
+      log('Plan room re-registered after reconnect', { planRoomId: ack.planRoomId });
+      // Flush any buffered plan room events
+      const buffered = eventQueue.filter(e => e.source === 'planRoom');
+      eventQueue = eventQueue.filter(e => e.source !== 'planRoom');
+      for (const event of buffered) {
+        sendFireAndForget(event.type, event.data);
+      }
+    }
+  } catch (err) {
+    log('Failed to re-register plan room on reconnect', { error: err.message });
+  }
+}
+```
+
+- [ ] **Step 7: Add plan room cleanup to shutdown()**
+
+In the `shutdown()` function (around line 144), **before** the `session:end` sendRequest call (line 153), insert the plan room cleanup. The `planRoom:end` must be sent before `session:end` to ensure proper ordering:
+
+```javascript
+// IMPORTANT: Insert this BEFORE the session:end send (before line 153)
+// Close active plan room before ending session
 if (activePlanRoom) {
   activePlanRoom.tailer.stop();
+  eventQueue = eventQueue.filter(e => e.source !== 'planRoom');
   if (ws?.readyState === WebSocket.OPEN) {
     try {
       await sendRequest('planRoom:end', { planRoomId: activePlanRoom.planRoomId }, 2000);
@@ -542,9 +639,40 @@ if (activePlanRoom) {
   }
   activePlanRoom = null;
 }
+// Then the existing session:end send follows
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Handle session continuation (--continue)**
+
+When a `--continue` aliases a new `ccSessionId` to the existing daemon, the plan room's JSONL file path changes. In the daemon's session continuation handler (where `CC_SESSION_ID` gets updated), add:
+
+```javascript
+// If plan room is active, switch to new JSONL file
+if (activePlanRoom) {
+  activePlanRoom.tailer.stop();
+  const newJsonlPath = resolveJsonlPath(newCcSessionId);
+  const newTailer = createTailer(newJsonlPath, (record) => {
+    const msg = {
+      planRoomId: activePlanRoom.planRoomId,
+      uuid: record.uuid,
+      parentUuid: record.parentUuid || null,
+      role: record.type === 'user' ? 'user' : 'assistant',
+      content: record.message?.content || record.message || null,
+      timestamp: record.timestamp,
+    };
+    if (ws?.readyState === WebSocket.OPEN) {
+      sendFireAndForget('conversation:message', msg);
+    } else {
+      enqueueEvent({ type: 'conversation:message', data: msg, source: 'planRoom' });
+    }
+  });
+  newTailer.start();
+  activePlanRoom.tailer = newTailer;
+  log('Plan room tailer switched to new session', { newCcSessionId });
+}
+```
+
+- [ ] **Step 9: Commit**
 
 ```bash
 cd /Users/henghonglee/lightsprint-projects/session-window
@@ -639,16 +767,15 @@ export async function main() {
 
 - [ ] **Step 3: Add routing in lightsprint.js**
 
-In `scripts/lightsprint.js`, add cases to the subcommand router (around line 39):
+In `scripts/lightsprint.js`, add to the subcommand router using the existing `if/else if` pattern (around line 39):
 
 ```javascript
-case 'start-room': {
+} else if (subcommand === 'start-room') {
   const { main } = await import('./cc-start-room.js');
-  return main();
-}
-case 'stop-room': {
+  await main();
+} else if (subcommand === 'stop-room') {
   const { main } = await import('./cc-stop-room.js');
-  return main();
+  await main();
 }
 ```
 
@@ -752,7 +879,7 @@ git commit -m "feat: add start-room and stop-room agent skills"
 
 ```typescript
 // src/lib/server/db/schema/plan-rooms.ts
-import { pgTable, text, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, index, uniqueIndex, jsonb, sql } from 'drizzle-orm/pg-core';
 import { createId } from '@paralleldrive/cuid2';
 import { repos } from './repos';
 import { users } from './users';
@@ -761,7 +888,7 @@ import { ccSessions } from './cc-sessions';
 export const planRooms = pgTable(
   'plan_rooms',
   {
-    id: text('id').primaryKey().$defaultFn(createId),
+    id: text('id').primaryKey().$defaultFn(createId), // CUID2 (matches codebase convention; spec says uuid but existing tables use CUID2)
     repoId: text('repo_id').notNull().references(() => repos.id, { onDelete: 'cascade' }),
     ccSessionId: text('cc_session_id').references(() => ccSessions.id, { onDelete: 'set null' }),
     userId: text('user_id').notNull().references(() => users.id),
@@ -789,7 +916,7 @@ export const planRoomMessages = pgTable(
     uuid: text('uuid'),
     parentUuid: text('parent_uuid'),
     role: text('role', { enum: ['user', 'assistant', 'system'] }),
-    content: text('content').notNull(), // JSON string for conversation, plain text for chat
+    content: jsonb('content').notNull(), // JSON object for conversation content blocks, plain string for chat
     timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -901,7 +1028,7 @@ export class PlanRoomMessageDAO extends BaseDAO<typeof planRoomMessages> {
   async listForRoom(roomId: string, opts?: { type?: string; limit?: number; cursor?: string }) {
     const conditions = [eq(planRoomMessages.planRoomId, roomId)];
     if (opts?.type) conditions.push(eq(planRoomMessages.messageType, opts.type));
-    if (opts?.cursor) conditions.push(gt(planRoomMessages.id, opts.cursor));
+    if (opts?.cursor) conditions.push(gt(planRoomMessages.id, opts.cursor)); // Uses CUID2 id as cursor (monotonically sortable)
 
     return db.query.planRoomMessages.findMany({
       where: and(...conditions),
@@ -1001,6 +1128,7 @@ if (msg.type === 'planRoom:start' && msg.id) {
       return;
     }
 
+    // NOTE: Verify actual ccSessionDAO method signature — may be findByCcSessionId(repoId, ccSessionId) or similar
     const session = await ccSessionDAO.findByCcSessionId(repoId, ccSessionId);
     const [room] = await planRoomDAO.insert({
       repoId,
@@ -1112,15 +1240,14 @@ export const GET: RequestHandler = withErrorHandling(async (event) => {
 }, 'Failed to get plan room');
 ```
 
-- [ ] **Step 2: Create messages endpoint**
+- [ ] **Step 2: Create messages GET endpoint**
 
 ```typescript
 // src/routes/api/plan-rooms/[id]/messages/+server.ts
 import type { RequestHandler } from './$types';
 import { planRoomDAO, planRoomMessageDAO } from '$lib/server/dao';
 import { requireAuth, requireRepoAccess, withErrorHandling } from '$lib/server/api/middleware';
-import { success, created, notFound, badRequest } from '$lib/server/api/response';
-import { emit } from '$lib/server/realtime';
+import { success, notFound } from '$lib/server/api/response';
 
 export const GET: RequestHandler = withErrorHandling(async (event) => {
   const session = await requireAuth(event);
@@ -1135,6 +1262,17 @@ export const GET: RequestHandler = withErrorHandling(async (event) => {
   const messages = await planRoomMessageDAO.listForRoom(room.id, { type, limit, cursor });
   return success({ messages });
 }, 'Failed to list messages');
+```
+
+- [ ] **Step 3: Create chat POST endpoint**
+
+```typescript
+// src/routes/api/plan-rooms/[id]/chat/+server.ts
+import type { RequestHandler } from './$types';
+import { planRoomDAO, planRoomMessageDAO } from '$lib/server/dao';
+import { requireAuth, requireRepoAccess, withErrorHandling } from '$lib/server/api/middleware';
+import { created, notFound, badRequest } from '$lib/server/api/response';
+import { emit } from '$lib/server/realtime';
 
 export const POST: RequestHandler = withErrorHandling(async (event) => {
   const session = await requireAuth(event);
@@ -1167,7 +1305,7 @@ export const POST: RequestHandler = withErrorHandling(async (event) => {
 }, 'Failed to send message');
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 cd /Users/henghonglee/lightsprint-projects/lightsprint/app
@@ -1282,7 +1420,7 @@ export async function fetchRoomMessages(roomId: string) {
 }
 
 export async function sendChatMessage(roomId: string, content: string) {
-  await fetch(`/api/plan-rooms/${roomId}/messages`, {
+  await fetch(`/api/plan-rooms/${roomId}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
@@ -1336,7 +1474,14 @@ Key props:
 }
 ```
 
-This component is large enough that the implementor should build it incrementally, following the design mockup at `.superpowers/brainstorm/21450-1774167360/ui-layout-v4.html`.
+This component is large enough that the implementor should build it incrementally, following the design mockup at `/Users/henghonglee/lightsprint-projects/session-window/.superpowers/brainstorm/21450-1774167360/ui-layout-v4.html` (in the plugin repo, not the Lightsprint app repo).
+
+Key visual requirements from mockup:
+- Terracotta accent (#E58866) for plan room badges, live dot animation (orange ping), user sender names
+- Claude messages: no avatar, dark terminal block (bg `rgba(255,255,255,0.02)`), green sender name (#5EB87A), JetBrains Mono / `font-mono`
+- User messages: circular avatar with muted palette, Inter font
+- Tool use: collapsed inline indicators
+- Thinking: blinking cursor animation
 
 - [ ] **Step 2: Commit**
 
