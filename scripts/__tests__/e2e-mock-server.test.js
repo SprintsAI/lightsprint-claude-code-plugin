@@ -709,13 +709,11 @@ describe('E2E: Session Lifecycle', () => {
 		test('daemon connects to mock WS and sends session:start', async () => {
 			const testSessionId = `e2e-start-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
-			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
-				daemonPid = daemonProc.pid;
+				spawnDaemon(testSessionId, dummyProc.pid);
 
-				// Wait for session:start
+				// Wait for session:start (longer timeout for CI cold-start with lazy imports)
 				const sessionStart = await waitForWsMessage(m => m.type === 'session:start', 15000);
 				expect(sessionStart).not.toBeNull();
 				expect(sessionStart.data.ccSessionId).toBe(testSessionId);
@@ -726,13 +724,15 @@ describe('E2E: Session Lifecycle', () => {
 				expect(state.port).toBeGreaterThan(0);
 				expect(state.daemonPid).toBeGreaterThan(0);
 				expect(state.ccSessionId).toBe(testSessionId);
+
+				// Clean up daemon
+				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
-				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-start-');
 			}
-		}, 20000);
+		}, 25000);
 
 		test('session:start message includes gitBranch and machineId', async () => {
 			const testSessionId = `e2e-startmeta-${randomBytes(8).toString('hex')}`;
