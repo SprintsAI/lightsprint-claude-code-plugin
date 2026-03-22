@@ -161,6 +161,10 @@ async function shutdown(reason) {
 	// Close active plan room before ending session
 	if (activePlanRoom) {
 		activePlanRoom.tailer.stop();
+		// Remove only plan room events, preserve other buffered events
+		for (let i = eventQueue.length - 1; i >= 0; i--) {
+			if (eventQueue[i].type === 'conversation:message') eventQueue.splice(i, 1);
+		}
 		if (ws?.readyState === WebSocket.OPEN) {
 			try {
 				await sendRequest('planRoom:end', { planRoomId: activePlanRoom.planRoomId }, 2000);
@@ -568,6 +572,9 @@ async function _tryListenOnPort(port) {
 						// Buffer in the existing event queue (shared 100-event limit)
 						enqueueEvent('conversation:message', msg);
 					}
+				}, (err) => {
+					log('Plan room tailer error', { error: err.message });
+					addBreadcrumb('planRoom', 'Tailer error', 'error', { error: err.message });
 				});
 				tailer.start();
 
@@ -597,8 +604,10 @@ async function _tryListenOnPort(port) {
 				const { planRoomId, tailer } = activePlanRoom;
 				tailer.stop();
 
-				// Clear buffered plan room events from queue
-				eventQueue.length = 0; // Simple clear — plan room events are the only fire-and-forget type currently buffered
+				// Remove only plan room events, preserve other buffered events
+				for (let i = eventQueue.length - 1; i >= 0; i--) {
+					if (eventQueue[i].type === 'conversation:message') eventQueue.splice(i, 1);
+				}
 
 				// Notify server
 				if (ws?.readyState === WebSocket.OPEN) {
@@ -609,6 +618,7 @@ async function _tryListenOnPort(port) {
 
 				activePlanRoom = null;
 				log('Plan room stopped', { planRoomId });
+				addBreadcrumb('planRoom', 'Plan room stopped', 'info', { planRoomId });
 
 				res.writeHead(200, { 'Content-Type': 'application/json' });
 				res.end(JSON.stringify({ ok: true }));
