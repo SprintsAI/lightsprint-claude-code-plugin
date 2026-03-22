@@ -737,20 +737,20 @@ describe('E2E: Session Lifecycle', () => {
 		test('session:start message includes gitBranch and machineId', async () => {
 			const testSessionId = `e2e-startmeta-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid, { gitBranch: 'feature/test-branch' });
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid, { gitBranch: 'feature/test-branch' });
+				daemonPid = daemonProc.pid;
 
 				const sessionStart = await waitForWsMessage(m => m.type === 'session:start');
-				expect(sessionStart).toBeDefined();
+				expect(sessionStart).not.toBeNull();
 				expect(sessionStart.data.gitBranch).toBe('feature/test-branch');
 				expect(sessionStart.data.machineId).toBeDefined();
 				expect(typeof sessionStart.data.machineId).toBe('string');
 				expect(sessionStart.data.machineId.length).toBeGreaterThan(0);
-
-				const state = await waitForSessionState(testSessionId);
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-startmeta-');
@@ -760,9 +760,11 @@ describe('E2E: Session Lifecycle', () => {
 		test('session state file includes lsSessionId after WS ack', async () => {
 			const testSessionId = `e2e-startls-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
 
 				// Wait for session:start and ack
 				await waitForWsMessage(m => m.type === 'session:start');
@@ -785,9 +787,8 @@ describe('E2E: Session Lifecycle', () => {
 				expect(updatedState).not.toBeNull();
 				expect(updatedState.lsSessionId).toBeDefined();
 				expect(updatedState.lsSessionId).toMatch(/^mock-ls-session-/);
-
-				try { process.kill(updatedState.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-startls-');
@@ -797,9 +798,11 @@ describe('E2E: Session Lifecycle', () => {
 		test('session state file includes daemonToken for auth', async () => {
 			const testSessionId = `e2e-starttoken-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
 
 				await waitForWsMessage(m => m.type === 'session:start');
 				const state = await waitForSessionState(testSessionId);
@@ -807,9 +810,8 @@ describe('E2E: Session Lifecycle', () => {
 				expect(state.daemonToken).toBeDefined();
 				expect(typeof state.daemonToken).toBe('string');
 				expect(state.daemonToken.length).toBe(64); // 32 random bytes → 64 hex chars
-
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-starttoken-');
@@ -820,19 +822,29 @@ describe('E2E: Session Lifecycle', () => {
 	// ─── Session End ─────────────────────────────────────────────────────
 
 	describe('Session End', () => {
+		/** Poll until a process is no longer alive (max 5s). */
+		async function waitForProcessExit(pid, timeoutMs = 5000) {
+			const deadline = Date.now() + timeoutMs;
+			while (Date.now() < deadline) {
+				try { process.kill(pid, 0); } catch { return; }
+				await new Promise(r => setTimeout(r, 200));
+			}
+		}
+
 		test('session-end endpoint triggers shutdown and cleanup', async () => {
 			const testSessionId = `e2e-end-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
 
 				// Wait for daemon to connect
 				await waitForWsMessage(m => m.type === 'session:start');
 
 				const state = await waitForSessionState(testSessionId);
 				expect(state).not.toBeNull();
-				const daemonPid = state.daemonPid;
 
 				// Send session end via HTTP (same as cc-end.js does)
 				mockWsMessages.length = 0;
@@ -848,20 +860,19 @@ describe('E2E: Session Lifecycle', () => {
 
 				// Wait for session:end on WS
 				const sessionEnd = await waitForWsMessage(m => m.type === 'session:end', 5000);
-				expect(sessionEnd).toBeDefined();
+				expect(sessionEnd).not.toBeNull();
 
 				// Wait for daemon to exit
-				await new Promise(r => setTimeout(r, 1500));
+				await waitForProcessExit(state.daemonPid);
 
 				// Verify session state file was cleaned up
 				const stateFile = join(SESSIONS_DIR, `${testSessionId}.json`);
 				expect(existsSync(stateFile)).toBe(false);
 
 				// Verify daemon process is dead
-				let isAlive = true;
-				try { process.kill(daemonPid, 0); } catch { isAlive = false; }
-				expect(isAlive).toBe(false);
+				expect(() => process.kill(state.daemonPid, 0)).toThrow();
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-end-');
@@ -871,9 +882,12 @@ describe('E2E: Session Lifecycle', () => {
 		test('session:end message has status completed on normal shutdown', async () => {
 			const testSessionId = `e2e-endstatus-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
+
 				await waitForWsMessage(m => m.type === 'session:start');
 				const state = await waitForSessionState(testSessionId);
 				expect(state).not.toBeNull();
@@ -890,11 +904,12 @@ describe('E2E: Session Lifecycle', () => {
 				});
 
 				const sessionEnd = await waitForWsMessage(m => m.type === 'session:end', 5000);
-				expect(sessionEnd).toBeDefined();
+				expect(sessionEnd).not.toBeNull();
 				expect(sessionEnd.data.status).toBe('completed');
 
-				await new Promise(r => setTimeout(r, 1500));
+				await waitForProcessExit(state.daemonPid);
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-endstatus-');
@@ -904,9 +919,12 @@ describe('E2E: Session Lifecycle', () => {
 		test('SIGTERM triggers graceful shutdown with session:end', async () => {
 			const testSessionId = `e2e-sigterm-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
+
 				await waitForWsMessage(m => m.type === 'session:start');
 				const state = await waitForSessionState(testSessionId);
 				expect(state).not.toBeNull();
@@ -918,20 +936,19 @@ describe('E2E: Session Lifecycle', () => {
 
 				// Should send session:end before exiting
 				const sessionEnd = await waitForWsMessage(m => m.type === 'session:end', 5000);
-				expect(sessionEnd).toBeDefined();
+				expect(sessionEnd).not.toBeNull();
 
 				// Wait for cleanup
-				await new Promise(r => setTimeout(r, 1500));
+				await waitForProcessExit(state.daemonPid);
 
 				// Verify daemon is dead
-				let isAlive = true;
-				try { process.kill(state.daemonPid, 0); } catch { isAlive = false; }
-				expect(isAlive).toBe(false);
+				expect(() => process.kill(state.daemonPid, 0)).toThrow();
 
 				// Verify session state cleaned up
 				const stateFile = join(SESSIONS_DIR, `${testSessionId}.json`);
 				expect(existsSync(stateFile)).toBe(false);
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-sigterm-');
@@ -945,9 +962,12 @@ describe('E2E: Session Lifecycle', () => {
 		test('mutating endpoints reject requests without auth token', async () => {
 			const testSessionId = `e2e-noauth-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
+
 				await waitForWsMessage(m => m.type === 'session:start');
 				const state = await waitForSessionState(testSessionId);
 				expect(state).not.toBeNull();
@@ -978,9 +998,8 @@ describe('E2E: Session Lifecycle', () => {
 					signal: AbortSignal.timeout(2000),
 				});
 				expect(planRes.status).toBe(401);
-
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-noauth-');
@@ -990,9 +1009,12 @@ describe('E2E: Session Lifecycle', () => {
 		test('mutating endpoints reject requests with wrong auth token', async () => {
 			const testSessionId = `e2e-badauth-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
+
 				await waitForWsMessage(m => m.type === 'session:start');
 				const state = await waitForSessionState(testSessionId);
 				expect(state).not.toBeNull();
@@ -1009,9 +1031,8 @@ describe('E2E: Session Lifecycle', () => {
 				expect(res.status).toBe(401);
 				const body = await res.json();
 				expect(body.error).toBe('Unauthorized');
-
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-badauth-');
@@ -1021,9 +1042,12 @@ describe('E2E: Session Lifecycle', () => {
 		test('health endpoint is accessible without auth', async () => {
 			const testSessionId = `e2e-healthnoauth-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
+
 				await waitForWsMessage(m => m.type === 'session:start');
 				const state = await waitForSessionState(testSessionId);
 				expect(state).not.toBeNull();
@@ -1036,9 +1060,8 @@ describe('E2E: Session Lifecycle', () => {
 				const health = await resp.json();
 				expect(health.ok).toBe(true);
 				expect(health.sessionId).toBeDefined();
-
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-healthnoauth-');
@@ -1048,9 +1071,12 @@ describe('E2E: Session Lifecycle', () => {
 		test('unknown endpoint returns 404', async () => {
 			const testSessionId = `e2e-404-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
+
 				await waitForWsMessage(m => m.type === 'session:start');
 				const state = await waitForSessionState(testSessionId);
 				expect(state).not.toBeNull();
@@ -1062,9 +1088,8 @@ describe('E2E: Session Lifecycle', () => {
 					signal: AbortSignal.timeout(2000),
 				});
 				expect(resp.status).toBe(404);
-
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-404-');
@@ -1074,9 +1099,12 @@ describe('E2E: Session Lifecycle', () => {
 		test('/event with invalid JSON returns 400', async () => {
 			const testSessionId = `e2e-badjson-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
+
 				await waitForWsMessage(m => m.type === 'session:start');
 				const state = await waitForSessionState(testSessionId);
 				expect(state).not.toBeNull();
@@ -1091,9 +1119,8 @@ describe('E2E: Session Lifecycle', () => {
 					signal: AbortSignal.timeout(2000),
 				});
 				expect(resp.status).toBe(400);
-
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-badjson-');
@@ -1107,9 +1134,11 @@ describe('E2E: Session Lifecycle', () => {
 		test('events posted to daemon are forwarded to WS', async () => {
 			const testSessionId = `e2e-event-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
 
 				// Wait for daemon to connect
 				await waitForWsMessage(m => m.type === 'session:start');
@@ -1138,11 +1167,9 @@ describe('E2E: Session Lifecycle', () => {
 
 				// Wait for event to be forwarded to WS
 				const eventsMsg = await waitForWsMessage(m => m.type === 'events', 3000);
-				expect(eventsMsg).toBeDefined();
-
-				// Clean up
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
+				expect(eventsMsg).not.toBeNull();
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-event-');
@@ -1152,9 +1179,12 @@ describe('E2E: Session Lifecycle', () => {
 		test('multiple events are each forwarded to WS independently', async () => {
 			const testSessionId = `e2e-multievt-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
+
 				await waitForWsMessage(m => m.type === 'session:start');
 				const state = await waitForSessionState(testSessionId);
 				expect(state).not.toBeNull();
@@ -1189,9 +1219,8 @@ describe('E2E: Session Lifecycle', () => {
 
 				const eventsMsgs = mockWsMessages.filter(m => m.type === 'events');
 				expect(eventsMsgs.length).toBeGreaterThanOrEqual(3);
-
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-multievt-');
@@ -1201,9 +1230,12 @@ describe('E2E: Session Lifecycle', () => {
 		test('event endpoint returns ok:true on success', async () => {
 			const testSessionId = `e2e-evtresp-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
+
 				await waitForWsMessage(m => m.type === 'session:start');
 				const state = await waitForSessionState(testSessionId);
 				expect(state).not.toBeNull();
@@ -1223,9 +1255,8 @@ describe('E2E: Session Lifecycle', () => {
 				expect(resp.status).toBe(200);
 				const body = await resp.json();
 				expect(body.ok).toBe(true);
-
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-evtresp-');
