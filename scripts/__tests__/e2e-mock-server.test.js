@@ -713,8 +713,8 @@ describe('E2E: Session Lifecycle', () => {
 			try {
 				spawnDaemon(testSessionId, dummyProc.pid);
 
-				// Wait for session:start
-				const sessionStart = await waitForWsMessage(m => m.type === 'session:start');
+				// Wait for session:start (longer timeout for CI cold-start with lazy imports)
+				const sessionStart = await waitForWsMessage(m => m.type === 'session:start', 15000);
 				expect(sessionStart).toBeDefined();
 				expect(sessionStart.data.ccSessionId).toBe(testSessionId);
 
@@ -732,7 +732,7 @@ describe('E2E: Session Lifecycle', () => {
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-start-');
 			}
-		}, 15000);
+		}, 25000);
 	});
 
 	// ─── Session End ─────────────────────────────────────────────────────
