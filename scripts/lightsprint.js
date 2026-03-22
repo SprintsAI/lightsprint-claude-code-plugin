@@ -15,6 +15,8 @@
  *   whoami                  Show repo/auth info
  *   connect [--base-url]    Authenticate and connect
  *   disconnect              Remove credentials for this folder
+ *   start-room              Start a plan room for the current session
+ *   stop-room               Stop a plan room for the current session
  *   upgrade                 Upgrade to the latest version
  *   version                 Show version and build info
  *   help                    Show this help message
@@ -51,6 +53,12 @@ if (subcommand === 'review-plan') {
 	await ccReviewMain(args);
 } else if (subcommand === 'cc-pr-created') {
 	await ccPrCreatedMain(args);
+} else if (subcommand === 'start-room') {
+	const { main } = await import('./cc-start-room.js');
+	await main();
+} else if (subcommand === 'stop-room') {
+	const { main } = await import('./cc-stop-room.js');
+	await main();
 } else if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
 	showHelp();
 } else if (subcommand === 'version') {
@@ -85,6 +93,8 @@ Commands:
   whoami                  Show repo/auth info
   connect [--base-url]    Authenticate and connect to Lightsprint
   disconnect              Remove Lightsprint credentials for this repository
+  start-room              Start a plan room for the current session
+  stop-room               Stop the plan room for the current session
   upgrade                 Upgrade to the latest version
 
 Global Flags:
