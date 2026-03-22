@@ -50,7 +50,7 @@
 | Modify | `server.js` | Handle planRoom WS messages from daemon, Socket.IO presence |
 | Modify | `src/routes/repos/[id]/sessions/+page.svelte` | Add "Plan Rooms" section above sessions |
 | Modify | `src/routes/repos/[id]/sessions/+page.server.ts` | Load plan rooms alongside sessions |
-| Modify | `src/routes/api/cc-sessions/+server.ts` | Add plan rooms listing endpoint (or reuse) |
+| Create | `src/routes/api/plan-rooms/+server.ts` | REST: GET plan rooms list by repoId |
 
 ---
 
@@ -1173,7 +1173,7 @@ if (msg.type === 'conversation:message') {
       uuid,
       parentUuid,
       role,
-      content: typeof content === 'string' ? content : JSON.stringify(content),
+      content, // jsonb column — pass object directly, driver handles serialization
       timestamp: new Date(timestamp),
     });
 
@@ -1221,7 +1221,28 @@ git commit -m "feat: add plan room WS handlers and realtime events"
 - Create: `src/routes/api/plan-rooms/[id]/messages/+server.ts`
 - Create: `src/routes/api/plan-rooms/[id]/+server.ts`
 
-- [ ] **Step 1: Create plan room detail endpoint**
+- [ ] **Step 1: Create plan rooms list endpoint**
+
+```typescript
+// src/routes/api/plan-rooms/+server.ts
+import type { RequestHandler } from './$types';
+import { planRoomDAO } from '$lib/server/dao';
+import { requireAuth, requireRepoAccess, withErrorHandling } from '$lib/server/api/middleware';
+import { success, badRequest } from '$lib/server/api/response';
+
+export const GET: RequestHandler = withErrorHandling(async (event) => {
+  const session = await requireAuth(event);
+  const repoId = event.url.searchParams.get('repoId');
+  if (!repoId) return badRequest('repoId is required');
+  await requireRepoAccess(repoId, session.user.id);
+
+  const status = event.url.searchParams.get('status') || undefined;
+  const rooms = await planRoomDAO.findByRepoId(repoId, { status });
+  return success({ rooms });
+}, 'Failed to list plan rooms');
+```
+
+- [ ] **Step 3: Create plan room detail endpoint**
 
 ```typescript
 // src/routes/api/plan-rooms/[id]/+server.ts
@@ -1240,7 +1261,7 @@ export const GET: RequestHandler = withErrorHandling(async (event) => {
 }, 'Failed to get plan room');
 ```
 
-- [ ] **Step 2: Create messages GET endpoint**
+- [ ] **Step 4: Create messages GET endpoint**
 
 ```typescript
 // src/routes/api/plan-rooms/[id]/messages/+server.ts
@@ -1264,7 +1285,7 @@ export const GET: RequestHandler = withErrorHandling(async (event) => {
 }, 'Failed to list messages');
 ```
 
-- [ ] **Step 3: Create chat POST endpoint**
+- [ ] **Step 5: Create chat POST endpoint**
 
 ```typescript
 // src/routes/api/plan-rooms/[id]/chat/+server.ts
@@ -1305,7 +1326,7 @@ export const POST: RequestHandler = withErrorHandling(async (event) => {
 }, 'Failed to send message');
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 cd /Users/henghonglee/lightsprint-projects/lightsprint/app
@@ -1389,11 +1410,11 @@ export function initPlanRooms(repoId: string, realtime: any) {
 
   realtimeUnsub = realtime.on(handleRealtimeEvent);
 
-  fetch(`/api/cc-sessions?repoId=${repoId}&includePlanRooms=true`)
+  fetch(`/api/plan-rooms?repoId=${repoId}`)
     .then(r => r.json())
     .then(data => {
-      if (data.planRooms) {
-        rooms = data.planRooms.map((r: any) => ({ ...r, messages: [] }));
+      if (data.rooms) {
+        rooms = data.rooms.map((r: any) => ({ ...r, messages: [] }));
       }
     })
     .finally(() => { loading = false; });
