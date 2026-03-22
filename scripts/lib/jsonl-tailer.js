@@ -19,8 +19,11 @@ function filterRecord(record) {
         if (block.type === 'text' && typeof block.text === 'string' && block.text.length > TEXT_BLOCK_MAX) {
           return { ...block, text: block.text.slice(0, TEXT_BLOCK_MAX) + TRUNCATION_MARKER };
         }
-        if (block.type === 'tool_use' && block.input && typeof block.input === 'string' && block.input.length > TEXT_BLOCK_MAX) {
-          return { ...block, input: block.input.slice(0, TEXT_BLOCK_MAX) + TRUNCATION_MARKER };
+        if (block.type === 'tool_use' && block.input) {
+          const inputStr = typeof block.input === 'string' ? block.input : JSON.stringify(block.input);
+          if (inputStr.length > TEXT_BLOCK_MAX) {
+            return { ...block, input: inputStr.slice(0, TEXT_BLOCK_MAX) + TRUNCATION_MARKER };
+          }
         }
         return block;
       });

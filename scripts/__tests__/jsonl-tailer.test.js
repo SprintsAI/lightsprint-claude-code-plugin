@@ -166,6 +166,56 @@ describe('JsonlTailer', () => {
     expect(received.length).toBe(1);
   });
 
+  test('truncates tool_use object input exceeding 50KB', async () => {
+    // Build an object input that serializes to > 50KB
+    const bigValue = 'z'.repeat(60000);
+    const lines = [
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 'tu1', name: 'Write', input: { file_path: '/tmp/f.txt', content: bigValue } },
+          ],
+        },
+        timestamp: '2026-01-01T00:00:00Z',
+      },
+    ];
+    writeFileSync(filePath, lines.map(l => JSON.stringify(l)).join('\n') + '\n');
+
+    const { createTailer } = await import('../lib/jsonl-tailer.js');
+    const received = [];
+    const tailer = createTailer(filePath, (record) => received.push(record));
+    tailer.start();
+    await new Promise(r => setTimeout(r, 100));
+    tailer.stop();
+
+    expect(received.length).toBe(1);
+    const toolUse = received[0].message.content[0];
+    // input should now be a truncated string, not the original object
+    expect(typeof toolUse.input).toBe('string');
+    expect(toolUse.input.length).toBeLessThanOrEqual(50 * 1024 + 12);
+    expect(toolUse.input.endsWith(' [truncated]')).toBe(true);
+  });
+
+  test('picks up file that appears after start', async () => {
+    // Don't create the file yet
+    const { createTailer } = await import('../lib/jsonl-tailer.js');
+    const received = [];
+    const tailer = createTailer(filePath, (record) => received.push(record));
+    tailer.start();
+    await new Promise(r => setTimeout(r, 50));
+
+    // Now create the file with content
+    writeFileSync(filePath, JSON.stringify({ type: 'user', uuid: 'u1', message: { role: 'user', content: 'appeared' }, timestamp: '2026-01-01T00:00:00Z' }) + '\n');
+    await new Promise(r => setTimeout(r, 300));
+    tailer.stop();
+
+    expect(received.length).toBe(1);
+    expect(received[0].uuid).toBe('u1');
+  });
+
   test('caps text blocks at 50KB', async () => {
     const bigText = 'y'.repeat(60000);
     const lines = [
