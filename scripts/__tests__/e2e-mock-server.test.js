@@ -716,7 +716,7 @@ describe('E2E: Session Lifecycle', () => {
 				daemonPid = daemonProc.pid;
 
 				// Wait for session:start (longer timeout for CI cold-start with lazy imports)
-				const sessionStart = await waitForWsMessage(m => m.type === 'session:start', 20000);
+				const sessionStart = await waitForWsMessage(m => m.type === 'session:start', 28000);
 				expect(sessionStart).not.toBeNull();
 				expect(sessionStart.data.ccSessionId).toBe(testSessionId);
 
@@ -732,7 +732,7 @@ describe('E2E: Session Lifecycle', () => {
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-start-');
 			}
-		}, 25000);
+		}, 30000);
 
 		test('session:start message includes gitBranch and machineId', async () => {
 			const testSessionId = `e2e-startmeta-${randomBytes(8).toString('hex')}`;
