@@ -7,7 +7,9 @@ Stop the currently active plan room, closing it for all viewers.
 
 ## Usage
 
-`lightsprint stop-room`
+```bash
+lightsprint stop-room --cc-pid $PPID
+```
 
 ## Output
 

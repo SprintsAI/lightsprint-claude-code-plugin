@@ -7,7 +7,9 @@ Start a plan room so teammates can watch your live session and chat about it on 
 
 ## Usage
 
-`lightsprint start-room`
+```bash
+lightsprint start-room --cc-pid $PPID
+```
 
 ## Output
 

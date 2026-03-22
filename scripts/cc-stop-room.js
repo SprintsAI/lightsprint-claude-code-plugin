@@ -5,10 +5,19 @@
  * The daemon must already be running (via cc-start).
  */
 
-import { findRunningDaemonForCcPid } from './lib/cc-utils.js';
+import { findRunningDaemonForCcPid, getClaudeCodePid } from './lib/cc-utils.js';
+import { validatePid } from './lib/validate.js';
 
-export async function main() {
-	const ccPid = parseInt(process.env.CLAUDE_CODE_PID || process.ppid, 10);
+export async function main(args = []) {
+	let ccPidArg;
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--cc-pid' && args[i + 1]) {
+			ccPidArg = parseInt(args[++i], 10);
+			validatePid(ccPidArg);
+		}
+	}
+
+	const ccPid = ccPidArg || getClaudeCodePid();
 	const state = findRunningDaemonForCcPid(ccPid);
 	if (!state) {
 		process.stderr.write(JSON.stringify({ ok: false, error: 'no_active_session', message: 'No active Claude Code session found.' }) + '\n');

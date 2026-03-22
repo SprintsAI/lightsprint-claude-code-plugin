@@ -98,7 +98,7 @@ const eventQueue = [];
 let activePlanRoom = null; // { planRoomId, tailer }
 
 function resolveJsonlPath(ccSessionId) {
-	const projectKey = '-' + CWD.replace(/\//g, '-');
+	const projectKey = CWD.replace(/\//g, '-');
 	return join(homedir(), '.claude', 'projects', projectKey, `${ccSessionId}.jsonl`);
 }
 
@@ -566,7 +566,7 @@ async function _tryListenOnPort(port) {
 						content: record.message?.content || record.message || null,
 						timestamp: record.timestamp,
 					};
-					if (ws?.readyState === WebSocket.OPEN) {
+						if (ws?.readyState === WebSocket.OPEN) {
 						sendFireAndForget('conversation:message', msg);
 					} else {
 						// Buffer in the existing event queue (shared 100-event limit)

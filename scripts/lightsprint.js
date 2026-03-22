@@ -55,10 +55,10 @@ if (subcommand === 'review-plan') {
 	await ccPrCreatedMain(args);
 } else if (subcommand === 'start-room') {
 	const { main } = await import('./cc-start-room.js');
-	await main();
+	await main(args);
 } else if (subcommand === 'stop-room') {
 	const { main } = await import('./cc-stop-room.js');
-	await main();
+	await main(args);
 } else if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
 	showHelp();
 } else if (subcommand === 'version') {
