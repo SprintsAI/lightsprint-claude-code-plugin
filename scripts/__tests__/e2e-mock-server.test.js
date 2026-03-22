@@ -321,6 +321,9 @@ describe('E2E: Mock Server', () => {
 	describe('CLI: tasks', () => {
 		test('lists tasks from mock server', async () => {
 			const result = await runCliJson(['tasks']);
+			if (result.exitCode !== 0) {
+				console.error('CLI tasks --output json failed:', { stderr: result.stderr, stdout: result.stdout });
+			}
 			expect(result.exitCode).toBe(0);
 			expect(result.json).toBeDefined();
 			expect(result.json.tasks).toBeArray();

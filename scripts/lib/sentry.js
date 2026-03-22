@@ -18,6 +18,11 @@ const SENTRY_DSN = typeof __SENTRY_DSN__ !== 'undefined' ? __SENTRY_DSN__ : proc
 
 let initialized = false;
 
+/** @internal Reset module state for testing. */
+export function _resetForTesting() {
+	initialized = false;
+}
+
 /**
  * Initialize Sentry for crash reporting.
  * Call once at daemon startup before any other Sentry calls.

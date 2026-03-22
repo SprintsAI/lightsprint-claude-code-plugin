@@ -23,7 +23,6 @@
 import { reviewPlanMain } from './review-plan.js';
 import { cliMain } from './ls-cli.js';
 import { main as ccStartMain } from './cc-start.js';
-import { main as ccDaemonMain } from './cc-daemon.js';
 import { main as ccEndMain } from './cc-end.js';
 import { main as ccEventMain } from './cc-event.js';
 import { main as ccReviewMain } from './cc-review.js';
@@ -42,6 +41,7 @@ if (subcommand === 'review-plan') {
 } else if (subcommand === 'cc-start') {
 	await ccStartMain(args);
 } else if (subcommand === 'cc-daemon') {
+	const { main: ccDaemonMain } = await import('./cc-daemon.js');
 	await ccDaemonMain();
 } else if (subcommand === 'cc-end') {
 	await ccEndMain(args);
