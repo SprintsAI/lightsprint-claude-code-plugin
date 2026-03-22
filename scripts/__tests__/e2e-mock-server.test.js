@@ -517,12 +517,7 @@ describe('E2E: Session Lifecycle', () => {
 	let mockHttpServer;
 	let wsConnections;
 
-	beforeAll(async () => {
-		// Pre-import the daemon module so bun caches it before the first test.
-		// On CI cold start this lazy import can take 20-30s, causing the first
-		// test to time out while subsequent tests run in ~400ms.
-		await import('../cc-daemon.js').catch(() => {});
-
+	beforeAll(() => {
 		// Create mock server with WebSocket support
 		mockWsMessages = [];
 		wsConnections = [];
