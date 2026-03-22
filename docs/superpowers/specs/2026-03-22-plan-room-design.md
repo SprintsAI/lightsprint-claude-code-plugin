@@ -82,31 +82,54 @@ When streaming assistant messages, the daemon applies these filters:
 Creates a plan room on the server and starts tailing the JSONL file.
 
 **Flow:**
-1. Sends `planRoom:start` over the existing daemon WebSocket
-2. Server creates a `planRooms` record, returns `planRoomId`
-3. Daemon resolves JSONL path: `~/.claude/projects/<projectKey>/<ccSessionId>.jsonl`
-4. Daemon starts `fs.watch()` on the file, reads from current byte offset
-5. Outputs a link: "Plan room live at https://lightsprint.ai/repos/{id}/sessions?roomId={planRoomId}"
+1. CLI discovers the daemon's local HTTP port and auth token from `~/.lightsprint/cc-sessions/{ccSessionId}.json` (same pattern as `cc-event.js`, `cc-end.js`)
+2. CLI sends `POST http://127.0.0.1:{port}/start-room` with `Authorization: Bearer {daemonToken}`
+3. Daemon sends `planRoom:start` over its outbound WS to the Lightsprint server (includes `repoId`)
+4. Server creates a `planRooms` record, returns `planRoomId` via ack
+5. Daemon resolves JSONL path and starts tailing (see Daemon JSONL Tailing section)
+6. Daemon stores `planRoomId` in module-level state alongside the `fs.watch` handle
+7. Daemon responds to the CLI's HTTP request with `{ "ok": true, "planRoomId": "...", "url": "..." }`
+8. CLI outputs: "Plan room live at https://lightsprint.ai/repos/{id}/sessions?roomId={planRoomId}"
+
+**Daemon HTTP endpoint:**
+```
+POST /start-room
+Request:  {} (no body needed — daemon has all context)
+Response: { "ok": true, "planRoomId": "...", "url": "..." }
+Error:    { "ok": false, "error": "room_already_active" | "ws_not_connected" | "jsonl_not_found" }
+```
 
 **Guards:**
-- Fails if a plan room is already active for this session
-- Fails if no daemon is running (session not started)
+- Fails if a plan room is already active for this session (daemon checks local state)
+- Fails if no daemon is running (CLI cannot find session state file)
+- Fails if WS is not connected (daemon cannot reach server)
+- Server also enforces one-at-a-time via unique partial index on `(ccSessionId) WHERE status = 'live'`
 
 ### `lightsprint stop-room`
 
 Stops the active plan room for the current session.
 
 **Flow:**
-1. Sends `planRoom:end` over WS
-2. Daemon stops `fs.watch()`, clears queued conversation messages
-3. Server marks the plan room as `closed`, sets `closedAt`
-4. Server broadcasts `planRoom:closed` to Socket.IO room
+1. CLI sends `POST http://127.0.0.1:{port}/stop-room` with auth token
+2. Daemon sends `planRoom:end` over WS (includes `planRoomId` from local state)
+3. Daemon stops `fs.watch()`, clears queued conversation messages (filtered by type from shared queue)
+4. Server marks the plan room as `closed`, sets `closedAt`
+5. Server broadcasts `planRoom:closed` to Socket.IO room
+6. Daemon responds to CLI with `{ "ok": true }`
+
+**Daemon HTTP endpoint:**
+```
+POST /stop-room
+Request:  {} (no body needed)
+Response: { "ok": true }
+Error:    { "ok": false, "error": "no_active_room" }
+```
 
 **No arguments needed** — stops the room for the current session (one-at-a-time constraint).
 
 ### Auto-close
 
-When the CC session ends (`session:end`), the daemon checks if there's an active plan room and closes it automatically.
+When the CC session ends (`session:end`), the daemon checks if there's an active plan room (via local state). If so, the daemon sends `planRoom:end` over WS *before* sending `session:end`. This ensures the plan room is properly closed with a `closedAt` timestamp even if the user forgets to stop it.
 
 ## Skills
 
@@ -155,7 +178,10 @@ Output: "Plan room closed."
 
 **Indexes:**
 - `planRoomId + messageType` composite (filter by type)
-- `planRoomId + uuid` unique (dedup conversation messages)
+- `planRoomId + uuid` unique where `uuid IS NOT NULL` (dedup conversation messages only; chat messages have null uuid)
+
+**`planRooms` constraints:**
+- Unique partial index on `(ccSessionId) WHERE status = 'live'` — enforces one-at-a-time at the DB level
 
 ## WebSocket Protocol
 
@@ -163,10 +189,10 @@ Output: "Plan room closed."
 
 ```jsonc
 // Start a plan room (request-response)
-{ "type": "planRoom:start", "id": "msg_N", "data": { "ccSessionId": "...", "gitBranch": "..." } }
+{ "type": "planRoom:start", "id": "msg_N", "data": { "ccSessionId": "...", "repoId": "...", "gitBranch": "..." } }
 
 // Stop a plan room (request-response)
-{ "type": "planRoom:end", "id": "msg_N", "data": {} }
+{ "type": "planRoom:end", "id": "msg_N", "data": { "planRoomId": "..." } }
 
 // Stream conversation messages (fire-and-forget)
 { "type": "conversation:message", "data": { "planRoomId": "...", "uuid": "...", "parentUuid": "...", "role": "user|assistant", "content": [...], "timestamp": "..." } }
@@ -175,8 +201,11 @@ Output: "Plan room closed."
 ### Server → Daemon
 
 ```jsonc
-// Ack for planRoom:start
+// Ack for planRoom:start (success)
 { "type": "ack", "id": "msg_N", "ok": true, "planRoomId": "..." }
+
+// Ack for planRoom:start (error)
+{ "type": "ack", "id": "msg_N", "ok": false, "error": "room_already_active" | "session_not_found" | "unauthorized" }
 
 // Ack for planRoom:end
 { "type": "ack", "id": "msg_N", "ok": true }
@@ -200,10 +229,12 @@ Output: "Plan room closed."
 ### Browser → Server (REST)
 
 ```
-GET  /api/plan-rooms/{id}/messages?type=conversation   # Late join — fetch conversation history
-GET  /api/plan-rooms/{id}/messages?type=chat            # Late join — fetch chat history
-POST /api/plan-rooms/{id}/chat                          # Send a chat message
+GET  /api/plan-rooms/{id}/messages?type=conversation&limit=100&cursor=<uuid>
+GET  /api/plan-rooms/{id}/messages?type=chat&limit=100&cursor=<uuid>
+POST /api/plan-rooms/{id}/chat   { "content": "message text" }
 ```
+
+All endpoints are behind repo-scoped authentication (same as existing API routes). Pagination uses cursor-based pagination with the message UUID as cursor. Default limit is 100, max 500.
 
 ## Daemon JSONL Tailing
 
@@ -214,19 +245,29 @@ New module activated when `planRoom:start` succeeds, deactivated on `planRoom:en
 2. Derives project key from `cwd` (replace `/` with `-`, prepend `-`)
 3. JSONL path: `~/.claude/projects/{projectKey}/{ccSessionId}.jsonl`
 
+**Initial offset:** When `start-room` is called, the daemon starts tailing from the **beginning of file** (byte offset 0). This ensures the server receives the full conversation history from the start of the session. Late-joining viewers get the complete context via REST, and live viewers see the full stream.
+
 **Tailing mechanism:**
-- `fs.watch()` on the JSONL file
+- `fs.watch()` on the JSONL file with `fs.watchFile()` as a 5-second polling fallback (safety net for unreliable filesystem events)
 - Maintains a byte offset; on each change event, reads new bytes from offset
-- Splits by newline, parses each JSON line
+- Splits by newline, parses each complete JSON line
+- **Partial line handling:** If the last chunk doesn't end with `\n`, the trailing fragment is buffered and prepended to the next read (handles mid-write `fs.watch` triggers)
 - Applies filtering rules (see JSONL Filtering Rules above)
 - Sends `conversation:message` for each qualifying record
+- Max message size: `text` and `tool_use` blocks are capped at 50KB each. Blocks exceeding this are truncated with a `[truncated]` marker.
+
+**File not found:** If the JSONL file doesn't exist when `start-room` is called (e.g., session just started, Claude hasn't written yet), the daemon starts `fs.watch()` on the parent directory and waits for the file to appear. Once it exists, switches to watching the file. If the file doesn't appear within 30 seconds, returns an error.
 
 **Buffering:**
-- If WS is disconnected, conversation messages queue in the existing event queue (shared 100-event limit)
+- If WS is disconnected, conversation messages queue in the existing event queue (shared 100-event limit, tagged with `source: "planRoom"` for selective cleanup)
 - Flushed on reconnect in order
 
 **Cleanup:**
-- On `stop-room` or session end: stop `fs.watch()`, clear queued conversation messages
+- On `stop-room` or session end: stop `fs.watch()` / `fs.watchFile()`, clear queued events where `source === "planRoom"` from the shared queue
+
+**WS reconnect during active tailing:** If the daemon's WS connection drops and reconnects, the daemon re-sends `planRoom:start`. The server recognizes the room is already `live` for this `ccSessionId` and returns the existing `planRoomId` (idempotent). The daemon continues tailing from where it left off — any messages buffered during the disconnect are flushed. Duplicate messages are deduplicated server-side via the `(planRoomId, uuid)` unique index.
+
+**Session continuation (`--continue`):** If a `--continue` aliases a new `ccSessionId` to the existing daemon, the plan room remains tied to the original session. The JSONL file path changes (new session ID), so the daemon must stop watching the old file and start watching the new one. The plan room continues — no auto-close.
 
 ## UI Design
 
@@ -285,6 +326,10 @@ Plan rooms appear on the existing `/repos/[id]/sessions` page as a separate sect
 - **Claude responses:** No avatar, terminal-style block (JetBrains Mono), green sender name, `tool_use` blocks shown as collapsed indicators (`Read src/auth.ts`)
 - **Thinking indicator:** Dashed border block with blinking cursor, muted color
 - **Team chat:** Sender name in avatar color, Inter font, lightweight style
+
+### Presence Tracking
+
+Presence in plan rooms uses the existing Socket.IO presence system. When a user's browser joins a `planRoom:{id}` Socket.IO room, the server emits a `presence:join` event to all other members. When they leave (disconnect or navigate away), a `presence:leave` is emitted. The plan room header shows presence avatars using the existing `PresenceAvatars` component pattern, scoped to `planRoomId` instead of `taskId` or `planId`.
 
 ### Closed Plan Room
 
