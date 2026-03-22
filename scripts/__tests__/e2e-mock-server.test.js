@@ -709,12 +709,25 @@ describe('E2E: Session Lifecycle', () => {
 		test('daemon connects to mock WS and sends session:start', async () => {
 			const testSessionId = `e2e-start-${randomBytes(8).toString('hex')}`;
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
+				// Spawn daemon — if it doesn't connect within 10s, kill and retry once.
+				// CI runners occasionally have slow process starts on the first spawn.
+				let sessionStart = null;
+				for (let attempt = 0; attempt < 2 && !sessionStart; attempt++) {
+					if (attempt > 0) {
+						mockWsMessages.length = 0;
+						cleanupTestSessions('e2e-start-');
+					}
+					const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+					daemonPid = daemonProc.pid;
+					sessionStart = await waitForWsMessage(m => m.type === 'session:start', 10000);
+					if (!sessionStart) {
+						try { process.kill(daemonPid, 'SIGTERM'); } catch {}
+					}
+				}
 
-				// Wait for session:start (longer timeout for CI cold-start with lazy imports)
-				const sessionStart = await waitForWsMessage(m => m.type === 'session:start', 15000);
 				expect(sessionStart).not.toBeNull();
 				expect(sessionStart.data.ccSessionId).toBe(testSessionId);
 
@@ -724,10 +737,8 @@ describe('E2E: Session Lifecycle', () => {
 				expect(state.port).toBeGreaterThan(0);
 				expect(state.daemonPid).toBeGreaterThan(0);
 				expect(state.ccSessionId).toBe(testSessionId);
-
-				// Clean up daemon
-				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
 				dummyProc.kill();
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-start-');
