@@ -517,7 +517,12 @@ describe('E2E: Session Lifecycle', () => {
 	let mockHttpServer;
 	let wsConnections;
 
-	beforeAll(() => {
+	beforeAll(async () => {
+		// Pre-import the daemon module so bun caches it before the first test.
+		// On CI cold start this lazy import can take 20-30s, causing the first
+		// test to time out while subsequent tests run in ~400ms.
+		await import('../cc-daemon.js').catch(() => {});
+
 		// Create mock server with WebSocket support
 		mockWsMessages = [];
 		wsConnections = [];
@@ -715,8 +720,8 @@ describe('E2E: Session Lifecycle', () => {
 				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
 
-				// Wait for session:start (longer timeout for CI cold-start with lazy imports)
-				const sessionStart = await waitForWsMessage(m => m.type === 'session:start', 28000);
+				// Wait for session:start
+				const sessionStart = await waitForWsMessage(m => m.type === 'session:start', 15000);
 				expect(sessionStart).not.toBeNull();
 				expect(sessionStart.data.ccSessionId).toBe(testSessionId);
 
@@ -732,7 +737,7 @@ describe('E2E: Session Lifecycle', () => {
 				await dummyProc.exited;
 				cleanupTestSessions('e2e-start-');
 			}
-		}, 30000);
+		}, 20000);
 
 		test('session:start message includes gitBranch and machineId', async () => {
 			const testSessionId = `e2e-startmeta-${randomBytes(8).toString('hex')}`;
