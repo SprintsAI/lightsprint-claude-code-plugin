@@ -376,6 +376,61 @@ describe('E2E: Mock Server', () => {
 			const result = await runCli(['create']);
 			expect(result.exitCode).not.toBe(0);
 		});
+
+		test('create with --json-body sends full payload', async () => {
+			const payload = JSON.stringify({
+				title: 'JSON Body Task',
+				description: 'From raw JSON',
+				status: 'in_review',
+				complexity: 'low'
+			});
+			const result = await runCliJson(['create', '--json-body', payload]);
+			expect(result.exitCode).toBe(0);
+			expect(result.json.task.title).toBe('JSON Body Task');
+			expect(result.json.task.status).toBe('in_review');
+			const createReq = mockServer.requests.find(r => r.path.includes('/tasks') && r.method === 'POST');
+			expect(createReq.body.title).toBe('JSON Body Task');
+			expect(createReq.body.status).toBe('in_review');
+			expect(createReq.body.complexity).toBe('low');
+		});
+
+		test('create with --depends-on sends dependencyTaskIds', async () => {
+			const result = await runCliJson(['create', '--title', 'Blocked Task', '--depends-on', 'task-1,task-2']);
+			expect(result.exitCode).toBe(0);
+			const createReq = mockServer.requests.find(r => r.path.includes('/tasks') && r.method === 'POST');
+			expect(createReq).toBeDefined();
+			expect(createReq.body.dependencyTaskIds).toEqual(['task-1', 'task-2']);
+		});
+
+		test('create with --parent links new task as subtask', async () => {
+			const result = await runCliJson(['create', '--title', 'Subtask', '--parent', 'task-1']);
+			expect(result.exitCode).toBe(0);
+			expect(result.json.task).toBeDefined();
+			expect(result.json.parent?.linked).toBe(true);
+			const depReq = mockServer.requests.find(r => r.method === 'POST' && r.path.includes('/dependencies'));
+			expect(depReq).toBeDefined();
+			expect(depReq.body.dependsOnTaskId).toBe(result.json.task.id);
+		});
+
+		test('create rejects invalid status', async () => {
+			const result = await runCli(['create', '--title', 'Bad Status', '--status', 'invalid_status']);
+			expect(result.exitCode).not.toBe(0);
+		});
+
+		test('create rejects invalid complexity', async () => {
+			const result = await runCli(['create', '--title', 'Bad Complexity', '--complexity', 'xlarge']);
+			expect(result.exitCode).not.toBe(0);
+		});
+
+		test('create with --json-body rejects invalid JSON', async () => {
+			const result = await runCli(['create', '--json-body', 'not valid json']);
+			expect(result.exitCode).not.toBe(0);
+		});
+
+		test('create rejects combining --json-body with --title', async () => {
+			const result = await runCli(['create', '--json-body', '{"title":"x"}', '--title', 'Conflict']);
+			expect(result.exitCode).not.toBe(0);
+		});
 	});
 
 	// ─── CLI: get ────────────────────────────────────────────────────────
