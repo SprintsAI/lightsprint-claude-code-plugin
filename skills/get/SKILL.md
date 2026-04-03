@@ -24,6 +24,7 @@ The `--fields` flag accepts a comma-separated list of field names to return only
 | Status | Yes | Current status (`backlog`, `todo`, `in_progress`, `in_review`, `done`) |
 | Assignee | If assigned | Assigned team member |
 | Complexity | If set | `low`, `medium`, or `high` |
+| Project | If assigned | Project name (from workspace projects) |
 | Description | If set | Full task description (no truncation) |
 | Todo list | If non-empty | Implementation steps with `[x]`/`[ ]` completion status |
 | Related files | If non-empty | File paths referenced by the task |

@@ -13,9 +13,18 @@ const COMMAND_SCHEMAS = {
 		params: {
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'Filter by status' },
 			assignee: { type: 'string', flag: '--assignee', description: 'Filter by assignee name/email (case-insensitive substring)' },
+			project: { type: 'string', flag: '--project', description: 'Filter by project. Comma-separated project IDs or "none" for unassigned. Max 10.' },
 			limit: { type: 'integer', flag: '--limit', default: 20, description: 'Max results (server max: 100)' },
 			offset: { type: 'integer', flag: '--offset', default: 0, description: 'Skip first N results' },
 			sort: { type: 'enum', flag: '--sort', values: ['position', 'updated_at', 'created_at'], default: 'position', description: 'Sort order: position (board order), updated_at, created_at' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	projects: {
+		description: 'List projects in the repo workspace',
+		params: {
+			status: { type: 'enum', flag: '--status', values: ['active', 'completed', 'archived'], description: 'Filter by project status' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
