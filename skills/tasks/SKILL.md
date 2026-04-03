@@ -9,7 +9,7 @@ Run this command to list tasks from Lightsprint. By default, only root tasks (no
 lightsprint tasks $ARGUMENTS
 ```
 
-Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--mine] [--unassigned] [--deps <filter>] [--sort <field>] [--limit N] [--offset N]`
+Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--mine] [--unassigned] [--deps <filter>] [--project <filter>] [--sort <field>] [--limit N] [--offset N]`
 
 ## Flags
 
@@ -21,6 +21,7 @@ Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--
 | `--mine` | — | Show only tasks assigned to the current user. |
 | `--unassigned` | — | Show only tasks with no assignee. |
 | `--deps <filter>` | all | Filter by dependencies: `has-dependencies`, `has-no-dependencies`, `has-dependents`, `unblocked`. |
+| `--project <filter>` | all | Filter by project. Comma-separated project IDs, or `none` for tasks without a project. Use `lightsprint projects` to list available project IDs. |
 | `--sort <field>` | `position` | Sort order: `position` (board order), `updated_at` (most recently updated first), `created_at` (newest first). |
 | `--limit N` | 20 | Maximum number of tasks to return (server max: 100). |
 | `--offset N` | 0 | Skip first N tasks (for pagination). |
@@ -36,7 +37,7 @@ Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--
 
 ## Output
 
-For each task shows: display ID (e.g. `LIG-003`), status, assignee, complexity, title, and first 120 chars of description.
+For each task shows: display ID (e.g. `LIG-003`), status, assignee, complexity, project (if assigned), title, and first 120 chars of description.
 
 ## Examples
 
@@ -44,6 +45,8 @@ For each task shows: display ID (e.g. `LIG-003`), status, assignee, complexity, 
 lightsprint tasks --status todo,in_progress --mine
 lightsprint tasks --status backlog --unassigned --complexity low
 lightsprint tasks --deps unblocked --status todo
+lightsprint tasks --project none --status todo
+lightsprint tasks --project <projectId> --mine
 ```
 
 ## Invariants

@@ -3,7 +3,8 @@
  * lightsprint — CLI for Lightsprint skills.
  *
  * Commands:
- *   tasks [--status backlog|todo|in_progress|in_review|done] [--assignee <name>] [--sort position|updated_at|created_at] [--limit N] [--offset N]
+ *   tasks [--status backlog|todo|in_progress|in_review|done] [--assignee <name>] [--project <filter>] [--sort position|updated_at|created_at] [--limit N] [--offset N]
+ *   projects [--status active|completed|archived]
  *   create <title> [--description <text>] [--complexity <level>] [--status <status>] [--depends-on <id1,id2,...>] [--cc-pid <pid>]
  *   update <taskId> [--title <text>] [--description <text>] [--status <status>] [--complexity <level>] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]
  *   get <taskId>
@@ -21,7 +22,7 @@ import { join } from 'path';
 import { apiRequest, getRepoId, getRepoInfo } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
-import { validateId, validateStatus, validateComplexity, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid } from './lib/validate.js';
+import { validateId, validateStatus, validateComplexity, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByRepoId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
@@ -38,6 +39,7 @@ export async function cliMain(command, args, context = {}) {
 	try {
 		switch (command) {
 			case 'tasks': return await cmdTasks(remainingArgs, opts);
+			case 'projects': return await cmdProjects(remainingArgs, opts);
 			case 'create': return await cmdCreate(remainingArgs, opts);
 			case 'update': return await cmdUpdate(remainingArgs, opts);
 			case 'get': return await cmdGet(remainingArgs, opts);
@@ -94,6 +96,7 @@ Commands:
       --mine                Show only tasks assigned to me
       --unassigned           Only show tasks with no assignee
       --deps <filter>       Filter by dependencies: has-dependencies, has-dependents, unblocked
+      --project <filter>    Filter by project ID(s) or "none" for tasks without a project
       --sort <field>        Sort tasks by: position (default), updated_at, created_at
       --limit <N>           Limit number of results (default: 20)
       --offset <N>          Skip first N results (for pagination)
@@ -102,6 +105,14 @@ Commands:
       lightsprint tasks --status todo,in_progress --mine
       lightsprint tasks --status backlog --unassigned --complexity low
       lightsprint tasks --deps unblocked --status todo
+
+  projects [options]
+    List projects in the repo's workspace
+    Options:
+      --status <status>     Filter by project status: active, completed, archived
+    Example:
+      lightsprint projects
+      lightsprint projects --status active
 
   create <title> [options]
     Create a new task
@@ -215,6 +226,7 @@ async function cmdTasks(args, opts) {
 	let assigneeFilter = null;
 	let complexity = null;
 	let depsFilter = null;
+	let projectFilter = null;
 	let unassigned = false;
 	let mine = false;
 	let pageAll = false;
@@ -232,6 +244,8 @@ async function cmdTasks(args, opts) {
 			complexity = args[++i];
 		} else if (args[i] === '--deps' && args[i + 1]) {
 			depsFilter = args[++i];
+		} else if (args[i] === '--project' && args[i + 1]) {
+			projectFilter = args[++i];
 		} else if (args[i] === '--sort' && args[i + 1]) {
 			sort = args[++i];
 		} else if (args[i] === '--unassigned') {
@@ -257,6 +271,9 @@ async function cmdTasks(args, opts) {
 	if (depsFilter) {
 		validateEnum(depsFilter, VALID_DEPS_FILTERS, 'deps filter');
 	}
+	if (projectFilter) {
+		projectFilter = validateProjectFilter(projectFilter);
+	}
 	const VALID_SORT_FIELDS = ['position', 'updated_at', 'created_at'];
 	if (sort) {
 		validateEnum(sort, VALID_SORT_FIELDS, 'sort field');
@@ -269,6 +286,7 @@ async function cmdTasks(args, opts) {
 	if (complexity) params.set('complexity', complexity);
 	if (unassigned) params.set('unassigned', 'true');
 	if (depsFilter) params.set('deps', depsFilter);
+	if (projectFilter) params.set('project', projectFilter);
 	if (sort) params.set('sort', sort);
 	if (mine) params.set('assignee', 'me');
 	else if (assigneeFilter) params.set('assignee', assigneeFilter);
@@ -295,6 +313,7 @@ async function cmdTasks(args, opts) {
 					status: (task.status || 'unknown'),
 					assignee: task.assignedUser?.name || task.assignee || null,
 					complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
+					project: task.project ? { id: task.project.id, name: task.project.name, color: task.project.color || null, projectNumber: task.project.projectNumber } : null,
 					description: task.description || null
 				};
 				const output = opts.fields ? filterFields(line, opts.fields) : line;
@@ -322,6 +341,7 @@ async function cmdTasks(args, opts) {
 			status: (task.status || 'unknown'),
 			assignee: task.assignedUser?.name || task.assignee || null,
 			complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
+			project: task.project ? { id: task.project.id, name: task.project.name, color: task.project.color || null, projectNumber: task.project.projectNumber } : null,
 			description: task.description || null
 		};
 	});
@@ -345,7 +365,8 @@ async function cmdTasks(args, opts) {
 		for (const task of resultTasks) {
 			const assigneeLabel = task.assignee ? ` [${task.assignee}]` : '';
 			const complexity = task.complexity ? ` (${task.complexity})` : '';
-			console.log(`  ${task.displayId}  [${task.status}]${assigneeLabel}${complexity}  ${task.title}`);
+			const projectLabel = task.project ? ` {${task.project.name}}` : '';
+			console.log(`  ${task.displayId}  [${task.status}]${assigneeLabel}${complexity}${projectLabel}  ${task.title}`);
 			if (task.description) {
 				const desc = task.description.slice(0, 120).replace(/\n/g, ' ');
 				console.log(`           ${desc}${task.description.length > 120 ? '...' : ''}`);
@@ -354,6 +375,64 @@ async function cmdTasks(args, opts) {
 
 		if (result.hasMore) {
 			console.log(`\n  ... and ${data.totalCount - tasks.length} more. Use --limit/--offset to see more.`);
+		}
+	});
+}
+
+// ─── projects ───────────────────────────────────────────────────────────
+
+const VALID_PROJECT_STATUSES = ['active', 'completed', 'archived'];
+
+async function cmdProjects(args, opts) {
+	const repoId = await getRepoId();
+
+	let statusFilter = null;
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--status' && args[i + 1]) {
+			statusFilter = args[++i];
+		}
+	}
+
+	if (statusFilter) {
+		validateEnum(statusFilter, VALID_PROJECT_STATUSES, 'project status');
+	}
+
+	validateId(repoId, 'Repo ID');
+
+	const params = new URLSearchParams();
+	if (statusFilter) params.set('status', statusFilter);
+
+	const queryStr = params.toString();
+	const url = `/api/repos/${repoId}/projects${queryStr ? '?' + queryStr : ''}`;
+	const data = await apiRequest(url);
+	const projects = data.projects || [];
+
+	const resultProjects = projects.map(p => ({
+		id: p.id,
+		name: p.name,
+		color: p.color || null,
+		projectNumber: p.projectNumber,
+		status: p.status || 'active',
+		taskCount: p.taskCount ?? 0,
+		repoTaskCount: p.repoTaskCount ?? 0
+	}));
+
+	const result = { projects: resultProjects };
+
+	outputResult(result, opts, () => {
+		if (resultProjects.length === 0) {
+			console.log('No projects found.');
+			return;
+		}
+
+		console.log(`Found ${resultProjects.length} project(s):\n`);
+
+		for (const p of resultProjects) {
+			const statusLabel = p.status !== 'active' ? ` [${p.status}]` : '';
+			const taskLabel = p.repoTaskCount !== undefined
+				? ` (${p.repoTaskCount} tasks in repo, ${p.taskCount} total)`
+				: ` (${p.taskCount} tasks)`;
+			console.log(`  P-${p.projectNumber}  ${p.name}${statusLabel}${taskLabel}`);
 		}
 	});
 }

@@ -87,6 +87,35 @@ export function validateComplexity(complexity) {
 	return validateEnum(complexity, VALID_COMPLEXITIES, 'complexity');
 }
 
+// ─── Project filter validation ──────────────────────────────────────────
+
+/**
+ * Validate a project filter string (comma-separated project IDs or 'none').
+ * Splits, trims, deduplicates, caps at 10 values.
+ * Each token must be 'none' or match ID_PATTERN.
+ * @param {string} value
+ * @returns {string} Cleaned comma-separated string
+ */
+export function validateProjectFilter(value) {
+	if (!value || typeof value !== 'string') {
+		throw new Error('Project filter is required.');
+	}
+	const tokens = [...new Set(value.split(',').map(v => v.trim()).filter(Boolean))];
+	if (tokens.length === 0) {
+		throw new Error('Project filter must contain at least one value.');
+	}
+	if (tokens.length > 10) {
+		throw new Error('Project filter supports at most 10 values.');
+	}
+	for (const token of tokens) {
+		if (token !== 'none' && !ID_PATTERN.test(token)) {
+			emitBreadcrumb(`Invalid project filter token: "${token}"`, { token });
+			throw new Error(`Invalid project filter value: "${token}". Use project IDs or "none". Only alphanumeric characters, hyphens, and underscores are allowed.`);
+		}
+	}
+	return tokens.join(',');
+}
+
 // ─── PID validation ─────────────────────────────────────────────────────
 
 /**

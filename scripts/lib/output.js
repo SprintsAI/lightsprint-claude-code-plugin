@@ -96,6 +96,9 @@ export function formatTaskText(task, options = {}) {
 	if (task.complexity && task.complexity !== 'unknown') {
 		console.log(`Complexity: ${task.complexity}`);
 	}
+	if (task.project) {
+		console.log(`Project: ${task.project.name}`);
+	}
 	if (task.description) {
 		console.log(`\nDescription:\n${task.description}`);
 	}
@@ -126,6 +129,7 @@ export function buildTaskData(task) {
 		status: task.status || 'unknown',
 		assignee: task.assignedUser?.name || task.assignee || null,
 		complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
+		project: task.project ? { id: task.project.id, name: task.project.name, color: task.project.color || null, projectNumber: task.project.projectNumber } : null,
 		description: task.description || null,
 		todoList: task.todoList || [],
 		relatedFiles: (task.relatedFiles || []).map(f => typeof f === 'string' ? f : f.path),
