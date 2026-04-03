@@ -108,6 +108,17 @@ const COMMAND_SCHEMAS = {
 		supportsDryRun: true,
 		supportsJsonBody: false
 	},
+	'create-plan': {
+		description: 'Create a plan on Lightsprint from markdown content',
+		params: {
+			content: { type: 'string', required: true, flag: '--content', maxLength: 200000, description: 'Plan content in markdown format' },
+			title: { type: 'string', flag: '--title', maxLength: MAX_TITLE_LENGTH, description: 'Explicit plan title (default: extracted from content)' },
+			taskId: { type: 'string', flag: '--task', description: 'Link plan to an existing task (raw or display ID)' },
+			ccPid: { type: 'integer', flag: '--cc-pid', description: 'Claude Code PID for session linking' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
 	whoami: {
 		description: 'Show current repo and auth info',
 		params: {},
