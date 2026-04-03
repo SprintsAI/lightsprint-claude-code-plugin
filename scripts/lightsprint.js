@@ -10,6 +10,7 @@
  *   get <taskId>            Show full task details
  *   claim <taskId>          Claim a task (set to in_progress)
  *   comment <taskId> <body> Add a comment to a task
+ *   create-plan [opts]      Create a plan from markdown content
  *   open                    Open repo board in the browser
  *   status                  Show connection status
  *   whoami                  Show repo/auth info
@@ -79,6 +80,7 @@ Commands:
   get <taskId>            Show full task details
   claim <taskId>          Claim a task (set to in_progress)
   comment <taskId> <body> Add a comment to a task
+  create-plan [opts]      Create a plan from markdown content
   describe [command]      Show accepted parameters/types as JSON
   open                    Open the repo board in your browser
   status                  Show connection status for this repository
