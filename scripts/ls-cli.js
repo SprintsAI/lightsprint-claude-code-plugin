@@ -23,7 +23,7 @@ import { join } from 'path';
 import { apiRequest, getRepoId, getRepoInfo } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
-import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter } from './lib/validate.js';
+import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByRepoId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
@@ -58,6 +58,7 @@ export async function cliMain(command, args, context = {}) {
 			case 'upgrade': return await cmdUpgrade(context.version || 'dev', opts);
 			case 'config': return cmdConfig(remainingArgs, opts);
 			case 'describe': return cmdDescribe(remainingArgs);
+			case 'agent': return await cmdAgent(remainingArgs, opts);
 			default:
 				outputError('unknown_command', `Unknown command: ${command}. Use 'lightsprint help' for usage information.`, { command }, opts);
 				process.exit(1);
@@ -171,6 +172,26 @@ Commands:
     Example:
       lightsprint create-plan --content "## My Plan\n\n1. Do X\n2. Do Y"
       lightsprint create-plan --content "..." --task LIG-024 --title "Auth refactor plan"
+
+  agent launch [options]
+    Launch a cloud agent for a task
+    Options:
+      --task <taskId>         Task ID (required)
+      --provider <provider>   Provider: anthropic, cursor, codex (required)
+      --model <model>         Override default model
+      --base-ref <ref>        Base branch
+      --environment-id <id>   Environment for codex/anthropic
+
+  agent stop [options]
+    Stop the active cloud agent for a task
+    Options:
+      --task <taskId>         Task ID (required)
+      --provider <provider>   Provider: anthropic, cursor, codex (required)
+
+  agent settings [options]
+    Show cloud agent provider configuration
+    Options:
+      --provider <provider>   Also fetch environments for this provider
 
   config <subcommand> [key] [value]
     Manage user preferences (stored in ~/.lightsprint/preferences.json)
@@ -1551,6 +1572,153 @@ function cmdDescribe(args) {
 		process.exit(1);
 	}
 	console.log(JSON.stringify(schema));
+}
+
+// ─── agent ──────────────────────────────────────────────────────────────
+
+async function cmdAgent(args, opts) {
+	const subcommand = args[0];
+	const subArgs = args.slice(1);
+
+	switch (subcommand) {
+		case 'launch': return await cmdAgentLaunch(subArgs, opts);
+		case 'stop': return await cmdAgentStop(subArgs, opts);
+		case 'settings': return await cmdAgentSettings(subArgs, opts);
+		default:
+			throw new Error(`Unknown agent subcommand: "${subcommand || ''}". Use: launch, stop, settings`);
+	}
+}
+
+async function cmdAgentLaunch(args, opts) {
+	let taskIdInput = null;
+	let provider = null;
+	let model = null;
+	let baseRef = null;
+	let environmentId = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--provider' && args[i + 1]) {
+			provider = args[++i];
+		} else if (args[i] === '--model' && args[i + 1]) {
+			model = args[++i];
+		} else if (args[i] === '--base-ref' && args[i + 1]) {
+			baseRef = args[++i];
+		} else if (args[i] === '--environment-id' && args[i + 1]) {
+			environmentId = args[++i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task, --provider, --model, --base-ref, --environment-id.`);
+		}
+	}
+
+	if (!taskIdInput) throw new Error('Usage: lightsprint agent launch --task <taskId> --provider <provider>');
+	if (!provider) throw new Error('--provider is required. Allowed values: anthropic, cursor, codex');
+
+	validateId(taskIdInput, 'Task ID');
+	validateProvider(provider);
+
+	const body = {};
+	if (model) body.model = model;
+	if (baseRef) body.baseRef = baseRef;
+	if (environmentId) body.environmentId = environmentId;
+
+	if (opts.dryRun) {
+		return outputDryRun('agent launch', body, `POST /api/tasks/${taskIdInput}/cloud-agents/${provider}`, opts);
+	}
+
+	const taskId = await resolveTaskId(taskIdInput);
+	const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}`, {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
+
+	outputResult(result, opts, () => {
+		console.log(`Agent launched for task ${taskIdInput}`);
+		console.log(`Provider: ${provider}`);
+		console.log(`Status: ${result.status}`);
+		if (result.agentUrl) console.log(`Agent URL: ${result.agentUrl}`);
+		if (result.branchName) console.log(`Branch: ${result.branchName}`);
+	});
+}
+
+async function cmdAgentStop(args, opts) {
+	let taskIdInput = null;
+	let provider = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--provider' && args[i + 1]) {
+			provider = args[++i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task, --provider.`);
+		}
+	}
+
+	if (!taskIdInput) throw new Error('Usage: lightsprint agent stop --task <taskId> --provider <provider>');
+	if (!provider) throw new Error('--provider is required. Allowed values: anthropic, cursor, codex');
+
+	validateId(taskIdInput, 'Task ID');
+	validateProvider(provider);
+
+	if (opts.dryRun) {
+		return outputDryRun('agent stop', { taskId: taskIdInput, provider }, `DELETE /api/tasks/${taskIdInput}/cloud-agents/${provider}`, opts);
+	}
+
+	const taskId = await resolveTaskId(taskIdInput);
+	const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}`, {
+		method: 'DELETE'
+	});
+
+	outputResult(result, opts, () => {
+		console.log(`Agent interrupted for task ${taskIdInput}`);
+		console.log(`Provider: ${provider}`);
+	});
+}
+
+async function cmdAgentSettings(args, opts) {
+	let providerFilter = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--provider' && args[i + 1]) {
+			providerFilter = args[++i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --provider.`);
+		}
+	}
+
+	if (providerFilter) validateProvider(providerFilter);
+
+	const settings = await apiRequest('/api/cloud-agents/settings');
+
+	let environments = null;
+	if (providerFilter) {
+		const envResult = await apiRequest(`/api/cloud-agents/settings/environments?provider=${providerFilter}`);
+		environments = envResult.environments;
+	}
+
+	const data = { ...settings };
+	if (environments) {
+		data.environments = { provider: providerFilter, items: environments };
+	}
+
+	outputResult(data, opts, () => {
+		console.log('Provider     Configured  Default Model');
+		for (const [name, info] of Object.entries(settings.providers)) {
+			const configured = info.configured ? 'yes' : 'no';
+			console.log(`${name.padEnd(13)}${configured.padEnd(12)}${info.defaultModel}`);
+		}
+
+		if (environments && environments.length > 0) {
+			console.log(`\nEnvironments (${providerFilter}):`);
+			for (const env of environments) {
+				console.log(`  ${env.id.padEnd(15)}${env.name}`);
+			}
+		} else if (environments && environments.length === 0) {
+			console.log(`\nNo environments found for ${providerFilter}.`);
+		}
+	});
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────

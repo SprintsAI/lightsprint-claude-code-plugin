@@ -52,6 +52,7 @@ export function validateId(id, label = 'ID') {
 export const VALID_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'done'];
 export const VALID_COMPLEXITIES = ['low', 'medium', 'high'];
 export const VALID_DEPS_FILTERS = ['has-dependencies', 'has-no-dependencies', 'has-dependents', 'unblocked'];
+export const VALID_PROVIDERS = ['anthropic', 'cursor', 'codex'];
 
 /**
  * Validate a value against an allowed set.
@@ -85,6 +86,15 @@ export function validateStatus(status) {
  */
 export function validateComplexity(complexity) {
 	return validateEnum(complexity, VALID_COMPLEXITIES, 'complexity');
+}
+
+/**
+ * Validate a cloud agent provider value.
+ * @param {string} provider
+ * @returns {string}
+ */
+export function validateProvider(provider) {
+	return validateEnum(provider, VALID_PROVIDERS, 'provider');
 }
 
 /**
