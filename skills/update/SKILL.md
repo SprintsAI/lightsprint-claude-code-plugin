@@ -1,6 +1,6 @@
 ---
 name: update
-description: Update an existing Lightsprint (ls) task. Change its title, description, status, complexity, assignee, or dependencies.
+description: Update an existing Lightsprint (ls) task. Change its title, description, status, complexity, assignee, position, or dependencies.
 ---
 
 Run this command to update a Lightsprint task:
@@ -9,7 +9,7 @@ Run this command to update a Lightsprint task:
 lightsprint update $ARGUMENTS
 ```
 
-Usage: `update --task <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]`
+Usage: `update --task <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--position <num>] [--section-id <id>] [--layout-type kanban|list] [--add-dep <taskId>] [--remove-dep <taskId>]`
 
 ## Flags
 
@@ -21,6 +21,9 @@ Usage: `update --task <taskId> [--title <text>] [--description <text>] [--status
 | `--status <status>` | No | New status: `backlog`, `todo`, `in_progress`, `in_review`, or `done`. |
 | `--complexity <level>` | No | Complexity: `low`, `medium`, or `high`. |
 | `--assignee <name>` | No | Assign to a team member by name. |
+| `--position <num>` | No | New position within section (0-based). Position 0 = top of section. |
+| `--section-id <id>` | No | Section to move task to. Can be combined with `--position`. |
+| `--layout-type <type>` | No | Layout type for position update: `kanban` or `list`. Defaults to `kanban`. |
 | `--add-dep <taskId>` | No | Add a dependency (this task depends on the given task). Repeatable for multiple deps. Supports display IDs, bare task numbers, or raw IDs. |
 | `--remove-dep <taskId>` | No | Remove a dependency. Repeatable for multiple deps. Supports display IDs, bare task numbers, or raw IDs. |
 | `--json-body <json>` | No | Raw JSON request body (replaces individual field flags). Cannot combine with --title/--description/etc. |

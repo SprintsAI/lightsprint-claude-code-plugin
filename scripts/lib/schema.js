@@ -5,7 +5,7 @@
  * instead of relying on stale documentation baked into skill prompts.
  */
 
-import { VALID_STATUSES, VALID_COMPLEXITIES, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH, MAX_COMMENT_LENGTH } from './validate.js';
+import { VALID_STATUSES, VALID_COMPLEXITIES, VALID_LAYOUT_TYPES, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH, MAX_COMMENT_LENGTH } from './validate.js';
 
 const COMMAND_SCHEMAS = {
 	tasks: {
@@ -51,6 +51,9 @@ const COMMAND_SCHEMAS = {
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'New status' },
 			complexity: { type: 'enum', flag: '--complexity', values: VALID_COMPLEXITIES, description: 'New complexity' },
 			assignee: { type: 'string', flag: '--assignee', description: 'Assign to team member' },
+			position: { type: 'integer', flag: '--position', description: 'New position within section (0-based)' },
+			sectionId: { type: 'string', flag: '--section-id', description: 'Section to move task to' },
+			layoutType: { type: 'enum', flag: '--layout-type', values: VALID_LAYOUT_TYPES, description: 'Layout type for position update (default: kanban)' },
 			addDep: { type: 'string', flag: '--add-dep', repeatable: true, description: 'Add dependency (repeatable)' },
 			removeDep: { type: 'string', flag: '--remove-dep', repeatable: true, description: 'Remove dependency (repeatable)' }
 		},

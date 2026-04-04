@@ -51,6 +51,7 @@ export function validateId(id, label = 'ID') {
 
 export const VALID_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'done'];
 export const VALID_COMPLEXITIES = ['low', 'medium', 'high'];
+export const VALID_LAYOUT_TYPES = ['kanban', 'list'];
 export const VALID_DEPS_FILTERS = ['has-dependencies', 'has-no-dependencies', 'has-dependents', 'unblocked'];
 
 /**
@@ -85,6 +86,24 @@ export function validateStatus(status) {
  */
 export function validateComplexity(complexity) {
 	return validateEnum(complexity, VALID_COMPLEXITIES, 'complexity');
+}
+
+/**
+ * Validate a layout type value.
+ * @param {string} layoutType
+ * @returns {string}
+ */
+export function validateLayoutType(layoutType) {
+	return validateEnum(layoutType, VALID_LAYOUT_TYPES, 'layoutType');
+}
+
+/**
+ * Validate a task position (0-based non-negative integer).
+ * @param {number} position
+ * @returns {number}
+ */
+export function validatePosition(position) {
+	return validatePositiveInt(position, 'position');
 }
 
 // ─── Project filter validation ──────────────────────────────────────────
