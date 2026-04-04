@@ -23,7 +23,7 @@ import { join } from 'path';
 import { apiRequest, getRepoId, getRepoInfo } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
-import { validateId, validateStatus, validateComplexity, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter } from './lib/validate.js';
+import { validateId, validateStatus, validateComplexity, validateLayoutType, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByRepoId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
@@ -636,6 +636,12 @@ async function cmdUpdate(args, opts) {
 			patch.complexity = args[++i];
 		} else if (args[i] === '--assignee' && args[i + 1]) {
 			patch.assignee = args[++i];
+		} else if (args[i] === '--position' && args[i + 1]) {
+			patch.position = Number(args[++i]);
+		} else if (args[i] === '--section-id' && args[i + 1]) {
+			patch.sectionId = args[++i];
+		} else if (args[i] === '--layout-type' && args[i + 1]) {
+			patch.layoutType = args[++i];
 		} else if (args[i] === '--add-dep' && args[i + 1]) {
 			addDeps.push(args[++i]);
 		} else if (args[i] === '--remove-dep' && args[i + 1]) {
@@ -646,12 +652,12 @@ async function cmdUpdate(args, opts) {
 	}
 
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint update --task <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]');
+		throw new Error('Usage: lightsprint update --task <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--position <num>] [--section-id <id>] [--layout-type kanban|list] [--add-dep <taskId>] [--remove-dep <taskId>]');
 	}
 
 	if (jsonBody) {
 		if (Object.keys(patch).length > 0) {
-			throw new Error('Cannot combine --json/--json-body with --title, --description, --status, --complexity, or --assignee. Use --json/--json-body alone.');
+			throw new Error('Cannot combine --json/--json-body with --title, --description, --status, --complexity, --assignee, --position, --section-id, or --layout-type. Use --json/--json-body alone.');
 		}
 		try {
 			patch = JSON.parse(jsonBody);
@@ -662,6 +668,9 @@ async function cmdUpdate(args, opts) {
 		if ('description' in patch) validateDescription(patch.description);
 		if ('status' in patch) validateStatus(patch.status);
 		if ('complexity' in patch) validateComplexity(patch.complexity);
+		if ('position' in patch) validatePosition(patch.position);
+		if ('layoutType' in patch) validateLayoutType(patch.layoutType);
+		if ('sectionId' in patch) validateId(patch.sectionId, 'Section ID');
 	}
 
 	const hasPatch = Object.keys(patch).length > 0;
@@ -677,6 +686,9 @@ async function cmdUpdate(args, opts) {
 		if (patch.description) validateDescription(patch.description);
 		if (patch.status) validateStatus(patch.status);
 		if (patch.complexity) validateComplexity(patch.complexity);
+		if (patch.position !== undefined) validatePosition(patch.position);
+		if (patch.sectionId) validateId(patch.sectionId, 'Section ID');
+		if (patch.layoutType) validateLayoutType(patch.layoutType);
 	}
 	for (const id of addDeps) validateId(id, 'Dependency task ID');
 	for (const id of removeDeps) validateId(id, 'Dependency task ID');

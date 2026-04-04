@@ -31,6 +31,7 @@ import { randomBytes } from "node:crypto";
 const LS_CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), ".lightsprint");
 const VALID_STATUSES = ["backlog", "todo", "in_progress", "in_review", "done"] as const;
 const VALID_COMPLEXITIES = ["low", "medium", "high"] as const;
+const VALID_LAYOUT_TYPES = ["kanban", "list"] as const;
 const VALID_SORT_FIELDS = ["position", "updated_at", "created_at"] as const;
 const VALID_DEPS_FILTERS = ["has-dependencies", "has-no-dependencies", "has-dependents", "unblocked"] as const;
 
@@ -334,6 +335,11 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
         StringEnum([...VALID_COMPLEXITIES], { description: "New complexity" })
       ),
       assignee: Type.Optional(Type.String({ description: "Assign to team member by name" })),
+      position: Type.Optional(Type.Integer({ minimum: 0, description: "New position within section (0-based)" })),
+      section_id: Type.Optional(Type.String({ description: "Section to move task to" })),
+      layout_type: Type.Optional(
+        StringEnum([...VALID_LAYOUT_TYPES], { description: "Layout type for position update (default: kanban)" })
+      ),
       add_dep: Type.Optional(
         Type.Array(Type.String(), { description: "Task IDs to add as dependencies" })
       ),
@@ -348,6 +354,9 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
       if (params.status) args.push("--status", params.status);
       if (params.complexity) args.push("--complexity", params.complexity);
       if (params.assignee) args.push("--assignee", params.assignee);
+      if (params.position !== undefined) args.push("--position", String(params.position));
+      if (params.section_id) args.push("--section-id", params.section_id);
+      if (params.layout_type) args.push("--layout-type", params.layout_type);
       if (params.add_dep) {
         for (const dep of params.add_dep) args.push("--add-dep", dep);
       }
