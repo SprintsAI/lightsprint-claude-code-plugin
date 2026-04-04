@@ -27,8 +27,6 @@ if (args.length > 0) {
 
 // No args — run the installer
 const url = `https://raw.githubusercontent.com/${REPO}/main/install.sh`;
-console.log("Installing Lightsprint for Claude Code...\n");
-
 try {
   execSync(`curl -fsSL "${url}" | bash`, {
     stdio: "inherit",
