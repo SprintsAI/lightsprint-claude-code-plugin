@@ -1590,7 +1590,7 @@ async function cmdAgent(args, opts) {
 }
 
 async function cmdAgentLaunch(args, opts) {
-	let taskIdInput = null;
+	const taskIdInputs = [];
 	let provider = null;
 	let model = null;
 	let baseRef = null;
@@ -1598,7 +1598,7 @@ async function cmdAgentLaunch(args, opts) {
 
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--task' && args[i + 1]) {
-			taskIdInput = args[++i];
+			taskIdInputs.push(args[++i]);
 		} else if (args[i] === '--provider' && args[i + 1]) {
 			provider = args[++i];
 		} else if (args[i] === '--model' && args[i + 1]) {
@@ -1612,10 +1612,10 @@ async function cmdAgentLaunch(args, opts) {
 		}
 	}
 
-	if (!taskIdInput) throw new Error('Usage: lightsprint agent launch --task <taskId> --provider <provider>');
+	if (taskIdInputs.length === 0) throw new Error('Usage: lightsprint agent launch --task <taskId> [--task <taskId> ...] --provider <provider>');
 	if (!provider) throw new Error('--provider is required. Allowed values: anthropic, cursor, codex');
 
-	validateId(taskIdInput, 'Task ID');
+	for (const id of taskIdInputs) validateId(id, 'Task ID');
 	validateProvider(provider);
 
 	const body = {};
@@ -1624,21 +1624,52 @@ async function cmdAgentLaunch(args, opts) {
 	if (environmentId) body.environmentId = environmentId;
 
 	if (opts.dryRun) {
-		return outputDryRun('agent launch', body, `POST /api/tasks/${taskIdInput}/cloud-agents/${provider}`, opts);
+		return outputDryRun('agent launch', body, taskIdInputs.map(id => `POST /api/tasks/${id}/cloud-agents/${provider}`).join(', '), opts);
 	}
 
-	const taskId = await resolveTaskId(taskIdInput);
-	const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}`, {
-		method: 'POST',
-		body: JSON.stringify(body)
+	// Launch single task directly (preserve original behavior)
+	if (taskIdInputs.length === 1) {
+		const taskId = await resolveTaskId(taskIdInputs[0]);
+		const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		});
+
+		outputResult(result, opts, () => {
+			console.log(`Agent launched for task ${taskIdInputs[0]}`);
+			console.log(`Provider: ${provider}`);
+			console.log(`Status: ${result.status}`);
+			if (result.agentUrl) console.log(`Agent URL: ${result.agentUrl}`);
+			if (result.branchName) console.log(`Branch: ${result.branchName}`);
+		});
+		return;
+	}
+
+	// Launch multiple tasks concurrently
+	const outcomes = await Promise.allSettled(taskIdInputs.map(async (input) => {
+		const taskId = await resolveTaskId(input);
+		const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		});
+		return { task: input, ...result };
+	}));
+
+	const results = outcomes.map((outcome, i) => {
+		if (outcome.status === 'fulfilled') {
+			return outcome.value;
+		}
+		return { task: taskIdInputs[i], error: outcome.reason?.message || String(outcome.reason) };
 	});
 
-	outputResult(result, opts, () => {
-		console.log(`Agent launched for task ${taskIdInput}`);
-		console.log(`Provider: ${provider}`);
-		console.log(`Status: ${result.status}`);
-		if (result.agentUrl) console.log(`Agent URL: ${result.agentUrl}`);
-		if (result.branchName) console.log(`Branch: ${result.branchName}`);
+	outputResult(results, opts, () => {
+		for (const r of results) {
+			if (r.error) {
+				console.log(`${r.task}: FAILED — ${r.error}`);
+			} else {
+				console.log(`${r.task}: ${r.status}${r.agentUrl ? ` — ${r.agentUrl}` : ''}`);
+			}
+		}
 	});
 }
 

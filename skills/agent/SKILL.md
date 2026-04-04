@@ -21,8 +21,22 @@ lightsprint agent settings --provider codex --output json
 
 ## Launch a cloud agent
 
+Launch one or more agents. Use multiple `--task` flags to launch in parallel:
+
 ```bash
-lightsprint agent launch --task $ARGUMENTS --provider <anthropic|cursor|codex> --output json
+lightsprint agent launch --task <taskId> [--task <taskId> ...] --provider <anthropic|cursor|codex> --output json
+```
+
+**Examples:**
+
+Single task:
+```bash
+lightsprint agent launch --task LS-100 --provider anthropic --output json
+```
+
+Multiple tasks (launched concurrently):
+```bash
+lightsprint agent launch --task LS-100 --task LS-101 --task LS-102 --provider anthropic --output json
 ```
 
 Optional flags:
@@ -34,6 +48,7 @@ Optional flags:
 - `--provider` is always required
 - Codex typically requires `--environment-id` — use `agent settings --provider codex` to discover IDs
 - Only one agent can run per task per provider at a time
+- When launching multiple tasks, all launches run concurrently and results are returned as an array
 
 ## Stop an active agent
 
