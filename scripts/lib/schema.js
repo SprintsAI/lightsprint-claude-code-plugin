@@ -5,7 +5,7 @@
  * instead of relying on stale documentation baked into skill prompts.
  */
 
-import { VALID_STATUSES, VALID_COMPLEXITIES, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH, MAX_COMMENT_LENGTH } from './validate.js';
+import { VALID_STATUSES, VALID_COMPLEXITIES, VALID_PROVIDERS, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH, MAX_COMMENT_LENGTH } from './validate.js';
 
 const COMMAND_SCHEMAS = {
 	tasks: {
@@ -155,6 +155,35 @@ const COMMAND_SCHEMAS = {
 	upgrade: {
 		description: 'Download and install the latest version',
 		params: {},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'agent-launch': {
+		description: 'Launch a cloud agent for a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
+			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Cloud agent provider' },
+			model: { type: 'string', flag: '--model', description: 'Override default model for the provider' },
+			baseRef: { type: 'string', flag: '--base-ref', description: 'Base branch (defaults to repo default branch)' },
+			environmentId: { type: 'string', flag: '--environment-id', description: 'Environment ID (for codex/anthropic)' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'agent-stop': {
+		description: 'Stop the active cloud agent for a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID' },
+			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Cloud agent provider' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'agent-settings': {
+		description: 'Show cloud agent provider configuration',
+		params: {
+			provider: { type: 'enum', flag: '--provider', values: VALID_PROVIDERS, description: 'Also fetch environments for this provider' }
+		},
 		supportsDryRun: false,
 		supportsJsonBody: false
 	}
