@@ -131,7 +131,7 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai', options =
 	}
 
 	const port = await findFreePort();
-	let authorizeUrl = `${baseUrl}/authorize-cli?port=${port}&scope=tasks:read+tasks:write+comments:write+plans:read+plans:write+agents:read+agents:write`;
+	let authorizeUrl = `${baseUrl}/authorize-cli?port=${port}&scope=tasks:read+tasks:write+comments:read+comments:write+plans:read+plans:write+agents:read+agents:write`;
 	authorizeUrl += `&repo=${encodeURIComponent(repoFullName)}`;
 
 	if (!quiet) console.log('Opening browser to authorize with Lightsprint...');
