@@ -675,6 +675,9 @@ async function cmdUpdate(args, opts) {
 	}
 
 	validateId(taskIdInput, 'Task ID');
+	if (patch.position !== undefined && patch.status) {
+		throw new Error('Cannot combine --position with --status. Position reorders within the current section; status moves the task to a different section.');
+	}
 	if (!jsonBody) {
 		if (patch.title) validateTitle(patch.title);
 		if (patch.description) validateDescription(patch.description);

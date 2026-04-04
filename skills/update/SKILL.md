@@ -35,3 +35,4 @@ At least one flag is required. Only the provided fields will be updated. Field u
 - Always run `lightsprint get --task <taskId>` before updating to confirm current state
 - Prefer `lightsprint claim --task <taskId>` over `lightsprint update --task <taskId> --status in_progress` — claim also assigns the task and links the CC session
 - Title: max 500 chars. Description: max 50,000 chars
+- Cannot combine `--position` with `--status` — position reorders within the current section, status moves to a different section
