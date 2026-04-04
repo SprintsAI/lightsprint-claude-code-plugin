@@ -1,6 +1,6 @@
 {
   "name": "lightsprint",
-  "version": "0.5.26",
+  "version": "0.5.27",
   "description": "Sync Claude Code tasks to Lightsprint repo board",
   "type": "module",
   "bin": {
