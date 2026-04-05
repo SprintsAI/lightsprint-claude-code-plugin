@@ -21,7 +21,7 @@ import { execFileSync, execSync } from 'child_process';
 import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
-import { apiRequest, getRepoId, getRepoInfo } from './lib/client.js';
+import { apiRequest, apiRequestSSE, getRepoId, getRepoInfo } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider } from './lib/validate.js';
@@ -61,6 +61,7 @@ export async function cliMain(command, args, context = {}) {
 			case 'config': return cmdConfig(remainingArgs, opts);
 			case 'describe': return cmdDescribe(remainingArgs);
 			case 'agent': return await cmdAgent(remainingArgs, opts);
+			case 'merge': return await cmdMerge(remainingArgs, opts);
 			default:
 				outputError('unknown_command', `Unknown command: ${command}. Use 'lightsprint help' for usage information.`, { command }, opts);
 				process.exit(1);
@@ -202,6 +203,12 @@ Commands:
     Show cloud agent provider configuration
     Options:
       --provider <provider>   Also fetch environments for this provider
+
+  merge <taskId>
+    Merge the GitHub PR linked to a task
+    Example:
+      lightsprint merge LIG-024
+      lightsprint merge --task LIG-024
 
   config <subcommand> [key] [value]
     Manage user preferences (stored in ~/.lightsprint/preferences.json)
@@ -1804,6 +1811,43 @@ async function cmdAgentSettings(args, opts) {
 	});
 }
 
+// ─── merge ───────────────────────────────────────────────────────────────
+
+async function cmdMerge(args, opts) {
+	let taskIdInput = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (!taskIdInput && !args[i].startsWith('-')) {
+			taskIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint merge <taskId>`);
+		}
+	}
+
+	if (!taskIdInput) throw new Error('Usage: lightsprint merge <taskId>');
+	validateId(taskIdInput, 'Task ID');
+
+	if (opts.dryRun) {
+		return outputDryRun('merge', { taskId: taskIdInput }, `POST /api/tasks/${taskIdInput}/pr/merge`, opts);
+	}
+
+	const taskId = await resolveTaskId(taskIdInput);
+	const result = await apiRequest(`/api/tasks/${taskId}/pr/merge`, { method: 'POST' });
+
+	outputResult(result, opts, () => {
+		const pr = result.pr;
+		if (pr.status === 'queued') {
+			console.log(`PR #${pr.prNumber} queued for merge (task ${taskIdInput})`);
+		} else {
+			console.log(`PR #${pr.prNumber} merged for task ${taskIdInput}`);
+			if (pr.sha) console.log(`SHA: ${pr.sha}`);
+		}
+		if (pr.prUrl) console.log(pr.prUrl);
+	});
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────
 
 function ensureInstalledPluginsJson(version, { logger = console.log } = {}) {
@@ -1826,6 +1870,25 @@ function ensureInstalledPluginsJson(version, { logger = console.log } = {}) {
 	} catch (err) {
 		console.warn(`Warning: Could not update installed_plugins.json: ${err.message}`);
 	}
+}
+
+/**
+ * Resolve a task ID input to the internal PR record ID.
+ * @param {string} taskIdInput - Display ID, bare number, or raw ID
+ * @returns {Promise<{ taskId: string, prId: string, prNumber: number|null, prUrl: string|null }>}
+ */
+async function resolveTaskPrId(taskIdInput) {
+	const taskId = await resolveTaskId(taskIdInput);
+	const data = await apiRequest(`/api/tasks/${taskId}`);
+	const task = data.task;
+	if (!task) throw new Error(`Task ${taskIdInput} not found.`);
+
+	const prs = task.githubPullRequests;
+	if (!prs || prs.length === 0) {
+		throw new Error(`No PR linked to task ${taskIdInput}. Use 'lightsprint link-pr' first.`);
+	}
+	const pr = prs[0];
+	return { taskId, prId: pr.id, prNumber: pr.prNumber || null, prUrl: pr.prUrl || null };
 }
 
 /**
