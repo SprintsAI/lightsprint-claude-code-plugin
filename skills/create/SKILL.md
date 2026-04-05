@@ -9,7 +9,7 @@ Run this command to create a new Lightsprint task:
 lightsprint create --cc-pid $PPID $ARGUMENTS
 ```
 
-Usage: `create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <taskId1,taskId2,...>] [--parent <taskId>]`
+Usage: `create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--project <projectId>] [--depends-on <taskId1,taskId2,...>] [--parent <taskId>]`
 
 ## Flags
 
@@ -19,6 +19,7 @@ Usage: `create --title <text> [--description <text>] [--complexity low|medium|hi
 | `--description <text>` | No | Task description. Supports multiline text. Max 50000 chars. |
 | `--complexity <level>` | No | Complexity estimate: `low`, `medium`, or `high`. |
 | `--status <status>` | No | Initial status: `backlog` (default), `todo`, `in_progress`, `in_review`, or `done`. |
+| `--project <projectId>` | No | Assign to a project by ID. Use `lightsprint projects` to find project IDs. |
 | `--depends-on <ids>` | No | Comma-separated list of task IDs this task depends on. Supports raw IDs, display IDs (e.g. `LIG-024`), or bare task numbers (e.g. `6`). All formats are resolved server-side. |
 | `--parent <taskId>` | No | Parent task ID. Links the new task as a subtask (dependency) of the specified parent. Supports raw IDs and display IDs (e.g. `LS-1100`). |
 | `--json-body <json>` | No | Raw JSON request body (replaces all other flags). Cannot combine with `--title` or other field flags. |

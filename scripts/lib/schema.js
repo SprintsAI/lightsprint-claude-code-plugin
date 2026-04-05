@@ -37,6 +37,7 @@ const COMMAND_SCHEMAS = {
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, default: 'backlog', description: 'Initial status' },
 			complexity: { type: 'enum', flag: '--complexity', values: VALID_COMPLEXITIES, description: 'Complexity estimate' },
 			dependsOn: { type: 'string[]', flag: '--depends-on', description: 'Comma-separated task IDs this task depends on' },
+			projectId: { type: 'string', flag: '--project', description: 'Assign to a project by ID' },
 			ccPid: { type: 'integer', flag: '--cc-pid', description: 'Claude Code PID for session linking' }
 		},
 		supportsDryRun: true,
@@ -53,7 +54,8 @@ const COMMAND_SCHEMAS = {
 			assignee: { type: 'string', flag: '--assignee', description: 'Assign to team member' },
 			position: { type: 'integer', flag: '--position', description: 'New position within section (0-based)' },
 			addDep: { type: 'string', flag: '--add-dep', repeatable: true, description: 'Add dependency (repeatable)' },
-			removeDep: { type: 'string', flag: '--remove-dep', repeatable: true, description: 'Remove dependency (repeatable)' }
+			removeDep: { type: 'string', flag: '--remove-dep', repeatable: true, description: 'Remove dependency (repeatable)' },
+			projectId: { type: 'string', flag: '--project', description: 'Move task to a project by ID' }
 		},
 		supportsDryRun: true,
 		supportsJsonBody: true
@@ -185,6 +187,14 @@ const COMMAND_SCHEMAS = {
 			provider: { type: 'enum', flag: '--provider', values: VALID_PROVIDERS, description: 'Also fetch environments for this provider' }
 		},
 		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	delete: {
+		description: 'Delete a task permanently',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID like LIG-024)' }
+		},
+		supportsDryRun: true,
 		supportsJsonBody: false
 	}
 };

@@ -9,7 +9,7 @@ Run this command to update a Lightsprint task:
 lightsprint update $ARGUMENTS
 ```
 
-Usage: `update --task <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--position <num>] [--add-dep <taskId>] [--remove-dep <taskId>]`
+Usage: `update --task <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--project <projectId>] [--position <num>] [--add-dep <taskId>] [--remove-dep <taskId>]`
 
 ## Flags
 
@@ -21,6 +21,7 @@ Usage: `update --task <taskId> [--title <text>] [--description <text>] [--status
 | `--status <status>` | No | New status: `backlog`, `todo`, `in_progress`, `in_review`, or `done`. |
 | `--complexity <level>` | No | Complexity: `low`, `medium`, or `high`. |
 | `--assignee <name>` | No | Assign to a team member by name. |
+| `--project <projectId>` | No | Move task to a project by ID. Use `lightsprint projects` to find project IDs. |
 | `--position <num>` | No | New position within section (0-based). Position 0 = top of section. |
 | `--add-dep <taskId>` | No | Add a dependency (this task depends on the given task). Repeatable for multiple deps. Supports display IDs, bare task numbers, or raw IDs. |
 | `--remove-dep <taskId>` | No | Remove a dependency. Repeatable for multiple deps. Supports display IDs, bare task numbers, or raw IDs. |

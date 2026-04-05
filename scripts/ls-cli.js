@@ -5,12 +5,13 @@
  * Commands:
  *   tasks [--status backlog|todo|in_progress|in_review|done] [--assignee <name>] [--project <filter>] [--sort position|updated_at|created_at] [--limit N] [--offset N]
  *   projects [--status active|completed|archived]
- *   create <title> [--description <text>] [--complexity <level>] [--status <status>] [--depends-on <id1,id2,...>] [--cc-pid <pid>]
+ *   create <title> [--description <text>] [--complexity <level>] [--status <status>] [--project <projectId>] [--depends-on <id1,id2,...>] [--cc-pid <pid>]
  *   update <taskId> [--title <text>] [--description <text>] [--status <status>] [--complexity <level>] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]
  *   get <taskId>
  *   claim <taskId> [--cc-pid <pid>]
  *   current-task [--cc-pid <pid>]
  *   comment <taskId> <body>
+ *   delete <taskId>
  *   create-plan --content <markdown> [--title <text>] [--task <taskId>]
  *   whoami
  */
@@ -48,6 +49,7 @@ export async function cliMain(command, args, context = {}) {
 			case 'current-task': return await cmdCurrentTask(remainingArgs, opts);
 			case 'link-pr': return await cmdLinkPr(remainingArgs, opts);
 			case 'unlink-pr': return await cmdUnlinkPr(remainingArgs, opts);
+			case 'delete': return await cmdDelete(remainingArgs, opts);
 			case 'comment': return await cmdComment(remainingArgs, opts);
 			case 'create-plan': return await cmdCreatePlan(remainingArgs, opts);
 			case 'whoami': return await cmdWhoami(opts);
@@ -123,6 +125,7 @@ Commands:
       --description <text>        Task description
       --complexity <level>        low, medium, or high
       --status <status>           backlog, todo, in_progress, in_review, or done (default: backlog)
+      --project <projectId>       Assign to a project by ID
       --depends-on <ids>          Comma-separated task IDs this task depends on
       --json-body <json>          Raw JSON request body (replaces individual flags)
     Example:
@@ -136,6 +139,7 @@ Commands:
       --status <status>           New status: backlog, todo, in_progress, in_review, done
       --complexity <level>        New complexity: low, medium, high
       --assignee <name>           Assign task to a team member
+      --project <projectId>       Move task to a project by ID
       --add-dep <taskId>          Add a dependency (repeatable)
       --remove-dep <taskId>       Remove a dependency (repeatable)
       --json-body <json>          Raw JSON request body (replaces individual flags)
@@ -156,6 +160,12 @@ Commands:
     Remove a linked GitHub pull request from a task
     Example:
       lightsprint unlink-pr abc123
+
+  delete <taskId>
+    Delete a task permanently from the repo board
+    Example:
+      lightsprint delete --task abc123
+      lightsprint delete --task LIG-024
 
   comment <taskId> <body>
     Add a comment to a task
@@ -475,7 +485,7 @@ async function cmdProjects(args, opts) {
 
 async function cmdCreate(args, opts) {
 	if (args.length === 0) {
-		throw new Error('Usage: lightsprint create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--depends-on <id1,id2,...>] [--parent <taskId>] [--cc-pid <pid>]');
+		throw new Error('Usage: lightsprint create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--project <projectId>] [--depends-on <id1,id2,...>] [--parent <taskId>] [--cc-pid <pid>]');
 	}
 
 	const repoId = await getRepoId();
@@ -490,6 +500,7 @@ async function cmdCreate(args, opts) {
 	let status = 'backlog';
 	let dependsOn = null;
 	let parentId = null;
+	let projectId = null;
 	let ccPidArg;
 
 	for (let i = 0; i < args.length; i++) {
@@ -507,6 +518,8 @@ async function cmdCreate(args, opts) {
 			dependsOn = args[++i];
 		} else if (args[i] === '--parent' && args[i + 1]) {
 			parentId = args[++i];
+		} else if (args[i] === '--project' && args[i + 1]) {
+			projectId = args[++i];
 		} else if (args[i] === '--cc-pid' && args[i + 1]) {
 			ccPidArg = parseInt(args[++i], 10);
 			validatePid(ccPidArg);
@@ -545,6 +558,11 @@ async function cmdCreate(args, opts) {
 		body = { title, status: status };
 		if (description) body.description = description;
 		if (complexity) body.complexity = complexity;
+	}
+
+	if (projectId) {
+		validateId(projectId, 'Project ID');
+		body.projectId = projectId;
 	}
 
 	// Resolve dependency IDs (supports display IDs like LIG-024)
@@ -659,6 +677,8 @@ async function cmdUpdate(args, opts) {
 			patch.assignee = args[++i];
 		} else if (args[i] === '--position' && args[i + 1]) {
 			patch.position = Number(args[++i]);
+		} else if (args[i] === '--project' && args[i + 1]) {
+			patch.projectId = args[++i];
 		} else if (args[i] === '--add-dep' && args[i + 1]) {
 			addDeps.push(args[++i]);
 		} else if (args[i] === '--remove-dep' && args[i + 1]) {
@@ -705,6 +725,7 @@ async function cmdUpdate(args, opts) {
 		if (patch.status) validateStatus(patch.status);
 		if (patch.complexity) validateComplexity(patch.complexity);
 		if (patch.position !== undefined) validatePosition(patch.position);
+		if (patch.projectId) validateId(patch.projectId, 'Project ID');
 	}
 	for (const id of addDeps) validateId(id, 'Dependency task ID');
 	for (const id of removeDeps) validateId(id, 'Dependency task ID');
@@ -1038,6 +1059,37 @@ async function cmdUnlinkPr(args, opts) {
 	});
 
 	const result = { success: true, taskId, message: `Unlinked PR from task ${taskIdInput}.` };
+	outputResult(result, opts, () => console.log(result.message));
+}
+
+// ─── delete ─────────────────────────────────────────────────────────────
+
+async function cmdDelete(args, opts) {
+	let taskIdInput = null;
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId>.`);
+		}
+	}
+
+	if (!taskIdInput) {
+		throw new Error('Usage: lightsprint delete --task <taskId>');
+	}
+
+	validateId(taskIdInput, 'Task ID');
+
+	if (opts.dryRun) {
+		return outputDryRun('delete', { taskId: taskIdInput }, `DELETE /api/tasks/${taskIdInput}`, opts);
+	}
+
+	const taskId = await resolveTaskId(taskIdInput);
+	await apiRequest(`/api/tasks/${taskId}`, {
+		method: 'DELETE'
+	});
+
+	const result = { success: true, taskId, message: `Deleted task ${taskIdInput}.` };
 	outputResult(result, opts, () => console.log(result.message));
 }
 
