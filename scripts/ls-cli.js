@@ -1854,7 +1854,7 @@ async function cmdMerge(args, opts) {
 	const result = await apiRequest(`/api/tasks/${taskId}/pr/merge`, { method: 'POST' });
 
 	outputResult(result, opts, () => {
-		const pr = result.pr;
+		const pr = result.pr || {};
 		if (pr.status === 'queued') {
 			console.log(`PR #${pr.prNumber} queued for merge (task ${taskIdInput})`);
 		} else {
@@ -1946,7 +1946,10 @@ async function cmdReviewHubScores(args, opts) {
 	validateId(taskIdInput, 'Task ID');
 
 	if (opts.dryRun) {
-		return outputDryRun('review-hub scores', { taskId: taskIdInput, refresh }, 'GET /api/review-hub/{prId}/ai-overlay', opts);
+		const endpoint = refresh
+			? 'POST /api/review-hub/{prId}/signals + GET /api/review-hub/{prId}/ai-overlay'
+			: 'GET /api/review-hub/{prId}/ai-overlay';
+		return outputDryRun('review-hub scores', { taskId: taskIdInput, refresh }, endpoint, opts);
 	}
 
 	const { prId, prNumber } = await resolveTaskPrId(taskIdInput);
