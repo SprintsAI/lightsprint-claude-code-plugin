@@ -62,6 +62,7 @@ export async function cliMain(command, args, context = {}) {
 			case 'describe': return cmdDescribe(remainingArgs);
 			case 'agent': return await cmdAgent(remainingArgs, opts);
 			case 'merge': return await cmdMerge(remainingArgs, opts);
+			case 'review-hub': return await cmdReviewHub(remainingArgs, opts);
 			default:
 				outputError('unknown_command', `Unknown command: ${command}. Use 'lightsprint help' for usage information.`, { command }, opts);
 				process.exit(1);
@@ -209,6 +210,22 @@ Commands:
     Example:
       lightsprint merge LIG-024
       lightsprint merge --task LIG-024
+
+  review-hub signals <taskId> [--refresh]
+    Get PR signals (CI checks, reviews, comments) for a task's linked PR
+    Options:
+      --refresh             Force re-fetch signals from GitHub
+    Example:
+      lightsprint review-hub signals LIG-024
+      lightsprint review-hub signals LIG-024 --refresh
+
+  review-hub scores <taskId> [--refresh]
+    Get AI readiness analysis for a task's linked PR
+    Options:
+      --refresh             Refresh signals from GitHub and trigger fresh AI analysis (consumes credits)
+    Example:
+      lightsprint review-hub scores LIG-024
+      lightsprint review-hub scores LIG-024 --refresh
 
   config <subcommand> [key] [value]
     Manage user preferences (stored in ~/.lightsprint/preferences.json)
@@ -1845,6 +1862,149 @@ async function cmdMerge(args, opts) {
 			if (pr.sha) console.log(`SHA: ${pr.sha}`);
 		}
 		if (pr.prUrl) console.log(pr.prUrl);
+	});
+}
+
+// ─── review-hub ──────────────────────────────────────────────────────────
+
+async function cmdReviewHub(args, opts) {
+	const subcommand = args[0];
+	const subArgs = args.slice(1);
+
+	switch (subcommand) {
+		case 'signals': return await cmdReviewHubSignals(subArgs, opts);
+		case 'scores': return await cmdReviewHubScores(subArgs, opts);
+		default:
+			throw new Error(`Unknown review-hub subcommand: "${subcommand || ''}". Use: signals, scores`);
+	}
+}
+
+async function cmdReviewHubSignals(args, opts) {
+	let taskIdInput = null;
+	let refresh = false;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--refresh') {
+			refresh = true;
+		} else if (!taskIdInput && !args[i].startsWith('-')) {
+			taskIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> [--refresh].`);
+		}
+	}
+
+	if (!taskIdInput) throw new Error('Usage: lightsprint review-hub signals <taskId> [--refresh]');
+	validateId(taskIdInput, 'Task ID');
+
+	if (opts.dryRun) {
+		const method = refresh ? 'POST' : 'GET';
+		return outputDryRun('review-hub signals', { taskId: taskIdInput, refresh }, `${method} /api/review-hub/{prId}/signals`, opts);
+	}
+
+	const { prId, prNumber } = await resolveTaskPrId(taskIdInput);
+
+	const method = refresh ? 'POST' : 'GET';
+	const result = await apiRequest(`/api/review-hub/${prId}/signals`, { method });
+
+	outputResult(result, opts, () => {
+		const signals = result.signals || [];
+		console.log(`Signals for task ${taskIdInput} (PR #${prNumber}):`);
+		if (signals.length === 0) {
+			console.log('  No signals found.');
+			return;
+		}
+		for (const s of signals) {
+			const statusIcon = s.status === 'success' ? '\u2713' : s.status === 'failure' ? '\u2717' : '\u2022';
+			const cat = (s.category || '').padEnd(10);
+			const title = s.title || s.actorLogin || '';
+			const detail = s.scoreLabel ? ` (${s.scoreLabel})` : '';
+			console.log(`  ${cat} ${statusIcon} ${title}${detail}`);
+		}
+		console.log(`\n${signals.length} signal(s)${result.lastViewedAt ? ` | Last viewed: ${result.lastViewedAt}` : ''}`);
+	});
+}
+
+async function cmdReviewHubScores(args, opts) {
+	let taskIdInput = null;
+	let refresh = false;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--refresh') {
+			refresh = true;
+		} else if (!taskIdInput && !args[i].startsWith('-')) {
+			taskIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> [--refresh].`);
+		}
+	}
+
+	if (!taskIdInput) throw new Error('Usage: lightsprint review-hub scores <taskId> [--refresh]');
+	validateId(taskIdInput, 'Task ID');
+
+	if (opts.dryRun) {
+		return outputDryRun('review-hub scores', { taskId: taskIdInput, refresh }, 'GET /api/review-hub/{prId}/ai-overlay', opts);
+	}
+
+	const { prId, prNumber } = await resolveTaskPrId(taskIdInput);
+
+	// If --refresh, force-refresh signals first (clears AI cache)
+	if (refresh) {
+		await apiRequest(`/api/review-hub/${prId}/signals`, { method: 'POST' });
+	}
+
+	// Consume the SSE stream (returns cached or triggers fresh analysis)
+	const result = await apiRequestSSE(`/api/review-hub/${prId}/ai-overlay`, { timeout: 120_000 });
+
+	if (!result || (result.readiness_score === undefined && result.readinessScore === undefined)) {
+		const data = { readinessScore: null, message: 'No scores available. Use --refresh to trigger AI analysis (consumes credits).' };
+		outputResult(data, opts, () => {
+			console.log(`AI Readiness for task ${taskIdInput} (PR #${prNumber}):`);
+			console.log('  No cached scores available.');
+			console.log('  Use --refresh to trigger AI analysis (consumes credits).');
+		});
+		return;
+	}
+
+	// Normalize field names (API uses snake_case)
+	const data = {
+		readinessScore: result.readiness_score ?? result.readinessScore,
+		readinessLabel: result.readiness_label ?? result.readinessLabel,
+		sectionSummaries: result.section_summaries ?? result.sectionSummaries ?? {},
+		changeCallouts: result.change_callouts ?? result.changeCallouts ?? [],
+		suggestedActions: result.suggested_actions ?? result.suggestedActions ?? [],
+		addressal: result.addressal ?? null,
+		updatedAt: result.updated_at ?? result.updatedAt ?? null
+	};
+
+	outputResult(data, opts, () => {
+		console.log(`AI Readiness for task ${taskIdInput} (PR #${prNumber}):`);
+		console.log(`  Score: ${data.readinessScore}/100 (${data.readinessLabel})`);
+
+		const sections = Object.entries(data.sectionSummaries);
+		if (sections.length > 0) {
+			console.log('\n  Sections:');
+			for (const [key, val] of sections) {
+				console.log(`    ${key}: ${val}`);
+			}
+		}
+
+		if (data.changeCallouts.length > 0) {
+			console.log('\n  Callouts:');
+			for (const c of data.changeCallouts) {
+				console.log(`    - ${typeof c === 'string' ? c : c.message || JSON.stringify(c)}`);
+			}
+		}
+
+		if (data.suggestedActions.length > 0) {
+			console.log('\n  Suggested Actions:');
+			for (const a of data.suggestedActions) {
+				console.log(`    - ${typeof a === 'string' ? a : a.message || JSON.stringify(a)}`);
+			}
+		}
 	});
 }
 
