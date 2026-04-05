@@ -301,3 +301,85 @@ export async function getRepoId() {
 	const info = await getRepoInfo();
 	return info.repo?.id || info.project?.id;
 }
+
+/**
+ * Make an authenticated SSE request to the Lightsprint API.
+ * Consumes the event stream and returns the final 'complete' event payload.
+ * @param {string} path - API path
+ * @param {{ timeout?: number }} [options]
+ * @returns {Promise<object|null>} Parsed payload from the 'complete' event, or null if stream was empty
+ */
+export async function apiRequestSSE(path, options = {}) {
+	const timeout = options.timeout || 120_000;
+	const cfg = await config();
+
+	const refreshed = await refreshTokenIfNeeded();
+	if (!refreshed) {
+		throw new Error('Lightsprint: unable to authenticate. Please re-run install.sh.');
+	}
+
+	const url = `${cfg.baseUrl}${path}`;
+	const response = await retryableFetch(url, {
+		signal: AbortSignal.timeout(timeout),
+		headers: {
+			'Authorization': `Bearer ${cfg.accessToken}`,
+			'Accept': 'text/event-stream'
+		}
+	});
+
+	if (!response.ok) {
+		const text = await readBodyCapped(response).catch(() => '');
+		const safeText = text.length > 500 ? text.slice(0, 500) + '...' : text;
+		throw new Error(`Lightsprint API ${response.status}: ${safeText}`);
+	}
+
+	// Empty 200 response (no signals / no content)
+	const contentType = response.headers.get('content-type') || '';
+	if (!contentType.includes('text/event-stream')) {
+		// Server returned a non-SSE response (e.g. empty JSON for no signals)
+		const body = await readBodyCapped(response);
+		if (!body || body.trim() === '') return null;
+		return safeJsonParse(body);
+	}
+
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = '';
+
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+
+			buffer += decoder.decode(value, { stream: true });
+			const lines = buffer.split('\n');
+			buffer = lines.pop(); // keep incomplete line in buffer
+
+			for (const line of lines) {
+				if (!line.startsWith('data: ')) continue;
+				const raw = line.slice(6).trim();
+				if (!raw) continue;
+
+				let data;
+				try {
+					data = JSON.parse(raw);
+				} catch {
+					continue; // skip malformed SSE data lines
+				}
+
+				if (data.type === 'complete') {
+					return data.payload !== undefined ? data.payload : data;
+				}
+				if (data.type === 'error') {
+					throw new Error(data.message || 'AI analysis failed');
+				}
+				// 'progress' events: silently continue
+			}
+		}
+	} finally {
+		reader.releaseLock();
+	}
+
+	// Stream ended without a complete event
+	return null;
+}
