@@ -14,6 +14,13 @@
  *   delete <taskId>
  *   create-plan --content <markdown> [--title <text>] [--task <taskId>]
  *   whoami
+ *   merge <taskId>
+ *   review-hub signals <taskId> [--refresh]
+ *   review-hub scores <taskId> [--refresh]
+ *   agent launch --task <taskId> --provider <provider>
+ *   agent stop --task <taskId> --provider <provider>
+ *   agent settings [--provider <provider>]
+ *   agent create-pr --task <taskId> --provider <provider> --agent-id <id>
  */
 
 import { createHash } from 'crypto';
