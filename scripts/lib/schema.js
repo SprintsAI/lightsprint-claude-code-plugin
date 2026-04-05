@@ -189,6 +189,42 @@ const COMMAND_SCHEMAS = {
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
+	'agent-create-pr': {
+		description: 'Create a GitHub PR from a cloud agent working branch',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
+			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Cloud agent provider' },
+			agentId: { type: 'string', required: true, flag: '--agent-id', description: 'Agent ID' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	merge: {
+		description: 'Merge the GitHub PR linked to a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'review-hub-signals': {
+		description: 'Get PR signals (CI, reviews, comments) for a task linked PR',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
+			refresh: { type: 'boolean', flag: '--refresh', description: 'Force re-fetch signals from GitHub' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'review-hub-scores': {
+		description: 'Get AI readiness analysis for a task linked PR',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
+			refresh: { type: 'boolean', flag: '--refresh', description: 'Refresh signals and trigger fresh AI analysis' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
 	delete: {
 		description: 'Delete a task permanently',
 		params: {
