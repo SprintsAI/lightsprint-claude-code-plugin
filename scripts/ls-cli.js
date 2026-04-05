@@ -205,6 +205,15 @@ Commands:
     Options:
       --provider <provider>   Also fetch environments for this provider
 
+  agent create-pr [options]
+    Create a GitHub PR from a cloud agent's working branch
+    Options:
+      --task <taskId>         Task ID (required)
+      --provider <provider>   Provider: anthropic, cursor, codex (required)
+      --agent-id <id>         Agent ID (required)
+    Example:
+      lightsprint agent create-pr --task LIG-024 --provider anthropic --agent-id abc123
+
   merge <taskId>
     Merge the GitHub PR linked to a task
     Example:
@@ -1660,8 +1669,9 @@ async function cmdAgent(args, opts) {
 		case 'launch': return await cmdAgentLaunch(subArgs, opts);
 		case 'stop': return await cmdAgentStop(subArgs, opts);
 		case 'settings': return await cmdAgentSettings(subArgs, opts);
+		case 'create-pr': return await cmdAgentCreatePr(subArgs, opts);
 		default:
-			throw new Error(`Unknown agent subcommand: "${subcommand || ''}". Use: launch, stop, settings`);
+			throw new Error(`Unknown agent subcommand: "${subcommand || ''}". Use: launch, stop, settings, create-pr`);
 	}
 }
 
@@ -1825,6 +1835,48 @@ async function cmdAgentSettings(args, opts) {
 		} else if (environments && environments.length === 0) {
 			console.log(`\nNo environments found for ${providerFilter}.`);
 		}
+	});
+}
+
+async function cmdAgentCreatePr(args, opts) {
+	let taskIdInput = null;
+	let provider = null;
+	let agentId = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--provider' && args[i + 1]) {
+			provider = args[++i];
+		} else if (args[i] === '--agent-id' && args[i + 1]) {
+			agentId = args[++i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task, --provider, --agent-id.`);
+		}
+	}
+
+	if (!taskIdInput) throw new Error('Usage: lightsprint agent create-pr --task <taskId> --provider <provider> --agent-id <agentId>');
+	if (!provider) throw new Error('--provider is required. Allowed values: anthropic, cursor, codex');
+	if (!agentId) throw new Error('--agent-id is required.');
+
+	validateId(taskIdInput, 'Task ID');
+	validateProvider(provider);
+	validateId(agentId, 'Agent ID');
+
+	if (opts.dryRun) {
+		return outputDryRun('agent create-pr', { taskId: taskIdInput, provider, agentId }, `POST /api/tasks/${taskIdInput}/cloud-agents/${provider}/${agentId}/create-pr`, opts);
+	}
+
+	const taskId = await resolveTaskId(taskIdInput);
+	const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}/${agentId}/create-pr`, {
+		method: 'POST'
+	});
+
+	outputResult(result, opts, () => {
+		console.log(`PR created for task ${taskIdInput}`);
+		if (result.prUrl) console.log(result.prUrl);
+		if (result.prNumber) console.log(`PR #${result.prNumber}`);
+		if (result.title) console.log(`Title: ${result.title}`);
 	});
 }
 
