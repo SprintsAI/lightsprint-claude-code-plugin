@@ -850,12 +850,14 @@ async function cmdGet(args, opts) {
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--task' && args[i + 1]) {
 			taskIdInput = args[++i];
+		} else if (!taskIdInput && !args[i].startsWith('-')) {
+			taskIdInput = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId>.`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint get <taskId>`);
 		}
 	}
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint get --task <taskId>');
+		throw new Error('Usage: lightsprint get <taskId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -969,13 +971,15 @@ async function cmdClaim(args, opts) {
 		} else if (args[i] === '--cc-pid' && args[i + 1]) {
 			ccPidArg = parseInt(args[++i], 10);
 			validatePid(ccPidArg);
+		} else if (!taskIdInput && !args[i].startsWith('-')) {
+			taskIdInput = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId>.`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint claim <taskId>`);
 		}
 	}
 
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint claim --task <taskId>');
+		throw new Error('Usage: lightsprint claim <taskId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -1109,13 +1113,15 @@ async function cmdDelete(args, opts) {
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--task' && args[i + 1]) {
 			taskIdInput = args[++i];
+		} else if (!taskIdInput && !args[i].startsWith('-')) {
+			taskIdInput = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId>.`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint delete <taskId>`);
 		}
 	}
 
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint delete --task <taskId>');
+		throw new Error('Usage: lightsprint delete <taskId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -1144,13 +1150,21 @@ async function cmdComment(args, opts) {
 			taskIdInput = args[++i];
 		} else if (args[i] === '--body' && args[i + 1]) {
 			body = args[++i];
+		} else if (!args[i].startsWith('-')) {
+			if (!taskIdInput) {
+				taskIdInput = args[i];
+			} else if (!body) {
+				body = args[i];
+			} else {
+				throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint comment <taskId> <body>`);
+			}
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> --body <text>.`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint comment <taskId> <body>`);
 		}
 	}
 
 	if (!taskIdInput || !body) {
-		throw new Error('Usage: lightsprint comment --task <taskId> --body <text>');
+		throw new Error('Usage: lightsprint comment <taskId> <body>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
