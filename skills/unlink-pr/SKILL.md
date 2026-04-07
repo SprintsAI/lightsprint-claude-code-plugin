@@ -9,9 +9,11 @@ Run this command to remove a linked GitHub pull request from a Lightsprint task:
 lightsprint unlink-pr $ARGUMENTS
 ```
 
-Usage: `unlink-pr --task <taskId>`
+Usage: `unlink-pr <taskId>` or `unlink-pr --task <taskId>`
 
-- `--task <taskId>`: The Lightsprint task ID — supports display IDs (e.g. `LIG-024`), bare task numbers (e.g. `24`), or raw IDs
+Both positional and flag syntax work: `lightsprint unlink-pr LIG-024` is the same as `lightsprint unlink-pr --task LIG-024`.
+
+Task ID supports display IDs (e.g. `LIG-024`), bare task numbers (e.g. `24`), or raw IDs.
 
 This removes the linked PR from the task and clears the PR URL from any associated cloud agents.
 
