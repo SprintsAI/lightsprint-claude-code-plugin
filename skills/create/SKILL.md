@@ -6,10 +6,14 @@ description: Create a new task on the Lightsprint (ls) repo board. Use to add wo
 Run this command to create a new Lightsprint task:
 
 ```bash
-lightsprint create --cc-pid $PPID $ARGUMENTS
+lightsprint create --cc-pid $PPID --title "$ARGUMENTS"
 ```
 
-Usage: `create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--project <projectId>] [--depends-on <taskId1,taskId2,...>] [--parent <taskId>]`
+Usage: `create <title> [options]` or `create --title <text> [options]`
+
+Both positional and flag syntax work: `lightsprint create "Fix login bug"` is the same as `lightsprint create --title "Fix login bug"`.
+
+Aliases: `create-task`, `new`, `add` all resolve to `create`.
 
 ## Flags
 

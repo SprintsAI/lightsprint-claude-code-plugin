@@ -2,14 +2,14 @@
 /**
  * lightsprint.js — Unified CLI for Lightsprint.
  *
- * Subcommands:
+ * Subcommands (all accept positional args OR explicit flags):
  *   review-plan [input]    Plan review hook handler (invoked by Claude Code hooks)
  *   tasks [options]         List tasks from the repo board
- *   create <title> [opts]   Create a new task
- *   update <taskId> [opts]  Update an existing task
- *   get <taskId>            Show full task details
- *   claim <taskId>          Claim a task (set to in_progress)
- *   comment <taskId> <body> Add a comment to a task
+ *   create <title> [opts]   Create a new task (also: --title <text>)
+ *   update <taskId> [opts]  Update an existing task (also: --task <id>)
+ *   get <taskId>            Show full task details (also: --task <id>)
+ *   claim <taskId>          Claim a task (also: --task <id>)
+ *   comment <taskId> <body> Add a comment to a task (also: --task/--body)
  *   create-plan [opts]      Create a plan from markdown content
  *   agent launch [opts]     Launch a cloud agent for a task
  *   agent stop [opts]       Stop the active agent for a task
@@ -78,11 +78,11 @@ Usage:
 Commands:
   review-plan [input]     Review an implementation plan (Claude Code hook)
   tasks [options]         List tasks from the repo board
-  create <title> [opts]   Create a new task
-  update <taskId> [opts]  Update an existing task
-  get <taskId>            Show full task details
-  claim <taskId>          Claim a task (set to in_progress)
-  comment <taskId> <body> Add a comment to a task
+  create <title> [opts]   Create a new task (also: --title <text>)
+  update <taskId> [opts]  Update an existing task (also: --task <id>)
+  get <taskId>            Show full task details (also: --task <id>)
+  claim <taskId>          Claim a task (set to in_progress) (also: --task <id>)
+  comment <taskId> <body> Add a comment to a task (also: --task/--body)
   create-plan [opts]      Create a plan from markdown content
   agent launch [opts]     Launch a cloud agent for a task
   agent stop [opts]       Stop the active agent for a task

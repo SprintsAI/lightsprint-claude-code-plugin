@@ -397,6 +397,13 @@ async function _tryListenOnPort(port) {
 			return;
 		}
 
+		// Reject new work during shutdown (except /session-end which is handled before auth)
+		if (shuttingDown) {
+			res.writeHead(503, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({ ok: false, error: 'Daemon is shutting down' }));
+			return;
+		}
+
 		if (url.pathname === '/event' && req.method === 'POST') {
 			try {
 				const body = await readBody(req);

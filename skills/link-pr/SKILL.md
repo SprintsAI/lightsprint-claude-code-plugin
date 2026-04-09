@@ -12,7 +12,7 @@ lightsprint link-pr $ARGUMENTS
 Usage: `link-pr --task <taskId> --pr-url <prUrl>`
 
 - `--task <taskId>`: The Lightsprint task ID
-- `--pr-url <prUrl>`: The full GitHub pull request URL (e.g., `https://github.com/owner/repo/pull/123`)
+- `--pr-url <prUrl>` (or `--pr <prUrl>`): The full GitHub pull request URL (e.g., `https://github.com/owner/repo/pull/123`)
 
 **CRITICAL — MANDATORY AUTO-LINK STEP**: Every single time you create a GitHub PR (e.g., via `gh pr create`), you MUST IMMEDIATELY and AUTOMATICALLY link it. Do NOT wait for the user to ask — this is a required post-PR-creation step. Follow this exact flow:
 

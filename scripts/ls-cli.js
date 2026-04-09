@@ -2,6 +2,9 @@
 /**
  * lightsprint — CLI for Lightsprint skills.
  *
+ * All commands accept positional args OR explicit flags (e.g., `get abc123` or `get --task abc123`).
+ * Aliases: create-task→create, review-hub-signals→review-hub signals, etc.
+ *
  * Commands:
  *   tasks [--status backlog|todo|in_progress|in_review|done] [--assignee <name>] [--project <filter>] [--sort position|updated_at|created_at] [--limit N] [--offset N]
  *   projects [--status active|completed|archived]
@@ -37,16 +40,129 @@ import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
 import { getCommandSchema, getAllCommandNames } from './lib/schema.js';
 
+// Command aliases: maps common hallucinated/alternative names to real commands
+const COMMAND_ALIASES = {
+	'create-task': 'create',
+	'new': 'create',
+	'add': 'create',
+	'show': 'get',
+	'view': 'get',
+	'edit': 'update',
+	'list': 'tasks',
+	'ls': 'tasks',
+	'remove': 'delete',
+	'rm': 'delete',
+	'link': 'link-pr',
+	'unlink': 'unlink-pr',
+	// Hyphenated compound commands -> space-separated routing
+	'review-hub-signals': '_review-hub-signals',
+	'review-hub-scores': '_review-hub-scores',
+};
+
+// All valid command names for "did you mean?" suggestions
+const VALID_COMMANDS = [
+	'tasks', 'projects', 'create', 'update', 'get', 'claim', 'current-task',
+	'link-pr', 'unlink-pr', 'delete', 'comment', 'create-plan', 'whoami',
+	'open', 'status', 'connect', 'disconnect', 'upgrade', 'config', 'describe',
+	'agent', 'merge', 'review-hub'
+];
+
+function suggestCommand(input) {
+	// Simple Levenshtein-based suggestion
+	let best = null;
+	let bestDist = Infinity;
+	for (const cmd of VALID_COMMANDS) {
+		const dist = levenshtein(input.toLowerCase(), cmd);
+		if (dist < bestDist) {
+			bestDist = dist;
+			best = cmd;
+		}
+	}
+	// Only suggest if edit distance is reasonable (≤ 3)
+	return bestDist <= 3 ? best : null;
+}
+
+function levenshtein(a, b) {
+	const m = a.length, n = b.length;
+	const dp = Array.from({ length: m + 1 }, () => new Array(n + 1));
+	for (let i = 0; i <= m; i++) dp[i][0] = i;
+	for (let j = 0; j <= n; j++) dp[0][j] = j;
+	for (let i = 1; i <= m; i++) {
+		for (let j = 1; j <= n; j++) {
+			dp[i][j] = a[i - 1] === b[j - 1]
+				? dp[i - 1][j - 1]
+				: 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+		}
+	}
+	return dp[m][n];
+}
+
+/**
+ * Show command-specific help using the schema system.
+ * Returns true if help was shown (caller should return early).
+ */
+function showSubcommandHelp(commandName) {
+	const schema = getCommandSchema(commandName);
+	if (schema) {
+		// For compound schemas like "review-hub-signals", display as "review-hub signals"
+		const displayName = commandName.replace(/^(review-hub|agent)-/, '$1 ');
+		console.log(`lightsprint ${displayName}\n`);
+		console.log(`  ${schema.description}\n`);
+		const params = Object.entries(schema.params || {});
+		if (params.length > 0) {
+			console.log('Options:');
+			for (const [key, param] of params) {
+				const flag = param.flag || `--${key}`;
+				const req = param.required ? ' (required)' : '';
+				const vals = param.values ? ` [${param.values.join(', ')}]` : '';
+				const def = param.default !== undefined ? ` (default: ${param.default})` : '';
+				console.log(`  ${flag.padEnd(24)} ${param.description || ''}${req}${vals}${def}`);
+			}
+		}
+		if (schema.supportsDryRun) console.log(`  ${'--dry-run'.padEnd(24)} Validate without making API calls`);
+		console.log(`\nGlobal flags: --output json|text, --json, --fields f1,f2`);
+		return true;
+	}
+	return false;
+}
+
 export async function cliMain(command, args, context = {}) {
 	// Handle help flags
 	if (!command || command === 'help' || command === '--help' || command === '-h') {
 		return showHelp();
 	}
 
+	// Resolve aliases
+	const resolvedCommand = COMMAND_ALIASES[command] || command;
+
+	// Handle hyphenated compound command aliases (review-hub-signals -> review-hub signals)
+	if (resolvedCommand === '_review-hub-signals') {
+		return cliMain('review-hub', ['signals', ...args], context);
+	}
+	if (resolvedCommand === '_review-hub-scores') {
+		return cliMain('review-hub', ['scores', ...args], context);
+	}
+
 	const { globalOptions: opts, remainingArgs } = parseGlobalOptions(args);
 
+	// Handle --help on any subcommand: lightsprint <command> --help
+	if (remainingArgs.includes('--help') || remainingArgs.includes('-h')) {
+		// For compound commands, include the subcommand in the schema key when one exists
+		let schemaKey = resolvedCommand;
+		if (remainingArgs[0] && !remainingArgs[0].startsWith('-')) {
+			const candidate = `${resolvedCommand}-${remainingArgs[0]}`;
+			if (getCommandSchema(candidate)) {
+				schemaKey = candidate;
+			}
+		}
+		if (showSubcommandHelp(schemaKey)) return;
+		// Fallback: show generic help for commands without schemas
+		console.log(`lightsprint ${resolvedCommand}\n\nRun 'lightsprint help' for full usage.`);
+		return;
+	}
+
 	try {
-		switch (command) {
+		switch (resolvedCommand) {
 			case 'tasks': return await cmdTasks(remainingArgs, opts);
 			case 'projects': return await cmdProjects(remainingArgs, opts);
 			case 'create': return await cmdCreate(remainingArgs, opts);
@@ -70,9 +186,12 @@ export async function cliMain(command, args, context = {}) {
 			case 'agent': return await cmdAgent(remainingArgs, opts);
 			case 'merge': return await cmdMerge(remainingArgs, opts);
 			case 'review-hub': return await cmdReviewHub(remainingArgs, opts);
-			default:
-				outputError('unknown_command', `Unknown command: ${command}. Use 'lightsprint help' for usage information.`, { command }, opts);
+			default: {
+				const suggestion = suggestCommand(command);
+				const hint = suggestion ? ` Did you mean '${suggestion}'?` : '';
+				outputError('unknown_command', `Unknown command: ${command}.${hint} Use 'lightsprint help' for usage information.`, { command, suggestion }, opts);
 				process.exit(1);
+			}
 		}
 	} catch (err) {
 		// Fire-and-forget error reporting to Sentry via daemon
@@ -129,20 +248,25 @@ Commands:
       lightsprint projects --status active
 
   create <title> [options]
-    Create a new task
+    Create a new task. Title can be positional or via --title flag.
+    Aliases: create-task, new, add
     Options:
+      --title <text>              Task title (alternative to positional)
       --description <text>        Task description
       --complexity <level>        low, medium, or high
       --status <status>           backlog, todo, in_progress, in_review, or done (default: backlog)
       --project <projectId>       Assign to a project by ID
       --depends-on <ids>          Comma-separated task IDs this task depends on
+      --cc-pid <pid>              Claude Code PID for session linking
       --json-body <json>          Raw JSON request body (replaces individual flags)
     Example:
       lightsprint create "Fix login bug" --description "Users can't log in" --complexity high
+      lightsprint create --title "Fix login bug" --description "Users can't log in"
 
   update <taskId> [options]
-    Update an existing task
+    Update an existing task. Task ID can be positional or via --task flag.
     Options:
+      --task <taskId>             Task ID (alternative to positional)
       --title <text>              New task title
       --description <text>        New description
       --status <status>           New status: backlog, todo, in_progress, in_review, done
@@ -154,32 +278,36 @@ Commands:
       --json-body <json>          Raw JSON request body (replaces individual flags)
     Example:
       lightsprint update abc123 --status done --assignee "John"
+      lightsprint update --task abc123 --status done
 
   get <taskId>
-    Show full details of a task including description, todo list, dependencies, and related files
+    Show full details of a task. Task ID can be positional or via --task flag.
     Example:
       lightsprint get abc123
+      lightsprint get --task abc123
 
   claim <taskId> [--cc-pid <pid>]
-    Claim a task and set its status to in_progress. Links the active CC session if found.
+    Claim a task and set its status to in_progress. Task ID can be positional or via --task flag.
     Example:
-      lightsprint claim --cc-pid $PPID abc123
+      lightsprint claim abc123
+      lightsprint claim --task abc123 --cc-pid $PPID
 
   unlink-pr <taskId>
-    Remove a linked GitHub pull request from a task
+    Remove a linked GitHub pull request from a task. Task ID can be positional or via --task flag.
     Example:
       lightsprint unlink-pr abc123
 
   delete <taskId>
-    Delete a task permanently from the repo board
+    Delete a task permanently. Task ID can be positional or via --task flag.
     Example:
-      lightsprint delete --task abc123
-      lightsprint delete --task LIG-024
+      lightsprint delete abc123
+      lightsprint delete LIG-024
 
   comment <taskId> <body>
-    Add a comment to a task
+    Add a comment to a task. Supports positional args or --task/--body flags.
     Example:
       lightsprint comment abc123 "This is now complete"
+      lightsprint comment --task abc123 --body "This is now complete"
 
   create-plan [options]
     Create a plan on Lightsprint from markdown content
@@ -533,7 +661,7 @@ async function cmdCreate(args, opts) {
 	// Check for --json-body
 	let jsonBody = null;
 
-	// Parse args: all inputs must use explicit flags
+	// Parse args: supports both --title <text> and positional <title>
 	let title = null;
 	let description = null;
 	let complexity = null;
@@ -563,8 +691,11 @@ async function cmdCreate(args, opts) {
 		} else if (args[i] === '--cc-pid' && args[i + 1]) {
 			ccPidArg = parseInt(args[++i], 10);
 			validatePid(ccPidArg);
+		} else if (!title && !args[i].startsWith('-')) {
+			// Positional: first non-flag arg is the title
+			title = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --title to set the task title.`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint create <title> [--description <text>] ...`);
 		}
 	}
 
@@ -694,7 +825,7 @@ async function cmdCreate(args, opts) {
 // ─── update ──────────────────────────────────────────────────────────────
 
 async function cmdUpdate(args, opts) {
-	// Parse flags
+	// Parse flags — supports both --task <id> and positional <taskId>
 	let taskIdInput = null;
 	let patch = {};
 	const addDeps = [];
@@ -723,13 +854,15 @@ async function cmdUpdate(args, opts) {
 			addDeps.push(args[++i]);
 		} else if (args[i] === '--remove-dep' && args[i + 1]) {
 			removeDeps.push(args[++i]);
+		} else if (!taskIdInput && !args[i].startsWith('-')) {
+			taskIdInput = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> to specify the task.`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint update <taskId> [--status <status>] ...`);
 		}
 	}
 
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint update --task <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--position <num>] [--add-dep <taskId>] [--remove-dep <taskId>]');
+		throw new Error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--position <num>] [--add-dep <taskId>] [--remove-dep <taskId>]');
 	}
 
 	if (jsonBody) {
@@ -1042,7 +1175,7 @@ async function cmdLinkPr(args, opts) {
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--task' && args[i + 1]) {
 			taskIdInput = args[++i];
-		} else if (args[i] === '--pr-url' && args[i + 1]) {
+		} else if ((args[i] === '--pr-url' || args[i] === '--pr') && args[i + 1]) {
 			prUrl = args[++i];
 		} else {
 			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> --pr-url <url>.`);
@@ -1087,13 +1220,15 @@ async function cmdUnlinkPr(args, opts) {
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--task' && args[i + 1]) {
 			taskIdInput = args[++i];
+		} else if (!taskIdInput && !args[i].startsWith('-')) {
+			taskIdInput = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId>.`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint unlink-pr <taskId>`);
 		}
 	}
 
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint unlink-pr --task <taskId>');
+		throw new Error('Usage: lightsprint unlink-pr <taskId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -1151,6 +1286,7 @@ async function cmdComment(args, opts) {
 		} else if (args[i] === '--body' && args[i + 1]) {
 			body = args[++i];
 		} else if (!args[i].startsWith('-')) {
+			// Positional args: first is taskId, second is body
 			if (!taskIdInput) {
 				taskIdInput = args[i];
 			} else if (!body) {
@@ -1672,12 +1808,42 @@ function cmdDescribe(args) {
 		console.log(JSON.stringify({ commands: names }));
 		return;
 	}
-	const schema = getCommandSchema(commandName);
-	if (!schema) {
-		console.error(JSON.stringify({ error: 'not_found', message: `Unknown command: "${commandName}". Use 'lightsprint describe' to list all commands.` }));
-		process.exit(1);
+
+	// Support compound commands: "describe agent" lists agent subcommands,
+	// "describe agent launch" or "describe agent-launch" shows specific schema
+	const subName = args[1];
+	const candidates = subName
+		? [`${commandName}-${subName}`, `${commandName} ${subName}`]
+		: [commandName];
+
+	for (const candidate of candidates) {
+		const schema = getCommandSchema(candidate);
+		if (schema) {
+			console.log(JSON.stringify(schema));
+			return;
+		}
 	}
-	console.log(JSON.stringify(schema));
+
+	// Check if this is a compound command parent (agent, review-hub)
+	const allNames = getAllCommandNames();
+	const subcommands = allNames.filter(n => n.startsWith(`${commandName}-`));
+	if (subcommands.length > 0) {
+		console.log(JSON.stringify({
+			command: commandName,
+			description: `Compound command with subcommands`,
+			subcommands: subcommands.map(n => {
+				const s = getCommandSchema(n);
+				// Display as space-separated to match CLI invocation syntax
+				// (e.g. `agent launch`, not `agent-launch`)
+				const displayName = `${commandName} ${n.slice(commandName.length + 1)}`;
+				return { command: displayName, description: s?.description || '' };
+			})
+		}));
+		return;
+	}
+
+	console.error(JSON.stringify({ error: 'not_found', message: `Unknown command: "${commandName}". Use 'lightsprint describe' to list all commands.` }));
+	process.exit(1);
 }
 
 // ─── agent ──────────────────────────────────────────────────────────────
@@ -1714,6 +1880,9 @@ async function cmdAgentLaunch(args, opts) {
 			baseRef = args[++i];
 		} else if (args[i] === '--environment-id' && args[i + 1]) {
 			environmentId = args[++i];
+		} else if (!args[i].startsWith('-')) {
+			// Positional: treat as task ID
+			taskIdInputs.push(args[i]);
 		} else {
 			throw new Error(`Unknown argument: ${args[i]}. Use --task, --provider, --model, --base-ref, --environment-id.`);
 		}
