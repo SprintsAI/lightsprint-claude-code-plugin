@@ -147,10 +147,13 @@ export async function cliMain(command, args, context = {}) {
 
 	// Handle --help on any subcommand: lightsprint <command> --help
 	if (remainingArgs.includes('--help') || remainingArgs.includes('-h')) {
-		// For compound commands (agent, review-hub), include the subcommand in the schema key
+		// For compound commands, include the subcommand in the schema key when one exists
 		let schemaKey = resolvedCommand;
-		if ((resolvedCommand === 'agent' || resolvedCommand === 'review-hub') && remainingArgs[0] && !remainingArgs[0].startsWith('-')) {
-			schemaKey = `${resolvedCommand}-${remainingArgs[0]}`;
+		if (remainingArgs[0] && !remainingArgs[0].startsWith('-')) {
+			const candidate = `${resolvedCommand}-${remainingArgs[0]}`;
+			if (getCommandSchema(candidate)) {
+				schemaKey = candidate;
+			}
 		}
 		if (showSubcommandHelp(schemaKey)) return;
 		// Fallback: show generic help for commands without schemas
@@ -1830,7 +1833,10 @@ function cmdDescribe(args) {
 			description: `Compound command with subcommands`,
 			subcommands: subcommands.map(n => {
 				const s = getCommandSchema(n);
-				return { command: n, description: s?.description || '' };
+				// Display as space-separated to match CLI invocation syntax
+				// (e.g. `agent launch`, not `agent-launch`)
+				const displayName = `${commandName} ${n.slice(commandName.length + 1)}`;
+				return { command: displayName, description: s?.description || '' };
 			})
 		}));
 		return;
