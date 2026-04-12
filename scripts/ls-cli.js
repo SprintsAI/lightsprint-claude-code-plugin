@@ -14,8 +14,15 @@
  *   claim <taskId> [--cc-pid <pid>]
  *   current-task [--cc-pid <pid>]
  *   comment <taskId> <body>
+ *   comments <taskId>
  *   delete <taskId>
  *   create-plan --content <markdown> [--title <text>] [--task <taskId>]
+ *   search <query> [--status <status>] [--assignee <name>] [--project <filter>] [--limit N]
+ *   labels [--output json]
+ *   label add <taskId> --label <labelId>
+ *   label remove <taskId> --label <labelId>
+ *   members [--output json]
+ *   subtasks <taskId>
  *   whoami
  *   merge <taskId>
  *   review-hub signals <taskId> [--refresh]
@@ -54,6 +61,11 @@ const COMMAND_ALIASES = {
 	'rm': 'delete',
 	'link': 'link-pr',
 	'unlink': 'unlink-pr',
+	// New aliases
+	'find': 'search',
+	'team': 'members',
+	'tags': 'labels',
+	'children': 'subtasks',
 	// Hyphenated compound commands -> space-separated routing
 	'review-hub-signals': '_review-hub-signals',
 	'review-hub-scores': '_review-hub-scores',
@@ -62,9 +74,9 @@ const COMMAND_ALIASES = {
 // All valid command names for "did you mean?" suggestions
 const VALID_COMMANDS = [
 	'tasks', 'projects', 'create', 'update', 'get', 'claim', 'current-task',
-	'link-pr', 'unlink-pr', 'delete', 'comment', 'create-plan', 'whoami',
+	'link-pr', 'unlink-pr', 'delete', 'comment', 'comments', 'create-plan', 'whoami',
 	'open', 'status', 'connect', 'disconnect', 'upgrade', 'config', 'describe',
-	'agent', 'merge', 'review-hub'
+	'agent', 'merge', 'review-hub', 'search', 'labels', 'label', 'members', 'subtasks'
 ];
 
 function suggestCommand(input) {
@@ -174,7 +186,13 @@ export async function cliMain(command, args, context = {}) {
 			case 'unlink-pr': return await cmdUnlinkPr(remainingArgs, opts);
 			case 'delete': return await cmdDelete(remainingArgs, opts);
 			case 'comment': return await cmdComment(remainingArgs, opts);
+			case 'comments': return await cmdComments(remainingArgs, opts);
 			case 'create-plan': return await cmdCreatePlan(remainingArgs, opts);
+			case 'search': return await cmdSearch(remainingArgs, opts);
+			case 'labels': return await cmdLabels(remainingArgs, opts);
+			case 'label': return await cmdLabel(remainingArgs, opts);
+			case 'members': return await cmdMembers(remainingArgs, opts);
+			case 'subtasks': return await cmdSubtasks(remainingArgs, opts);
 			case 'whoami': return await cmdWhoami(opts);
 			case 'open': return cmdOpen(opts);
 			case 'status': return cmdStatus(opts);
@@ -370,6 +388,50 @@ Commands:
     Example:
       lightsprint review-hub scores LIG-024
       lightsprint review-hub scores LIG-024 --refresh
+
+  search <query> [options]
+    Full-text search across tasks in the repo
+    Options:
+      --status <status>     Filter by status (comma-separated): backlog, todo, in_progress, in_review, done
+      --assignee <name>     Filter by assignee name/email
+      --project <filter>    Filter by project ID(s) or "none"
+      --limit <N>           Limit number of results (default: 20)
+    Example:
+      lightsprint search "login bug"
+      lightsprint search "auth" --status in_progress --limit 10
+
+  labels [options]
+    List all labels in the workspace
+    Example:
+      lightsprint labels
+      lightsprint labels --output json
+
+  label <subcommand> [options]
+    Add or remove a label on a task
+    Subcommands:
+      label add <taskId> --label <labelId>      Add a label to a task
+      label remove <taskId> --label <labelId>   Remove a label from a task
+    Example:
+      lightsprint label add LIG-024 --label bug
+      lightsprint label remove LIG-024 --label bug
+
+  members [options]
+    List team members in the workspace
+    Example:
+      lightsprint members
+      lightsprint members --output json
+
+  comments <taskId>
+    List all comments on a task
+    Example:
+      lightsprint comments LIG-024
+      lightsprint comments --task LIG-024 --output json
+
+  subtasks <taskId>
+    List subtasks (child tasks) of a parent task
+    Example:
+      lightsprint subtasks LIG-024
+      lightsprint subtasks --task LIG-024 --output json
 
   config <subcommand> [key] [value]
     Manage user preferences (stored in ~/.lightsprint/preferences.json)
@@ -1279,12 +1341,18 @@ async function cmdDelete(args, opts) {
 async function cmdComment(args, opts) {
 	let taskIdInput = null;
 	let body = null;
+	let updateCommentId = null;
+	let deleteCommentId = null;
 
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--task' && args[i + 1]) {
 			taskIdInput = args[++i];
 		} else if (args[i] === '--body' && args[i + 1]) {
 			body = args[++i];
+		} else if ((args[i] === '--update' || args[i] === '--update-comment') && args[i + 1]) {
+			updateCommentId = args[++i];
+		} else if ((args[i] === '--delete' || args[i] === '--delete-comment') && args[i + 1]) {
+			deleteCommentId = args[++i];
 		} else if (!args[i].startsWith('-')) {
 			// Positional args: first is taskId, second is body
 			if (!taskIdInput) {
@@ -1299,8 +1367,47 @@ async function cmdComment(args, opts) {
 		}
 	}
 
+	// Handle --update <commentId> --body <text>
+	if (updateCommentId) {
+		validateId(updateCommentId, 'Comment ID');
+		if (!body) {
+			throw new Error('--body is required when updating a comment. Usage: lightsprint comment --update <commentId> --body <text>');
+		}
+		validateCommentBody(body);
+
+		if (opts.dryRun) {
+			return outputDryRun('comment-update', { commentId: updateCommentId, body }, `PATCH /api/comments/${updateCommentId}`, opts);
+		}
+
+		await apiRequest(`/api/comments/${updateCommentId}`, {
+			method: 'PATCH',
+			body: JSON.stringify({ body })
+		});
+
+		const result = { success: true, commentId: updateCommentId, message: `Comment ${updateCommentId} updated.` };
+		outputResult(result, opts, () => console.log(result.message));
+		return;
+	}
+
+	// Handle --delete <commentId>
+	if (deleteCommentId) {
+		validateId(deleteCommentId, 'Comment ID');
+
+		if (opts.dryRun) {
+			return outputDryRun('comment-delete', { commentId: deleteCommentId }, `DELETE /api/comments/${deleteCommentId}`, opts);
+		}
+
+		await apiRequest(`/api/comments/${deleteCommentId}`, {
+			method: 'DELETE'
+		});
+
+		const result = { success: true, commentId: deleteCommentId, message: `Comment ${deleteCommentId} deleted.` };
+		outputResult(result, opts, () => console.log(result.message));
+		return;
+	}
+
 	if (!taskIdInput || !body) {
-		throw new Error('Usage: lightsprint comment <taskId> <body>');
+		throw new Error('Usage: lightsprint comment <taskId> <body>\n       lightsprint comment --update <commentId> --body <text>\n       lightsprint comment --delete <commentId>');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -1312,12 +1419,18 @@ async function cmdComment(args, opts) {
 	}
 
 	const taskId = await resolveTaskId(taskIdInput);
-	await apiRequest(`/api/tasks/${taskId}/comments`, {
+	const data = await apiRequest(`/api/tasks/${taskId}/comments`, {
 		method: 'POST',
 		body: JSON.stringify({ body })
 	});
 
-	const result = { success: true, taskId, message: `Comment added to task ${taskIdInput}.` };
+	const comment = data?.comment;
+	const result = {
+		success: true,
+		taskId,
+		commentId: comment?.id || null,
+		message: `Comment added to task ${taskIdInput}.`
+	};
 	outputResult(result, opts, () => console.log(result.message));
 }
 
@@ -2275,6 +2388,345 @@ function ensureInstalledPluginsJson(version, { logger = console.log } = {}) {
 	} catch (err) {
 		console.warn(`Warning: Could not update installed_plugins.json: ${err.message}`);
 	}
+}
+
+// ─── search ──────────────────────────────────────────────────────────────
+
+async function cmdSearch(args, opts) {
+	if (args.length === 0 || (args.length === 1 && args[0].startsWith('-'))) {
+		throw new Error('Usage: lightsprint search <query> [--status <status>] [--assignee <name>] [--project <filter>] [--limit N]');
+	}
+
+	const repoId = await getRepoId();
+	let query = null;
+	let status = null;
+	let assigneeFilter = null;
+	let projectFilter = null;
+	let limit = 20;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--status' && args[i + 1]) {
+			status = args[++i];
+		} else if (args[i] === '--assignee' && args[i + 1]) {
+			assigneeFilter = args[++i];
+		} else if (args[i] === '--project' && args[i + 1]) {
+			projectFilter = args[++i];
+		} else if (args[i] === '--limit' && args[i + 1]) {
+			limit = parseInt(args[++i], 10);
+		} else if (!args[i].startsWith('-')) {
+			// Positional: first non-flag arg is the query
+			if (!query) {
+				query = args[i];
+			} else {
+				query = query + ' ' + args[i];
+			}
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint search <query> [--status <status>] [--assignee <name>] [--project <filter>] [--limit N]`);
+		}
+	}
+
+	if (!query) {
+		throw new Error('Search query is required. Usage: lightsprint search <query>');
+	}
+
+	// Validate inputs
+	if (query.length > 500) {
+		throw new Error('Search query exceeds maximum length of 500 characters.');
+	}
+	if (/[\x00-\x1F]/.test(query)) {
+		throw new Error('Search query contains invalid control characters.');
+	}
+	if (status) {
+		for (const s of status.split(',').map(v => v.trim())) validateStatus(s);
+	}
+	if (assigneeFilter) validateAssignee(assigneeFilter);
+	if (projectFilter) projectFilter = validateProjectFilter(projectFilter);
+	limit = validatePositiveInt(limit, 'limit');
+
+	validateId(repoId, 'Repo ID');
+
+	const params = new URLSearchParams();
+	params.set('q', query);
+	params.set('limit', String(limit));
+	if (status) params.set('status', status);
+	if (assigneeFilter) params.set('assignee', assigneeFilter);
+	if (projectFilter) params.set('project', projectFilter);
+
+	const data = await apiRequest(`/api/repos/${repoId}/tasks/search?${params}`);
+	const tasks = data.tasks || data.results || [];
+	const prefix = data.taskPrefix || 'LS';
+
+	const resultTasks = tasks.map(task => {
+		const displayId = task.taskNumber != null
+			? `${prefix}-${task.taskNumber < 100 ? task.taskNumber.toString().padStart(3, '0') : task.taskNumber}`
+			: task.id;
+		return {
+			displayId,
+			id: task.id,
+			title: task.title,
+			status: task.status || 'unknown',
+			assignee: task.assignedUser?.name || task.assignee || null,
+			complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
+			project: task.project ? { id: task.project.id, name: task.project.name } : null,
+			description: task.description ? task.description.slice(0, 200) : null
+		};
+	});
+
+	const result = {
+		query,
+		tasks: resultTasks,
+		totalCount: data.totalCount || tasks.length
+	};
+
+	outputResult(result, opts, () => {
+		if (resultTasks.length === 0) {
+			console.log(`No tasks found matching "${query}".`);
+			return;
+		}
+		console.log(`Found ${resultTasks.length} task(s) matching "${query}":\n`);
+		for (const task of resultTasks) {
+			const assigneeLabel = task.assignee ? ` [${task.assignee}]` : '';
+			const complexityLabel = task.complexity ? ` (${task.complexity})` : '';
+			const projectLabel = task.project ? ` {${task.project.name}}` : '';
+			console.log(`  ${task.displayId}  [${task.status}]${assigneeLabel}${complexityLabel}${projectLabel}  ${task.title}`);
+			if (task.description) {
+				const desc = task.description.replace(/\n/g, ' ');
+				console.log(`           ${desc}${task.description.length >= 200 ? '...' : ''}`);
+			}
+		}
+	});
+}
+
+// ─── labels ──────────────────────────────────────────────────────────────
+
+async function cmdLabels(args, opts) {
+	const repoId = await getRepoId();
+	validateId(repoId, 'Repo ID');
+
+	const data = await apiRequest(`/api/repos/${repoId}/labels`);
+	const labels = data.labels || [];
+
+	const result = { labels };
+
+	outputResult(result, opts, () => {
+		if (labels.length === 0) {
+			console.log('No labels found.');
+			return;
+		}
+		console.log(`Found ${labels.length} label(s):\n`);
+		for (const label of labels) {
+			const colorStr = label.color ? ` (${label.color})` : '';
+			console.log(`  ${label.id}  ${label.name}${colorStr}`);
+		}
+	});
+}
+
+// ─── label ───────────────────────────────────────────────────────────────
+
+async function cmdLabel(args, opts) {
+	const subcommand = args[0];
+	if (!subcommand || (subcommand !== 'add' && subcommand !== 'remove')) {
+		throw new Error('Usage: lightsprint label add|remove <taskId> --label <labelId>');
+	}
+
+	const remainingArgs = args.slice(1);
+	let taskIdInput = null;
+	let labelId = null;
+
+	for (let i = 0; i < remainingArgs.length; i++) {
+		if ((remainingArgs[i] === '--label' || remainingArgs[i] === '--label-id') && remainingArgs[i + 1]) {
+			labelId = remainingArgs[++i];
+		} else if (remainingArgs[i] === '--task' && remainingArgs[i + 1]) {
+			taskIdInput = remainingArgs[++i];
+		} else if (!remainingArgs[i].startsWith('-')) {
+			if (!taskIdInput) taskIdInput = remainingArgs[i];
+			else throw new Error(`Unknown argument: ${remainingArgs[i]}`);
+		} else {
+			throw new Error(`Unknown argument: ${remainingArgs[i]}. Use: lightsprint label ${subcommand} <taskId> --label <labelId>`);
+		}
+	}
+
+	if (!taskIdInput) {
+		throw new Error(`Task ID is required. Usage: lightsprint label ${subcommand} <taskId> --label <labelId>`);
+	}
+	if (!labelId) {
+		throw new Error(`Label ID is required. Usage: lightsprint label ${subcommand} <taskId> --label <labelId>`);
+	}
+
+	validateId(taskIdInput, 'Task ID');
+	validateId(labelId, 'Label ID');
+
+	if (opts.dryRun) {
+		return outputDryRun(`label-${subcommand}`, { taskId: taskIdInput, labelId }, `${subcommand === 'add' ? 'POST' : 'DELETE'} /api/tasks/${taskIdInput}/labels`, opts);
+	}
+
+	const taskId = await resolveTaskId(taskIdInput);
+
+	if (subcommand === 'add') {
+		await apiRequest(`/api/tasks/${taskId}/labels`, {
+			method: 'POST',
+			body: JSON.stringify({ labelId })
+		});
+		const result = { success: true, taskId, labelId, message: `Label ${labelId} added to task ${taskIdInput}.` };
+		outputResult(result, opts, () => console.log(result.message));
+	} else {
+		validateId(labelId, 'Label ID');
+		await apiRequest(`/api/tasks/${taskId}/labels/${labelId}`, {
+			method: 'DELETE'
+		});
+		const result = { success: true, taskId, labelId, message: `Label ${labelId} removed from task ${taskIdInput}.` };
+		outputResult(result, opts, () => console.log(result.message));
+	}
+}
+
+// ─── members ─────────────────────────────────────────────────────────────
+
+async function cmdMembers(args, opts) {
+	const repoId = await getRepoId();
+	validateId(repoId, 'Repo ID');
+
+	const data = await apiRequest(`/api/repos/${repoId}/members`);
+	const members = data.members || data.users || [];
+
+	const resultMembers = members.map(m => ({
+		id: m.id,
+		name: m.name || m.displayName || null,
+		email: m.email || null,
+		role: m.role || null,
+		avatarUrl: m.avatarUrl || null
+	}));
+
+	const result = { members: resultMembers };
+
+	outputResult(result, opts, () => {
+		if (resultMembers.length === 0) {
+			console.log('No team members found.');
+			return;
+		}
+		console.log(`Found ${resultMembers.length} member(s):\n`);
+		for (const member of resultMembers) {
+			const roleLabel = member.role ? ` [${member.role}]` : '';
+			const emailLabel = member.email ? ` <${member.email}>` : '';
+			console.log(`  ${member.id}  ${member.name || '(unnamed)'}${emailLabel}${roleLabel}`);
+		}
+	});
+}
+
+// ─── comments ────────────────────────────────────────────────────────────
+
+async function cmdComments(args, opts) {
+	let taskIdInput = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (!args[i].startsWith('-')) {
+			if (!taskIdInput) taskIdInput = args[i];
+			else throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint comments <taskId>`);
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint comments <taskId>`);
+		}
+	}
+
+	if (!taskIdInput) {
+		throw new Error('Task ID is required. Usage: lightsprint comments <taskId>');
+	}
+
+	validateId(taskIdInput, 'Task ID');
+
+	const taskId = await resolveTaskId(taskIdInput);
+	const data = await apiRequest(`/api/tasks/${taskId}/comments`);
+	const comments = data.comments || [];
+
+	const resultComments = comments.map(c => ({
+		id: c.id,
+		body: c.body,
+		author: c.author?.name || c.authorName || c.userId || null,
+		createdAt: c.createdAt || null,
+		updatedAt: c.updatedAt || null
+	}));
+
+	const result = { taskId, comments: resultComments };
+
+	outputResult(result, opts, () => {
+		if (resultComments.length === 0) {
+			console.log(`No comments on task ${taskIdInput}.`);
+			return;
+		}
+		console.log(`${resultComments.length} comment(s) on task ${taskIdInput}:\n`);
+		for (const comment of resultComments) {
+			const authorLabel = comment.author ? `${comment.author}` : 'Unknown';
+			const dateLabel = comment.createdAt ? ` (${new Date(comment.createdAt).toLocaleString()})` : '';
+			console.log(`  [${comment.id}] ${authorLabel}${dateLabel}:`);
+			// Indent body
+			const bodyLines = (comment.body || '').split('\n');
+			for (const line of bodyLines) {
+				console.log(`    ${line}`);
+			}
+			console.log();
+		}
+	});
+}
+
+// ─── subtasks ────────────────────────────────────────────────────────────
+
+async function cmdSubtasks(args, opts) {
+	let taskIdInput = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (!args[i].startsWith('-')) {
+			if (!taskIdInput) taskIdInput = args[i];
+			else throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint subtasks <taskId>`);
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint subtasks <taskId>`);
+		}
+	}
+
+	if (!taskIdInput) {
+		throw new Error('Task ID is required. Usage: lightsprint subtasks <taskId>');
+	}
+
+	validateId(taskIdInput, 'Task ID');
+
+	const taskId = await resolveTaskId(taskIdInput);
+	const data = await apiRequest(`/api/tasks/${taskId}/subtasks`);
+	const tasks = data.tasks || data.subtasks || [];
+	const prefix = data.taskPrefix || 'LS';
+
+	const resultTasks = tasks.map(task => {
+		const displayId = task.taskNumber != null
+			? `${prefix}-${task.taskNumber < 100 ? task.taskNumber.toString().padStart(3, '0') : task.taskNumber}`
+			: task.id;
+		return {
+			displayId,
+			id: task.id,
+			title: task.title,
+			status: task.status || 'unknown',
+			assignee: task.assignedUser?.name || task.assignee || null,
+			complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null
+		};
+	});
+
+	const result = {
+		parentTaskId: taskId,
+		subtasks: resultTasks,
+		totalCount: resultTasks.length
+	};
+
+	outputResult(result, opts, () => {
+		if (resultTasks.length === 0) {
+			console.log(`No subtasks found for task ${taskIdInput}.`);
+			return;
+		}
+		console.log(`Found ${resultTasks.length} subtask(s) for ${taskIdInput}:\n`);
+		for (const task of resultTasks) {
+			const assigneeLabel = task.assignee ? ` [${task.assignee}]` : '';
+			const complexityLabel = task.complexity ? ` (${task.complexity})` : '';
+			console.log(`  ${task.displayId}  [${task.status}]${assigneeLabel}${complexityLabel}  ${task.title}`);
+		}
+	});
 }
 
 /**

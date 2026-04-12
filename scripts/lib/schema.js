@@ -232,6 +232,81 @@ const COMMAND_SCHEMAS = {
 		},
 		supportsDryRun: true,
 		supportsJsonBody: false
+	},
+	search: {
+		description: 'Full-text search across tasks in the repo',
+		params: {
+			query: { type: 'string', required: true, flag: '<query>', description: 'Search query (max 500 chars)' },
+			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'Filter by status (comma-separated)' },
+			assignee: { type: 'string', flag: '--assignee', description: 'Filter by assignee name/email' },
+			project: { type: 'string', flag: '--project', description: 'Filter by project ID(s) or "none"' },
+			limit: { type: 'integer', flag: '--limit', default: 20, description: 'Max results (default: 20)' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	labels: {
+		description: 'List all labels in the workspace',
+		params: {},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'label-add': {
+		description: 'Add a label to a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '<taskId>', description: 'Task ID (raw or display ID)' },
+			labelId: { type: 'string', required: true, flag: '--label', description: 'Label ID to add' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'label-remove': {
+		description: 'Remove a label from a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '<taskId>', description: 'Task ID (raw or display ID)' },
+			labelId: { type: 'string', required: true, flag: '--label', description: 'Label ID to remove' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	members: {
+		description: 'List team members in the workspace',
+		params: {},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	comments: {
+		description: 'List all comments on a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'comment-update': {
+		description: 'Update an existing comment',
+		params: {
+			commentId: { type: 'string', required: true, flag: '--update', description: 'Comment ID to update' },
+			body: { type: 'string', required: true, flag: '--body', maxLength: 10000, description: 'New comment text' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'comment-delete': {
+		description: 'Delete a comment',
+		params: {
+			commentId: { type: 'string', required: true, flag: '--delete', description: 'Comment ID to delete' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	subtasks: {
+		description: 'List subtasks (child tasks) of a parent task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Parent task ID (raw or display ID)' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
 	}
 };
 

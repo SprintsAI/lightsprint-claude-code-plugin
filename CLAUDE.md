@@ -43,5 +43,59 @@ The `lightsprint` CLI is primarily consumed by AI agents (via skills), not human
 - The skill `.md` files under `skills/` are the agent's only documentation. They must encode invariants that agents can't intuit from `--help`:
   - "Always use `lightsprint get <taskId>` before `lightsprint update` to confirm current state"
   - "Prefer `lightsprint claim` over `lightsprint update --status in_progress` — claim also returns full task details"
-  - "Keep comment bodies under 2000 characters"
+  - "Keep comment bodies under 10,000 characters"
 - Update skill files whenever CLI behavior changes — stale skills cause hallucinations.
+
+---
+
+## Linear MCP Feature Parity Audit
+
+### Gap Analysis (completed 2026-04-12)
+
+| Capability | Linear MCP | Lightsprint (before) | Lightsprint (after) |
+|---|---|---|---|
+| List issues/tasks | ✅ `list_issues` | ✅ `tasks` | ✅ |
+| Get issue/task | ✅ `get_issue` | ✅ `get` | ✅ |
+| Create issue/task | ✅ `create_issue` | ✅ `create` | ✅ |
+| Update issue/task | ✅ `update_issue` | ✅ `update` | ✅ |
+| Delete issue/task | ✅ `delete_issue` | ✅ `delete` | ✅ |
+| Search issues/tasks | ✅ `search_issues` | ❌ missing | ✅ `search` |
+| List labels | ✅ `list_labels` | ❌ missing | ✅ `labels` |
+| Add/remove labels | ✅ via `update_issue` | ❌ missing | ✅ `label add/remove` |
+| List users/members | ✅ `list_users` | ❌ missing | ✅ `members` |
+| List comments | ✅ `list_comments` | ❌ missing | ✅ `comments` |
+| Create comment | ✅ `create_comment` | ✅ `comment` | ✅ |
+| Update comment | ✅ `update_comment` | ❌ missing | ✅ `comment --update` |
+| Delete comment | ✅ `delete_comment` | ❌ missing | ✅ `comment --delete` |
+| List subtasks | ✅ via issue children | ❌ missing | ✅ `subtasks` |
+| List projects | ✅ `list_projects` | ✅ `projects` | ✅ |
+| Status transitions | ✅ via `update_issue` | ✅ via `update` | ✅ |
+| Assignee management | ✅ via `update_issue` | ✅ via `update` | ✅ |
+| Dependencies/relations | ✅ `create_relation` | ✅ `--add-dep/--remove-dep` | ✅ |
+| PR linking | N/A | ✅ `link-pr/unlink-pr` | ✅ |
+| PR merge | N/A | ✅ `merge` | ✅ |
+| PR review signals | N/A | ✅ `review-hub signals` | ✅ |
+| AI readiness scores | N/A | ✅ `review-hub scores` | ✅ |
+| Cloud agents | N/A | ✅ `agent launch/stop/create-pr` | ✅ |
+
+### New Commands Added
+- **`search <query>`** — Full-text search across tasks. Aliases: `find`.
+- **`labels`** — List all workspace labels. Aliases: `tags`.
+- **`label add <taskId> --label <labelId>`** — Add a label to a task.
+- **`label remove <taskId> --label <labelId>`** — Remove a label from a task.
+- **`members`** — List workspace team members. Aliases: `team`.
+- **`comments <taskId>`** — List all comments on a task.
+- **`comment --update <commentId> --body <text>`** — Update an existing comment.
+- **`comment --delete <commentId>`** — Delete a comment.
+- **`subtasks <taskId>`** — List subtasks of a parent task. Aliases: `children`.
+
+### API Endpoints Added (new)
+- `GET /api/repos/${repoId}/tasks/search` — Full-text task search
+- `GET /api/repos/${repoId}/labels` — List workspace labels
+- `POST /api/tasks/${taskId}/labels` — Add label to task
+- `DELETE /api/tasks/${taskId}/labels/${labelId}` — Remove label from task
+- `GET /api/repos/${repoId}/members` — List workspace members
+- `GET /api/tasks/${taskId}/comments` — List comments on task
+- `PATCH /api/comments/${commentId}` — Update a comment
+- `DELETE /api/comments/${commentId}` — Delete a comment
+- `GET /api/tasks/${taskId}/subtasks` — List subtasks of task

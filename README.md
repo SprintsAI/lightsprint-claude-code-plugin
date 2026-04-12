@@ -94,14 +94,52 @@ Defaults to `https://lightsprint.ai`.
 
 ### Skills (slash commands)
 
+#### Task Management
+
 | Command | Description |
 |---|---|
 | `/lightsprint:tasks` | List tasks from the board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--limit N` |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity trivial\|low\|medium\|high\|critical`, `--status backlog\|todo\|in_progress\|in_review\|done` |
+| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done` |
 | `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
+| `/lightsprint:delete <id>` | Delete a task permanently |
+| `/lightsprint:search <query>` | Full-text search across tasks. Options: `--status <status>`, `--assignee <name>`, `--limit N` |
+| `/lightsprint:subtasks <id>` | List subtasks (child tasks / dependencies) of a parent task |
+
+#### Comments
+
+| Command | Description |
+|---|---|
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:comments <id>` | List all comments on a task |
+| `/lightsprint:comment --update <commentId> --body <text>` | Update an existing comment |
+| `/lightsprint:comment --delete <commentId>` | Delete a comment |
+
+#### Labels & Team
+
+| Command | Description |
+|---|---|
+| `/lightsprint:labels` | List all labels in the workspace |
+| `/lightsprint:label add <id> --label <labelId>` | Add a label to a task |
+| `/lightsprint:label remove <id> --label <labelId>` | Remove a label from a task |
+| `/lightsprint:members` | List team members in the workspace |
+
+#### Projects & PRs
+
+| Command | Description |
+|---|---|
+| `/lightsprint:projects` | List projects in the workspace |
+| `/lightsprint:link-pr --task <id> --pr-url <url>` | Link a GitHub PR to a task |
+| `/lightsprint:unlink-pr <id>` | Remove a linked PR from a task |
+| `/lightsprint:merge <id>` | Merge the GitHub PR linked to a task |
+
+#### Review Hub
+
+| Command | Description |
+|---|---|
+| `/lightsprint:review-hub-signals <id>` | Get PR signals (CI checks, reviews, comments) |
+| `/lightsprint:review-hub-scores <id>` | Get AI readiness analysis for a PR |
 
 ### Claiming tasks
 
@@ -138,7 +176,23 @@ lightsprint-claude-code-plugin/
 │   ├── update/SKILL.md         # /lightsprint:update
 │   ├── get/SKILL.md            # /lightsprint:get
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   ├── delete/SKILL.md         # /lightsprint:delete
+│   ├── comment/SKILL.md        # /lightsprint:comment
+│   ├── comments/SKILL.md       # /lightsprint:comments (list + update/delete)
+│   ├── search/SKILL.md         # /lightsprint:search
+│   ├── labels/SKILL.md         # /lightsprint:labels
+│   ├── label/SKILL.md          # /lightsprint:label add|remove
+│   ├── members/SKILL.md        # /lightsprint:members
+│   ├── subtasks/SKILL.md       # /lightsprint:subtasks
+│   ├── projects/SKILL.md       # /lightsprint:projects
+│   ├── link-pr/SKILL.md        # /lightsprint:link-pr
+│   ├── unlink-pr/SKILL.md      # /lightsprint:unlink-pr
+│   ├── merge/SKILL.md          # /lightsprint:merge
+│   ├── review-hub-signals/SKILL.md   # /lightsprint:review-hub-signals
+│   ├── review-hub-scores/SKILL.md    # /lightsprint:review-hub-scores
+│   ├── create-plan/SKILL.md    # /lightsprint:create-plan
+│   ├── agent/SKILL.md          # /lightsprint:agent launch|stop|settings
+│   └── current-task/SKILL.md   # /lightsprint:current-task
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
