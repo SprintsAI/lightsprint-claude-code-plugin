@@ -55,7 +55,9 @@ const COMMAND_SCHEMAS = {
 			position: { type: 'integer', flag: '--position', description: 'New position within section (0-based)' },
 			addDep: { type: 'string', flag: '--add-dep', repeatable: true, description: 'Add dependency (repeatable)' },
 			removeDep: { type: 'string', flag: '--remove-dep', repeatable: true, description: 'Remove dependency (repeatable)' },
-			projectId: { type: 'string', flag: '--project', description: 'Move task to a project by ID' }
+			projectId: { type: 'string', flag: '--project', description: 'Move task to a project by ID' },
+			addLabel: { type: 'string', flag: '--add-label', repeatable: true, description: 'Add a label by ID (repeatable). Use `lightsprint labels` to list available label IDs.' },
+			removeLabel: { type: 'string', flag: '--remove-label', repeatable: true, description: 'Remove a label by ID (repeatable).' }
 		},
 		supportsDryRun: true,
 		supportsJsonBody: true
@@ -229,6 +231,68 @@ const COMMAND_SCHEMAS = {
 		description: 'Delete a task permanently',
 		params: {
 			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID like LIG-024)' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	search: {
+		description: 'Search tasks by text query across title and description',
+		params: {
+			query: { type: 'string', required: true, flag: '<query>', description: 'Search text (positional). Searches title and description.' },
+			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'Filter by status (comma-separated)' },
+			assignee: { type: 'string', flag: '--assignee', description: 'Filter by assignee name/email' },
+			project: { type: 'string', flag: '--project', description: 'Filter by project ID(s) or "none"' },
+			limit: { type: 'integer', flag: '--limit', default: 20, description: 'Max results' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	members: {
+		description: 'List workspace members (useful for finding assignees)',
+		params: {},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	labels: {
+		description: 'List available labels in the workspace',
+		params: {},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	comments: {
+		description: 'List all comments on a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
+			limit: { type: 'integer', flag: '--limit', default: 50, description: 'Max results' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	subtasks: {
+		description: 'List subtasks (child tasks) of a parent task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
+			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'Filter by status (comma-separated)' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	archive: {
+		description: 'Archive a task (soft delete — keeps it in history unlike delete)',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
+			unarchive: { type: 'boolean', flag: '--unarchive', description: 'Restore a previously archived task' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	duplicate: {
+		description: 'Duplicate/clone an existing task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID to duplicate (raw or display ID)' },
+			title: { type: 'string', flag: '--title', maxLength: MAX_TITLE_LENGTH, description: 'Override title for the new task' },
+			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, default: 'backlog', description: 'Override status for the new task' },
+			projectId: { type: 'string', flag: '--project', description: 'Assign duplicate to a project by ID' }
 		},
 		supportsDryRun: true,
 		supportsJsonBody: false

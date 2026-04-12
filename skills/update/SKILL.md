@@ -27,11 +27,28 @@ Both positional and flag syntax work: `lightsprint update LIG-024 --status done`
 | `--position <num>` | No | New position within section (0-based). Position 0 = top of section. |
 | `--add-dep <taskId>` | No | Add a dependency (this task depends on the given task). Repeatable for multiple deps. Supports display IDs, bare task numbers, or raw IDs. |
 | `--remove-dep <taskId>` | No | Remove a dependency. Repeatable for multiple deps. Supports display IDs, bare task numbers, or raw IDs. |
+| `--add-label <labelId>` | No | Add a label by ID. Repeatable for multiple labels. Use `lightsprint labels` to list available label IDs. |
+| `--remove-label <labelId>` | No | Remove a label by ID. Repeatable for multiple labels. |
 | `--json-body <json>` | No | Raw JSON request body (replaces individual field flags). Cannot combine with --title/--description/etc. |
 | `--dry-run` | No | Validate inputs without calling the API. |
 | `--output json` | No | Return structured JSON instead of human-readable text. |
 
-At least one flag is required. Only the provided fields will be updated. Field updates and dependency changes are applied independently — a dependency failure won't prevent field updates.
+At least one flag is required. Only the provided fields will be updated. Field updates, dependency changes, and label changes are applied independently — a failure in one won't prevent the others.
+
+## Label Management
+
+Use `lightsprint labels` to list available label IDs before adding or removing labels.
+
+```bash
+# Add a label to a task
+lightsprint update LIG-024 --add-label lbl-abc123
+
+# Remove a label
+lightsprint update LIG-024 --remove-label lbl-abc123
+
+# Add multiple labels in one command
+lightsprint update LIG-024 --add-label lbl-abc123 --add-label lbl-def456
+```
 
 ## Invariants
 
@@ -39,3 +56,4 @@ At least one flag is required. Only the provided fields will be updated. Field u
 - Prefer `lightsprint claim <taskId>` over `lightsprint update <taskId> --status in_progress` — claim also assigns the task and links the CC session
 - Title: max 500 chars. Description: max 50,000 chars
 - Cannot combine `--position` with `--status` — position reorders within the current section, status moves to a different section
+- Label IDs (not names) are required for `--add-label` and `--remove-label`. Use `lightsprint labels` to look up IDs.

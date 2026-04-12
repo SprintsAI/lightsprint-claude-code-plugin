@@ -64,7 +64,8 @@ const VALID_COMMANDS = [
 	'tasks', 'projects', 'create', 'update', 'get', 'claim', 'current-task',
 	'link-pr', 'unlink-pr', 'delete', 'comment', 'create-plan', 'whoami',
 	'open', 'status', 'connect', 'disconnect', 'upgrade', 'config', 'describe',
-	'agent', 'merge', 'review-hub'
+	'agent', 'merge', 'review-hub',
+	'search', 'members', 'labels', 'comments', 'subtasks', 'archive', 'duplicate'
 ];
 
 function suggestCommand(input) {
@@ -186,6 +187,13 @@ export async function cliMain(command, args, context = {}) {
 			case 'agent': return await cmdAgent(remainingArgs, opts);
 			case 'merge': return await cmdMerge(remainingArgs, opts);
 			case 'review-hub': return await cmdReviewHub(remainingArgs, opts);
+			case 'search': return await cmdSearch(remainingArgs, opts);
+			case 'members': return await cmdMembers(remainingArgs, opts);
+			case 'labels': return await cmdLabels(remainingArgs, opts);
+			case 'comments': return await cmdGetComments(remainingArgs, opts);
+			case 'subtasks': return await cmdSubtasks(remainingArgs, opts);
+			case 'archive': return await cmdArchive(remainingArgs, opts);
+			case 'duplicate': return await cmdDuplicate(remainingArgs, opts);
 			default: {
 				const suggestion = suggestCommand(command);
 				const hint = suggestion ? ` Did you mean '${suggestion}'?` : '';
@@ -384,6 +392,75 @@ Commands:
       lightsprint config set link-pr.no-task-behavior always-skip
       lightsprint config get link-pr.no-task-behavior
       lightsprint config delete link-pr.no-task-behavior
+
+  search <query> [options]
+    Search tasks by text query across title and description
+    Options:
+      --status <status>     Filter by status (comma-separated): backlog, todo, in_progress, in_review, done
+      --assignee <name>     Filter by assignee
+      --project <filter>    Filter by project ID(s) or "none"
+      --limit N             Max results (default: 20)
+      --output json         Return structured JSON
+    Example:
+      lightsprint search "login bug"
+      lightsprint search "auth" --status todo,in_progress
+
+  members [options]
+    List workspace members (useful for assignment)
+    Options:
+      --output json         Return structured JSON
+    Example:
+      lightsprint members
+
+  labels [options]
+    List available labels in the workspace
+    Options:
+      --output json         Return structured JSON
+    Example:
+      lightsprint labels
+
+  comments <taskId> [options]
+    List all comments on a task
+    Options:
+      --task <taskId>       Task ID (alternative to positional)
+      --limit N             Max results (default: 50)
+      --output json         Return structured JSON
+    Example:
+      lightsprint comments LIG-024
+      lightsprint comments --task LIG-024
+
+  subtasks <taskId> [options]
+    List subtasks (child tasks) of a parent task
+    Options:
+      --task <taskId>       Task ID (alternative to positional)
+      --status <status>     Filter by status
+      --output json         Return structured JSON
+    Example:
+      lightsprint subtasks LIG-024
+
+  archive <taskId> [options]
+    Archive a task (soft delete — keeps it in history, unlike delete)
+    Options:
+      --task <taskId>       Task ID (alternative to positional)
+      --unarchive           Restore a previously archived task
+      --dry-run             Validate without making API calls
+      --output json         Return structured JSON
+    Example:
+      lightsprint archive LIG-024
+      lightsprint archive LIG-024 --unarchive
+
+  duplicate <taskId> [options]
+    Duplicate/clone an existing task
+    Options:
+      --task <taskId>       Task ID (alternative to positional)
+      --title <text>        Override title for the new task
+      --status <status>     Override status for the new task (default: backlog)
+      --project <projectId> Assign duplicate to a project
+      --dry-run             Validate without making API calls
+      --output json         Return structured JSON
+    Example:
+      lightsprint duplicate LIG-024
+      lightsprint duplicate LIG-024 --title "Copy of login fix" --status todo
 
   describe [command]
     Show accepted parameters, types, and valid enum values as JSON
@@ -830,6 +907,8 @@ async function cmdUpdate(args, opts) {
 	let patch = {};
 	const addDeps = [];
 	const removeDeps = [];
+	const addLabels = [];
+	const removeLabels = [];
 	let jsonBody = null;
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--task' && args[i + 1]) {
@@ -854,6 +933,10 @@ async function cmdUpdate(args, opts) {
 			addDeps.push(args[++i]);
 		} else if (args[i] === '--remove-dep' && args[i + 1]) {
 			removeDeps.push(args[++i]);
+		} else if (args[i] === '--add-label' && args[i + 1]) {
+			addLabels.push(args[++i]);
+		} else if (args[i] === '--remove-label' && args[i + 1]) {
+			removeLabels.push(args[++i]);
 		} else if (!taskIdInput && !args[i].startsWith('-')) {
 			taskIdInput = args[i];
 		} else {
@@ -862,7 +945,7 @@ async function cmdUpdate(args, opts) {
 	}
 
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--position <num>] [--add-dep <taskId>] [--remove-dep <taskId>]');
+		throw new Error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--position <num>] [--add-dep <taskId>] [--remove-dep <taskId>] [--add-label <id>] [--remove-label <id>]');
 	}
 
 	if (jsonBody) {
@@ -883,8 +966,9 @@ async function cmdUpdate(args, opts) {
 
 	const hasPatch = Object.keys(patch).length > 0;
 	const hasDeps = addDeps.length > 0 || removeDeps.length > 0;
+	const hasLabels = addLabels.length > 0 || removeLabels.length > 0;
 
-	if (!hasPatch && !hasDeps) {
+	if (!hasPatch && !hasDeps && !hasLabels) {
 		throw new Error('Error: at least one field to update is required.');
 	}
 
@@ -902,13 +986,16 @@ async function cmdUpdate(args, opts) {
 	}
 	for (const id of addDeps) validateId(id, 'Dependency task ID');
 	for (const id of removeDeps) validateId(id, 'Dependency task ID');
+	for (const id of addLabels) validateId(id, 'Label ID');
+	for (const id of removeLabels) validateId(id, 'Label ID');
 
 	// Dry-run: validate only
 	if (opts.dryRun) {
-		return outputDryRun('update', { taskId: taskIdInput, patch, addDeps, removeDeps }, `PATCH /api/tasks/${taskIdInput}`, opts);
+		return outputDryRun('update', { taskId: taskIdInput, patch, addDeps, removeDeps, addLabels, removeLabels }, `PATCH /api/tasks/${taskIdInput}`, opts);
 	}
 
 	const taskId = await resolveTaskId(taskIdInput);
+	const repoId = await getRepoId();
 
 	// Apply field updates
 	if (hasPatch) {
@@ -921,6 +1008,8 @@ async function cmdUpdate(args, opts) {
 	// Apply dependency changes
 	const depsAdded = [];
 	const depsRemoved = [];
+	const labelsAdded = [];
+	const labelsRemoved = [];
 	const errors = [];
 	for (const depInput of addDeps) {
 		const depId = await resolveTaskId(depInput);
@@ -947,6 +1036,29 @@ async function cmdUpdate(args, opts) {
 		}
 	}
 
+	// Apply label changes
+	for (const labelId of addLabels) {
+		try {
+			await apiRequest(`/api/repos/${repoId}/tasks/${taskId}/labels`, {
+				method: 'POST',
+				body: JSON.stringify({ labelId })
+			});
+			labelsAdded.push(labelId);
+		} catch (err) {
+			errors.push({ action: 'add_label', input: labelId, message: err.message });
+		}
+	}
+	for (const labelId of removeLabels) {
+		try {
+			await apiRequest(`/api/repos/${repoId}/tasks/${taskId}/labels/${labelId}`, {
+				method: 'DELETE'
+			});
+			labelsRemoved.push(labelId);
+		} catch (err) {
+			errors.push({ action: 'remove_label', input: labelId, message: err.message });
+		}
+	}
+
 	// Fetch updated task to confirm
 	const data = await apiRequest(`/api/tasks/${taskId}`);
 	const task = data.task;
@@ -955,6 +1067,8 @@ async function cmdUpdate(args, opts) {
 		task: buildTaskData(task),
 		dependenciesAdded: depsAdded,
 		dependenciesRemoved: depsRemoved,
+		labelsAdded,
+		labelsRemoved,
 		errors
 	};
 
@@ -972,6 +1086,8 @@ async function cmdUpdate(args, opts) {
 		}
 		for (const id of depsAdded) console.log(`Added dependency: ${taskId} depends on ${id}`);
 		for (const id of depsRemoved) console.log(`Removed dependency: ${taskId} no longer depends on ${id}`);
+		for (const id of labelsAdded) console.log(`Added label: ${id}`);
+		for (const id of labelsRemoved) console.log(`Removed label: ${id}`);
 		for (const e of errors) console.error(`Failed to ${e.action} ${e.input}: ${e.message}`);
 	});
 }
@@ -2294,6 +2410,438 @@ async function resolveTaskPrId(taskIdInput) {
 	}
 	const pr = prs[0];
 	return { taskId, prId: pr.id, prNumber: pr.prNumber || null, prUrl: pr.prUrl || null };
+}
+
+// ─── search ──────────────────────────────────────────────────────────────
+
+async function cmdSearch(args, opts) {
+	if (args.length === 0) {
+		throw new Error('Usage: lightsprint search <query> [--status <status>] [--assignee <name>] [--project <filter>] [--limit N]');
+	}
+
+	const repoId = await getRepoId();
+	let query = null;
+	let status = null;
+	let assigneeFilter = null;
+	let projectFilter = null;
+	let limit = 20;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--status' && args[i + 1]) {
+			status = args[++i];
+		} else if (args[i] === '--assignee' && args[i + 1]) {
+			assigneeFilter = args[++i];
+		} else if (args[i] === '--project' && args[i + 1]) {
+			projectFilter = args[++i];
+		} else if (args[i] === '--limit' && args[i + 1]) {
+			limit = parseInt(args[++i], 10);
+		} else if (!args[i].startsWith('-')) {
+			query = query ? `${query} ${args[i]}` : args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint search <query> [--status <status>] ...`);
+		}
+	}
+
+	if (!query) {
+		throw new Error('Error: search query is required.');
+	}
+	if (query.length > 500) {
+		throw new Error('Search query exceeds maximum length of 500 characters.');
+	}
+	if (/[\x00-\x1F]/.test(query)) {
+		throw new Error('Search query contains invalid control characters.');
+	}
+
+	limit = validatePositiveInt(limit, 'limit');
+	if (status) {
+		for (const s of status.split(',').map(v => v.trim())) validateStatus(s);
+	}
+	if (assigneeFilter) validateAssignee(assigneeFilter);
+	if (projectFilter) projectFilter = validateProjectFilter(projectFilter);
+
+	validateId(repoId, 'Repo ID');
+
+	const params = new URLSearchParams({ q: query, limit: String(limit) });
+	if (status) params.set('status', status);
+	if (assigneeFilter) params.set('assignee', assigneeFilter);
+	if (projectFilter) params.set('project', projectFilter);
+
+	const data = await apiRequest(`/api/repos/${repoId}/tasks/search?${params}`);
+	const tasks = data.tasks || [];
+	const prefix = data.taskPrefix || 'LS';
+
+	const resultTasks = tasks.map(task => {
+		const displayId = task.taskNumber != null
+			? `${prefix}-${task.taskNumber < 100 ? task.taskNumber.toString().padStart(3, '0') : task.taskNumber}`
+			: task.id;
+		return {
+			displayId,
+			id: task.id,
+			title: task.title,
+			status: task.status || 'unknown',
+			assignee: task.assignedUser?.name || task.assignee || null,
+			complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
+			project: task.project ? { id: task.project.id, name: task.project.name } : null,
+			description: task.description ? task.description.slice(0, 120) : null
+		};
+	});
+
+	const result = { query, tasks: resultTasks, totalCount: data.totalCount || tasks.length };
+
+	outputResult(result, opts, () => {
+		if (resultTasks.length === 0) {
+			console.log(`No tasks found matching "${query}".`);
+			return;
+		}
+		console.log(`Found ${resultTasks.length} task(s) matching "${query}":\n`);
+		for (const task of resultTasks) {
+			const assigneeLabel = task.assignee ? ` [${task.assignee}]` : '';
+			const projectLabel = task.project ? ` {${task.project.name}}` : '';
+			console.log(`  ${task.displayId}  [${task.status}]${assigneeLabel}${projectLabel}  ${task.title}`);
+			if (task.description) {
+				const desc = task.description.slice(0, 120).replace(/\n/g, ' ');
+				console.log(`           ${desc}${task.description.length >= 120 ? '...' : ''}`);
+			}
+		}
+	});
+}
+
+// ─── members ─────────────────────────────────────────────────────────────
+
+async function cmdMembers(args, opts) {
+	for (const arg of args) {
+		if (arg.startsWith('-') && arg !== '--output' && arg !== '--json' && !['json', 'text'].includes(arg)) {
+			throw new Error(`Unknown argument: ${arg}. Use: lightsprint members`);
+		}
+	}
+
+	const repoId = await getRepoId();
+	validateId(repoId, 'Repo ID');
+
+	const data = await apiRequest(`/api/repos/${repoId}/members`);
+	const members = data.members || [];
+
+	const resultMembers = members.map(m => ({
+		id: m.id,
+		name: m.name,
+		email: m.email || null,
+		role: m.role || null,
+		avatar: m.avatar || null
+	}));
+
+	const result = { members: resultMembers, totalCount: resultMembers.length };
+
+	outputResult(result, opts, () => {
+		if (resultMembers.length === 0) {
+			console.log('No members found.');
+			return;
+		}
+		console.log(`Found ${resultMembers.length} member(s):\n`);
+		for (const m of resultMembers) {
+			const emailLabel = m.email ? ` <${m.email}>` : '';
+			const roleLabel = m.role ? ` [${m.role}]` : '';
+			console.log(`  ${m.name}${emailLabel}${roleLabel}`);
+		}
+	});
+}
+
+// ─── labels ──────────────────────────────────────────────────────────────
+
+async function cmdLabels(args, opts) {
+	for (const arg of args) {
+		if (arg.startsWith('-') && arg !== '--output' && arg !== '--json' && !['json', 'text'].includes(arg)) {
+			throw new Error(`Unknown argument: ${arg}. Use: lightsprint labels`);
+		}
+	}
+
+	const repoId = await getRepoId();
+	validateId(repoId, 'Repo ID');
+
+	const data = await apiRequest(`/api/repos/${repoId}/labels`);
+	const labels = data.labels || [];
+
+	const resultLabels = labels.map(l => ({
+		id: l.id,
+		name: l.name,
+		color: l.color || null,
+		description: l.description || null
+	}));
+
+	const result = { labels: resultLabels, totalCount: resultLabels.length };
+
+	outputResult(result, opts, () => {
+		if (resultLabels.length === 0) {
+			console.log('No labels found.');
+			return;
+		}
+		console.log(`Found ${resultLabels.length} label(s):\n`);
+		for (const l of resultLabels) {
+			const colorLabel = l.color ? ` (${l.color})` : '';
+			const desc = l.description ? ` — ${l.description}` : '';
+			console.log(`  ${l.name}${colorLabel}${desc}  [id: ${l.id}]`);
+		}
+	});
+}
+
+// ─── comments (get) ───────────────────────────────────────────────────────
+
+async function cmdGetComments(args, opts) {
+	let taskIdInput = null;
+	let limit = 50;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--limit' && args[i + 1]) {
+			limit = parseInt(args[++i], 10);
+		} else if (!args[i].startsWith('-')) {
+			if (!taskIdInput) taskIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint comments <taskId> [--limit N]`);
+		}
+	}
+
+	if (!taskIdInput) {
+		throw new Error('Usage: lightsprint comments <taskId> [--limit N]');
+	}
+
+	limit = validatePositiveInt(limit, 'limit');
+	validateId(taskIdInput, 'Task ID');
+
+	const taskId = await resolveTaskId(taskIdInput);
+	const repoId = await getRepoId();
+	validateId(repoId, 'Repo ID');
+
+	const params = new URLSearchParams({ limit: String(limit) });
+	const data = await apiRequest(`/api/repos/${repoId}/tasks/${taskId}/comments?${params}`);
+	const comments = data.comments || [];
+
+	const resultComments = comments.map(c => ({
+		id: c.id,
+		body: c.body,
+		author: c.author ? { id: c.author.id, name: c.author.name, email: c.author.email || null } : null,
+		createdAt: c.createdAt || null,
+		updatedAt: c.updatedAt || null
+	}));
+
+	const result = { taskId, comments: resultComments, totalCount: resultComments.length };
+
+	outputResult(result, opts, () => {
+		if (resultComments.length === 0) {
+			console.log(`No comments on task ${taskIdInput}.`);
+			return;
+		}
+		console.log(`${resultComments.length} comment(s) on task ${taskIdInput}:\n`);
+		for (const c of resultComments) {
+			const author = c.author?.name || 'Unknown';
+			const date = c.createdAt ? new Date(c.createdAt).toLocaleString() : '';
+			const dateLabel = date ? ` on ${date}` : '';
+			console.log(`  [${author}${dateLabel}]`);
+			console.log(`  ${c.body.replace(/\n/g, '\n  ')}`);
+			console.log('');
+		}
+	});
+}
+
+// ─── subtasks ─────────────────────────────────────────────────────────────
+
+async function cmdSubtasks(args, opts) {
+	let taskIdInput = null;
+	let statusFilter = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--status' && args[i + 1]) {
+			statusFilter = args[++i];
+		} else if (!args[i].startsWith('-')) {
+			if (!taskIdInput) taskIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint subtasks <taskId> [--status <status>]`);
+		}
+	}
+
+	if (!taskIdInput) {
+		throw new Error('Usage: lightsprint subtasks <taskId> [--status <status>]');
+	}
+
+	validateId(taskIdInput, 'Task ID');
+	if (statusFilter) {
+		for (const s of statusFilter.split(',').map(v => v.trim())) validateStatus(s);
+	}
+
+	const taskId = await resolveTaskId(taskIdInput);
+	const repoId = await getRepoId();
+	validateId(repoId, 'Repo ID');
+
+	const params = new URLSearchParams();
+	if (statusFilter) params.set('status', statusFilter);
+	const queryStr = params.toString();
+
+	const data = await apiRequest(`/api/repos/${repoId}/tasks/${taskId}/subtasks${queryStr ? '?' + queryStr : ''}`);
+	const subtasks = data.subtasks || data.tasks || [];
+	const prefix = data.taskPrefix || 'LS';
+
+	const resultSubtasks = subtasks.map(task => {
+		const displayId = task.taskNumber != null
+			? `${prefix}-${task.taskNumber < 100 ? task.taskNumber.toString().padStart(3, '0') : task.taskNumber}`
+			: task.id;
+		return {
+			displayId,
+			id: task.id,
+			title: task.title,
+			status: task.status || 'unknown',
+			assignee: task.assignedUser?.name || task.assignee || null,
+			complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null
+		};
+	});
+
+	const result = { parentTaskId: taskId, subtasks: resultSubtasks, totalCount: resultSubtasks.length };
+
+	outputResult(result, opts, () => {
+		if (resultSubtasks.length === 0) {
+			console.log(`No subtasks found for task ${taskIdInput}.`);
+			return;
+		}
+		console.log(`Found ${resultSubtasks.length} subtask(s) for ${taskIdInput}:\n`);
+		for (const t of resultSubtasks) {
+			const assigneeLabel = t.assignee ? ` [${t.assignee}]` : '';
+			const complexity = t.complexity ? ` (${t.complexity})` : '';
+			console.log(`  ${t.displayId}  [${t.status}]${assigneeLabel}${complexity}  ${t.title}`);
+		}
+	});
+}
+
+// ─── archive ──────────────────────────────────────────────────────────────
+
+async function cmdArchive(args, opts) {
+	let taskIdInput = null;
+	let unarchive = false;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--unarchive') {
+			unarchive = true;
+		} else if (!args[i].startsWith('-')) {
+			if (!taskIdInput) taskIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint archive <taskId> [--unarchive]`);
+		}
+	}
+
+	if (!taskIdInput) {
+		throw new Error('Usage: lightsprint archive <taskId> [--unarchive]');
+	}
+
+	validateId(taskIdInput, 'Task ID');
+	const taskId = await resolveTaskId(taskIdInput);
+	const repoId = await getRepoId();
+	validateId(repoId, 'Repo ID');
+
+	const action = unarchive ? 'unarchive' : 'archive';
+	const endpoint = `/api/repos/${repoId}/tasks/${taskId}/${action}`;
+
+	if (opts.dryRun) {
+		return outputDryRun(action, { taskId }, `POST ${endpoint}`, opts);
+	}
+
+	const data = await apiRequest(endpoint, { method: 'POST' });
+	const task = data.task || {};
+
+	const result = {
+		success: true,
+		action,
+		taskId: task.id || taskId,
+		title: task.title || null,
+		archived: !unarchive
+	};
+
+	outputResult(result, opts, () => {
+		const verb = unarchive ? 'unarchived' : 'archived';
+		const title = task.title ? ` "${task.title}"` : '';
+		console.log(`Task ${taskIdInput}${title} ${verb} successfully.`);
+	});
+}
+
+// ─── duplicate ────────────────────────────────────────────────────────────
+
+async function cmdDuplicate(args, opts) {
+	let taskIdInput = null;
+	let titleOverride = null;
+	let statusOverride = null;
+	let projectId = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskIdInput = args[++i];
+		} else if (args[i] === '--title' && args[i + 1]) {
+			titleOverride = args[++i];
+		} else if (args[i] === '--status' && args[i + 1]) {
+			statusOverride = args[++i];
+		} else if (args[i] === '--project' && args[i + 1]) {
+			projectId = args[++i];
+		} else if (!args[i].startsWith('-')) {
+			if (!taskIdInput) taskIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint duplicate <taskId> [--title <text>] [--status <status>] [--project <id>]`);
+		}
+	}
+
+	if (!taskIdInput) {
+		throw new Error('Usage: lightsprint duplicate <taskId> [--title <text>] [--status <status>] [--project <projectId>]');
+	}
+
+	validateId(taskIdInput, 'Task ID');
+	if (titleOverride) validateTitle(titleOverride);
+	if (statusOverride) validateStatus(statusOverride);
+	if (projectId) validateId(projectId, 'Project ID');
+
+	const taskId = await resolveTaskId(taskIdInput);
+	const repoId = await getRepoId();
+	validateId(repoId, 'Repo ID');
+
+	const body = {};
+	if (titleOverride) body.title = titleOverride;
+	if (statusOverride) body.status = statusOverride;
+	if (projectId) body.projectId = projectId;
+
+	const endpoint = `/api/repos/${repoId}/tasks/${taskId}/duplicate`;
+
+	if (opts.dryRun) {
+		return outputDryRun('duplicate', { sourceTaskId: taskId, ...body }, `POST ${endpoint}`, opts);
+	}
+
+	const data = await apiRequest(endpoint, {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
+
+	const newTask = data.task || {};
+	const prefix = data.taskPrefix || 'LS';
+	const displayId = newTask.taskNumber != null
+		? `${prefix}-${newTask.taskNumber < 100 ? newTask.taskNumber.toString().padStart(3, '0') : newTask.taskNumber}`
+		: newTask.id;
+
+	const result = {
+		success: true,
+		sourceTaskId: taskId,
+		task: {
+			id: newTask.id,
+			displayId,
+			title: newTask.title,
+			status: newTask.status || 'backlog',
+			complexity: (newTask.complexity && newTask.complexity !== 'unknown') ? newTask.complexity : null,
+			project: newTask.project ? { id: newTask.project.id, name: newTask.project.name } : null
+		}
+	};
+
+	outputResult(result, opts, () => {
+		console.log(`Task duplicated successfully.`);
+		console.log(`New task: ${displayId}  ${newTask.title}`);
+		console.log(`Status: ${newTask.status || 'backlog'}`);
+		if (newTask.id) console.log(`ID: ${newTask.id}`);
+	});
 }
 
 /**

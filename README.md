@@ -94,14 +94,60 @@ Defaults to `https://lightsprint.ai`.
 
 ### Skills (slash commands)
 
+#### Core Task Management
+
 | Command | Description |
 |---|---|
-| `/lightsprint:tasks` | List tasks from the board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--limit N` |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity trivial\|low\|medium\|high\|critical`, `--status backlog\|todo\|in_progress\|in_review\|done` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
-| `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
+| `/lightsprint:tasks` | List tasks from the board. Options: `--status`, `--assignee`, `--mine`, `--unassigned`, `--deps`, `--project`, `--sort`, `--limit`, `--page-all` |
+| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, dependencies, complexity |
+| `/lightsprint:create <title>` | Create a new task. Options: `--description`, `--complexity`, `--status`, `--project`, `--depends-on`, `--parent` |
+| `/lightsprint:update <id>` | Update a task. Options: `--title`, `--description`, `--status`, `--complexity`, `--assignee`, `--project`, `--add-dep`, `--remove-dep`, `--add-label`, `--remove-label` |
+| `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and links the Claude Code session |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:delete <id>` | Permanently delete a task |
+
+#### Search & Discovery
+
+| Command | Description |
+|---|---|
+| `/lightsprint:search <query>` | Search tasks by text across title and description. Options: `--status`, `--assignee`, `--project`, `--limit` |
+| `/lightsprint:projects` | List projects in the workspace. Options: `--status active\|completed\|archived` |
+| `/lightsprint:members` | List workspace members — useful for finding valid assignee names before assigning tasks |
+| `/lightsprint:labels` | List available labels — returns label IDs needed for `update --add-label` |
+
+#### Task Details & History
+
+| Command | Description |
+|---|---|
+| `/lightsprint:comments <id>` | List all comments on a task. Options: `--limit` |
+| `/lightsprint:subtasks <id>` | List subtasks (child tasks) of a parent task. Options: `--status` |
+| `/lightsprint:current-task` | Get the task linked to the current Claude Code session |
+
+#### Task Lifecycle
+
+| Command | Description |
+|---|---|
+| `/lightsprint:archive <id>` | Archive a task (soft delete — preserves history). Use `--unarchive` to restore. |
+| `/lightsprint:duplicate <id>` | Duplicate/clone a task. Options: `--title`, `--status`, `--project` |
+
+#### PR & Review
+
+| Command | Description |
+|---|---|
+| `/lightsprint:link-pr <id>` | Link a GitHub PR to a task |
+| `/lightsprint:unlink-pr <id>` | Remove a linked PR from a task |
+| `/lightsprint:merge <id>` | Merge the GitHub PR linked to a task |
+| `/lightsprint:review-hub signals <id>` | Get PR signals (CI checks, reviews, comments) |
+| `/lightsprint:review-hub scores <id>` | Get AI readiness analysis for the PR |
+
+#### Cloud Agents
+
+| Command | Description |
+|---|---|
+| `/lightsprint:agent launch` | Launch a cloud agent (anthropic, cursor, codex) for a task |
+| `/lightsprint:agent stop` | Stop the active cloud agent for a task |
+| `/lightsprint:agent settings` | Show cloud agent provider configuration |
+| `/lightsprint:agent create-pr` | Create a GitHub PR from a cloud agent's working branch |
 
 ### Claiming tasks
 
@@ -109,6 +155,58 @@ When you use `/lightsprint:claim`, the plugin:
 1. Sets the Lightsprint task to `in_progress`
 2. Creates a Claude Code task linked via `metadata: { lightsprint_task_id: "<LS task ID>" }`
 3. Subsequent `TaskUpdate` calls on the Claude Code task automatically sync to the correct Lightsprint task
+
+### Label management
+
+To add or remove labels from a task:
+
+```bash
+# Find available label IDs
+lightsprint labels
+
+# Add a label
+lightsprint update LIG-024 --add-label lbl-abc123
+
+# Remove a label
+lightsprint update LIG-024 --remove-label lbl-abc123
+```
+
+### Archive vs Delete
+
+| | Archive | Delete |
+|---|---------|--------|
+| Removed from active board | ✓ | ✓ |
+| Preserved in history | ✓ | ✗ |
+| Recoverable | ✓ (`--unarchive`) | ✗ |
+
+Prefer `archive` for obsolete tasks. Use `delete` only for mistakes.
+
+---
+
+## Gap Analysis vs Linear MCP
+
+This plugin provides feature parity with the core capabilities of the [Linear MCP server](https://linear.app/docs/mcp):
+
+| Linear MCP Feature | Lightsprint Equivalent |
+|---|---|
+| `list_issues` with filtering | `lightsprint tasks` |
+| `get_issue` | `lightsprint get` |
+| `search_issues` | `lightsprint search` ✨ |
+| `create_issue` | `lightsprint create` |
+| `update_issue` | `lightsprint update` |
+| `create_comment` | `lightsprint comment` |
+| `get_comments` | `lightsprint comments` ✨ |
+| `get_users` / member listing | `lightsprint members` ✨ |
+| `get_labels` | `lightsprint labels` ✨ |
+| `add_issue_label` / `remove_issue_label` | `lightsprint update --add-label / --remove-label` ✨ |
+| `get_projects` | `lightsprint projects` |
+| `archive_issue` | `lightsprint archive` ✨ |
+| `duplicate_issue` | `lightsprint duplicate` ✨ |
+| Sub-issue listing | `lightsprint subtasks` ✨ |
+| `assign_issue` | `lightsprint update --assignee` |
+| PR linking | `lightsprint link-pr / merge` |
+
+✨ = Added in this release for Linear MCP feature parity
 
 ---
 
@@ -128,19 +226,30 @@ lightsprint-claude-code-plugin/
 │   ├── compile.sh              # Build script for lightsprint binary
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
-│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
 │       ├── client.js           # HTTP client with automatic token refresh
+│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
+│       ├── schema.js           # Command schemas for `lightsprint describe`
+│       ├── validate.js         # Input validation helpers
 │       ├── task-map.js         # CC↔LS task ID mapping
 │       └── status-mapper.js    # Status mapping logic
 ├── skills/
 │   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
+│   ├── search/SKILL.md         # /lightsprint:search ✨
 │   ├── get/SKILL.md            # /lightsprint:get
+│   ├── create/SKILL.md         # /lightsprint:create
+│   ├── update/SKILL.md         # /lightsprint:update (extended with labels)
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   ├── comment/SKILL.md        # /lightsprint:comment (add)
+│   ├── comments/SKILL.md       # /lightsprint:comments (list) ✨
+│   ├── members/SKILL.md        # /lightsprint:members ✨
+│   ├── labels/SKILL.md         # /lightsprint:labels ✨
+│   ├── subtasks/SKILL.md       # /lightsprint:subtasks ✨
+│   ├── archive/SKILL.md        # /lightsprint:archive ✨
+│   ├── duplicate/SKILL.md      # /lightsprint:duplicate ✨
+│   ├── projects/SKILL.md       # /lightsprint:projects
+│   ├── delete/SKILL.md         # /lightsprint:delete
+│   └── ...                     # PR review, agent, merge, plan skills
 ├── install.sh                  # One-line plugin installer
-├── uninstall.sh                # Clean removal
 ├── package.json
 └── README.md
 ```
