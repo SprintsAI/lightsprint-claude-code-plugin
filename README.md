@@ -1,6 +1,6 @@
 # Lightsprint Claude Code Plugin
 
-Claude Code plugin for Lightsprint — plan review, task management skills, and repo board integration.
+Claude Code plugin for Lightsprint — sync Claude Code tasks to your Lightsprint repo board, claim work, review plans, manage PRs, and launch cloud agents directly from the CLI.
 
 ## Prerequisites
 
@@ -90,25 +90,61 @@ Defaults to `https://lightsprint.ai`.
 
 ---
 
-## How It Works
+## Skills (slash commands)
 
-### Skills (slash commands)
+### Task management
 
 | Command | Description |
 |---|---|
-| `/lightsprint:tasks` | List tasks from the board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--limit N` |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity trivial\|low\|medium\|high\|critical`, `--status backlog\|todo\|in_progress\|in_review\|done` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
-| `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
-| `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:tasks` | List tasks from the board. Filter by `--status`, `--complexity`, `--assignee`, `--mine`, `--unassigned`, `--deps`, `--project`, `--sort`, `--limit`, `--offset`, `--page-all`. |
+| `/lightsprint:create <title>` | Create a new task. Supports `--description`, `--complexity`, `--status`, `--project`, `--depends-on`, `--parent`, `--json-body`, `--dry-run`. |
+| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, dependencies, complexity. |
+| `/lightsprint:update <id>` | Update a task — title, description, status, complexity, assignee, position, or dependencies. |
+| `/lightsprint:delete <id>` | Permanently delete a task from the board. |
+| `/lightsprint:claim <id>` | Claim a task — sets it to `in_progress` and returns full details. |
+| `/lightsprint:comment <id> <text>` | Add a comment to a task. |
+| `/lightsprint:current-task` | Get the Lightsprint task linked to the current Claude Code session (auto-discovers via session PID). |
+| `/lightsprint:projects` | List projects in the workspace. Useful for finding project IDs. |
+| `/lightsprint:create-plan` | Upload a markdown plan/design doc to Lightsprint for team visibility and review. |
+
+### PR workflow
+
+| Command | Description |
+|---|---|
+| `/lightsprint:link-pr` | Link a GitHub PR to a Lightsprint task. |
+| `/lightsprint:unlink-pr` | Remove the linked PR from a task. |
+| `/lightsprint:merge` | Merge the PR linked to a task. Supports direct merge and GitHub merge queue. |
+| `/lightsprint:review-hub-scores` | Get AI readiness analysis (score, summaries, callouts, suggested actions) for a task's linked PR. |
+| `/lightsprint:review-hub-signals` | Get PR signals (CI checks, reviews, comments, deployments) for a task's linked PR. |
+
+### Cloud agents
+
+| Command | Description |
+|---|---|
+| `/lightsprint:agent` | Launch, stop, or check cloud agents on tasks. Supports `anthropic`, `cursor`, and `codex` providers. |
+| `/lightsprint:agent-settings` | Check which cloud agent providers are configured and their default models. |
+| `/lightsprint:agent-create-pr` | Create a GitHub PR from a cloud agent's working branch after it finishes work. |
+
+Every CLI command supports `--output json` for structured output and `--dry-run` on mutating operations. Run `lightsprint describe <command>` for full schema introspection.
+
+---
+
+## How It Works
+
+### Plan review
+
+When you exit plan mode in Claude Code, the plugin's `PermissionRequest` hook captures the plan and routes it to Lightsprint for review — giving your team visibility into proposed work before code is written.
 
 ### Claiming tasks
 
-When you use `/lightsprint:claim`, the plugin:
+When you run `/lightsprint:claim`, the plugin:
 1. Sets the Lightsprint task to `in_progress`
-2. Creates a Claude Code task linked via `metadata: { lightsprint_task_id: "<LS task ID>" }`
-3. Subsequent `TaskUpdate` calls on the Claude Code task automatically sync to the correct Lightsprint task
+2. Links the Claude Code session (via PID) to the Lightsprint task
+3. Subsequent session events (task updates, tool use, stop, subagent activity) automatically sync status and progress back to Lightsprint
+
+### Session sync
+
+The plugin registers hooks for `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`, `TaskCompleted`, `PostToolUse` (Bash / TaskCreate / TaskUpdate), `SubagentStart`, and `SubagentStop`. These emit events to a local daemon that mirrors them to Lightsprint — no blocking, no prompts.
 
 ---
 
@@ -120,32 +156,41 @@ lightsprint-claude-code-plugin/
 │   ├── plugin.json             # Plugin manifest
 │   └── marketplace.json        # Marketplace registry entry
 ├── hooks/
-│   └── hooks.json              # PermissionRequest hook for plan review
+│   └── hooks.json              # PermissionRequest, Session, PostToolUse, Subagent hooks
 ├── scripts/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
-│   ├── review-plan.js          # Plan review handler (exports reviewPlanMain)
-│   ├── ls-cli.js               # Task management commands (exports cliMain)
-│   ├── compile.sh              # Build script for lightsprint binary
+│   ├── ls-cli.js               # Task / PR / agent commands
+│   ├── review-plan.js          # Plan review handler
+│   ├── cc-daemon.js            # Local daemon that mirrors session events to Lightsprint
+│   ├── cc-start.js             # SessionStart hook
+│   ├── cc-end.js               # SessionEnd hook
+│   ├── cc-event.js             # UserPromptSubmit / Stop / Task* / Subagent* hook
+│   ├── cc-pr-created.js        # PostToolUse Bash hook (detects `gh pr create`)
+│   ├── cc-review.js            # PermissionRequest hook for ExitPlanMode
+│   ├── compile.sh              # Build script for the `lightsprint` binary
+│   ├── deploy-tag.sh           # Release tagging script
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
-│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
+│       ├── browser.js          # Cross-platform browser opener
+│       ├── cc-utils.js         # Claude Code session helpers
 │       ├── client.js           # HTTP client with automatic token refresh
-│       ├── task-map.js         # CC↔LS task ID mapping
-│       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
+│       ├── filelock.js         # Cross-process file locking
+│       ├── options.js          # CLI option parsing
+│       ├── output.js           # Human / JSON output formatting
+│       ├── plan-tracker.js     # Plan review state
+│       ├── schema.js           # `describe` command schemas
+│       ├── sentry.js           # Error reporting
+│       ├── status-mapper.js    # Lightsprint ↔ Claude Code status mapping
+│       ├── task-map.js         # CC session ↔ LS task mapping
+│       └── validate.js         # Input validation (task IDs, enums, control chars)
+├── skills/                     # One SKILL.md per slash command
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
+├── npx-install.js              # `npx lightsprint` entry point
 ├── package.json
 └── README.md
 ```
-
-Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
 
 ### Local files
 
@@ -153,6 +198,8 @@ Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
 |---|---|
 | `~/.lightsprint/repos.json` | Per-folder OAuth tokens (access + refresh + expiry + repo ID) |
 | `~/.lightsprint/active-task.json` | Currently in-progress task |
+| `~/.lightsprint/daemon.log` | Daemon event log |
+| `~/.lightsprint/sync.log` | Sync activity log |
 
 ---
 
@@ -180,4 +227,12 @@ Verify the plugin is loaded:
 claude --debug
 ```
 
-Check that `hooks/hooks.json` is being picked up and `PostToolUse` matchers are registered.
+Check that `hooks/hooks.json` is being picked up and the relevant hook matchers (e.g. `PermissionRequest` → `ExitPlanMode`) are registered.
+
+### Daemon / sync debugging
+
+Tail the daemon and sync logs:
+
+```bash
+tail -f ~/.lightsprint/daemon.log ~/.lightsprint/sync.log
+```
