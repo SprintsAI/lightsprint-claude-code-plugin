@@ -5,9 +5,21 @@
  * instead of relying on stale documentation baked into skill prompts.
  */
 
-import { VALID_STATUSES, VALID_COMPLEXITIES, VALID_PROVIDERS, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH, MAX_COMMENT_LENGTH } from './validate.js';
+import { VALID_STATUSES, VALID_COMPLEXITIES, VALID_PROVIDERS, VALID_RELATION_TYPES, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH, MAX_COMMENT_LENGTH } from './validate.js';
 
 const COMMAND_SCHEMAS = {
+	search: {
+		description: 'Full-text search across tasks in the repo',
+		params: {
+			query: { type: 'string', required: true, flag: '--query', description: 'Search query text (also accepts positional arg)' },
+			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'Filter results by status (comma-separated)' },
+			project: { type: 'string', flag: '--project', description: 'Filter by project ID(s) or "none"' },
+			assignee: { type: 'string', flag: '--assignee', description: 'Filter by assignee name/email' },
+			limit: { type: 'integer', flag: '--limit', default: 20, description: 'Max results (server max: 100)' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
 	tasks: {
 		description: 'List tasks from the repo board',
 		params: {
@@ -25,6 +37,124 @@ const COMMAND_SCHEMAS = {
 		description: 'List projects in the repo workspace',
 		params: {
 			status: { type: 'enum', flag: '--status', values: ['active', 'completed', 'archived'], description: 'Filter by project status' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'create-project': {
+		description: 'Create a new project in the repo workspace',
+		params: {
+			name: { type: 'string', required: true, flag: '--name', maxLength: 200, description: 'Project name' },
+			description: { type: 'string', flag: '--description', maxLength: 10000, description: 'Project description' },
+			color: { type: 'string', flag: '--color', description: 'Color hex code (e.g. #FF5733)' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'update-project': {
+		description: 'Update an existing project',
+		params: {
+			projectId: { type: 'string', required: true, flag: '--project', description: 'Project ID (raw or positional)' },
+			name: { type: 'string', flag: '--name', maxLength: 200, description: 'New project name' },
+			description: { type: 'string', flag: '--description', maxLength: 10000, description: 'New description' },
+			status: { type: 'enum', flag: '--status', values: ['active', 'completed', 'archived'], description: 'New project status' },
+			color: { type: 'string', flag: '--color', description: 'New color hex code' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'list-comments': {
+		description: 'List all comments on a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	labels: {
+		description: 'List all labels in the repo workspace',
+		params: {
+			project: { type: 'string', flag: '--project', description: 'Filter labels by project ID (optional)' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'create-label': {
+		description: 'Create a new label in the workspace',
+		params: {
+			name: { type: 'string', required: true, flag: '--name', maxLength: 100, description: 'Label name' },
+			color: { type: 'string', flag: '--color', description: 'Color hex code (e.g. #FF5733)' },
+			description: { type: 'string', flag: '--description', maxLength: 500, description: 'Label description' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'update-label': {
+		description: 'Update an existing label',
+		params: {
+			labelId: { type: 'string', required: true, flag: '--label', description: 'Label ID (raw or positional)' },
+			name: { type: 'string', flag: '--name', maxLength: 100, description: 'New label name' },
+			color: { type: 'string', flag: '--color', description: 'New color hex code' },
+			description: { type: 'string', flag: '--description', maxLength: 500, description: 'New description' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'delete-label': {
+		description: 'Delete a label permanently',
+		params: {
+			labelId: { type: 'string', required: true, flag: '--label', description: 'Label ID (raw or positional)' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'add-label': {
+		description: 'Add a label to a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID' },
+			labelId: { type: 'string', required: true, flag: '--label', description: 'Label ID to add' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'remove-label': {
+		description: 'Remove a label from a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID' },
+			labelId: { type: 'string', required: true, flag: '--label', description: 'Label ID to remove' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	members: {
+		description: 'List all members (users) in the repo workspace',
+		params: {},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	relate: {
+		description: 'Create a relation between two tasks (blocking, related, or duplicate)',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Source task ID' },
+			type: { type: 'enum', required: true, flag: '--type', values: VALID_RELATION_TYPES, description: 'Relation type' },
+			target: { type: 'string', required: true, flag: '--target', description: 'Target task ID' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	unrelate: {
+		description: 'Remove a relation between tasks',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Source task ID' },
+			relationId: { type: 'string', required: true, flag: '--relation-id', description: 'Relation ID to remove (from "lightsprint relations")' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	relations: {
+		description: 'List all relations for a task',
+		params: {
+			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false

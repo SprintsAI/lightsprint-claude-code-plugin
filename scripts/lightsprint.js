@@ -8,9 +8,24 @@
  *   create <title> [opts]   Create a new task (also: --title <text>)
  *   update <taskId> [opts]  Update an existing task (also: --task <id>)
  *   get <taskId>            Show full task details (also: --task <id>)
+ *   search <query> [opts]   Search tasks by keyword
  *   claim <taskId>          Claim a task (also: --task <id>)
  *   comment <taskId> <body> Add a comment to a task (also: --task/--body)
+ *   list-comments <taskId>  List all comments on a task
  *   create-plan [opts]      Create a plan from markdown content
+ *   projects [opts]         List projects
+ *   create-project [opts]   Create a new project
+ *   update-project [opts]   Update an existing project
+ *   labels [opts]           List labels in workspace
+ *   create-label [opts]     Create a new label
+ *   update-label [opts]     Update an existing label
+ *   delete-label [opts]     Delete a label
+ *   add-label [opts]        Add a label to a task
+ *   remove-label [opts]     Remove a label from a task
+ *   members                 List team members
+ *   relate [opts]           Create a relation between tasks
+ *   unrelate [opts]         Remove a relation between tasks
+ *   relations <taskId>      List relations for a task
  *   agent launch [opts]     Launch a cloud agent for a task
  *   agent stop [opts]       Stop the active agent for a task
  *   agent settings [opts]   Show cloud agent provider configuration
@@ -78,12 +93,27 @@ Usage:
 Commands:
   review-plan [input]     Review an implementation plan (Claude Code hook)
   tasks [options]         List tasks from the repo board
+  search <query> [opts]   Full-text search across tasks
   create <title> [opts]   Create a new task (also: --title <text>)
   update <taskId> [opts]  Update an existing task (also: --task <id>)
   get <taskId>            Show full task details (also: --task <id>)
   claim <taskId>          Claim a task (set to in_progress) (also: --task <id>)
   comment <taskId> <body> Add a comment to a task (also: --task/--body)
+  list-comments <taskId>  List all comments on a task (alias: comments)
   create-plan [opts]      Create a plan from markdown content
+  projects [opts]         List projects in the workspace
+  create-project [opts]   Create a new project
+  update-project [opts]   Update an existing project
+  labels [opts]           List labels in the workspace (alias: tags)
+  create-label [opts]     Create a new label
+  update-label [opts]     Update an existing label
+  delete-label [opts]     Delete a label permanently
+  add-label [opts]        Add a label to a task
+  remove-label [opts]     Remove a label from a task
+  members                 List workspace members (alias: team)
+  relate [opts]           Create a relation between tasks (blocking/related/duplicate)
+  unrelate [opts]         Remove a relation between tasks
+  relations <taskId>      List all relations for a task
   agent launch [opts]     Launch a cloud agent for a task
   agent stop [opts]       Stop the active agent for a task
   agent settings [opts]   Show cloud agent provider configuration
