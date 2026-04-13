@@ -14,8 +14,8 @@ const sentryMock = {
 	close: mock(() => Promise.resolve(true)),
 };
 
-// Mock the @sentry/node module before importing sentry.js
-mock.module('@sentry/node', () => sentryMock);
+// Mock the @sentry/node-core module before importing sentry.js
+mock.module('@sentry/node-core', () => sentryMock);
 
 // Import after mock is set up
 const { initSentry, setSentryContext, addBreadcrumb, captureException, shutdownSentry, _resetForTesting } = await import('../lib/sentry.js');

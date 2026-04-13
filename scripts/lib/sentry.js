@@ -4,9 +4,15 @@
  * Centralized Sentry initialization for the daemon process.
  * All Sentry configuration, context management, and shutdown
  * are handled through this module.
+ *
+ * Uses @sentry/node-core instead of @sentry/node to avoid the heavy
+ * transitive OpenTelemetry auto-instrumentation tree (~70+ packages for
+ * Express, Redis, MongoDB, etc.) that @sentry/node bundles by default.
+ * This project only needs error reporting (tracesSampleRate: 0), so the
+ * lighter core package is the right fit for a CLI/daemon tool.
  */
 
-import * as Sentry from '@sentry/node';
+import * as Sentry from '@sentry/node-core';
 import { createHash } from 'crypto';
 
 // Build-time defines (same pattern as review-plan.js)
