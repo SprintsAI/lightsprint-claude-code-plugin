@@ -186,6 +186,7 @@ export function validateAssignee(value) {
 export const MAX_TITLE_LENGTH = 500;
 export const MAX_DESCRIPTION_LENGTH = 50000;
 export const MAX_COMMENT_LENGTH = 10000;
+export const MAX_PROJECT_NAME_LENGTH = 200;
 
 /**
  * Validate string length and reject control characters (except newlines/tabs in bodies).
@@ -231,6 +232,38 @@ export function validateDescription(description) {
  */
 export function validateCommentBody(body) {
 	return validateLength(body, MAX_COMMENT_LENGTH, 'Comment body', { allowNewlines: true });
+}
+
+/**
+ * Validate a project name. Required, non-empty after trim, no control chars.
+ * @param {string} name
+ * @returns {string}
+ */
+export function validateProjectName(name) {
+	if (typeof name !== 'string' || name.trim().length === 0) {
+		throw new Error('Project name is required.');
+	}
+	return validateLength(name, MAX_PROJECT_NAME_LENGTH, 'Project name');
+}
+
+// ─── Color validation ──────────────────────────────────────────────────
+
+const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * Validate a hex color string (#RGB or #RRGGBB).
+ * @param {string} color
+ * @returns {string} The validated color
+ */
+export function validateHexColor(color) {
+	if (!color || typeof color !== 'string') {
+		throw new Error('Color is required.');
+	}
+	if (!HEX_COLOR_PATTERN.test(color)) {
+		emitBreadcrumb(`Invalid color: "${color}"`, { color });
+		throw new Error(`Invalid color: "${color}". Expected hex format like #RRGGBB or #RGB.`);
+	}
+	return color;
 }
 
 // ─── URL validation ─────────────────────────────────────────────────────

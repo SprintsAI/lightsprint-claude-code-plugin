@@ -5,7 +5,9 @@
  * instead of relying on stale documentation baked into skill prompts.
  */
 
-import { VALID_STATUSES, VALID_COMPLEXITIES, VALID_PROVIDERS, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH, MAX_COMMENT_LENGTH } from './validate.js';
+import { VALID_STATUSES, VALID_COMPLEXITIES, VALID_PROVIDERS, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH, MAX_COMMENT_LENGTH, MAX_PROJECT_NAME_LENGTH } from './validate.js';
+
+const VALID_PROJECT_STATUSES_SCHEMA = ['active', 'completed', 'archived'];
 
 const COMMAND_SCHEMAS = {
 	tasks: {
@@ -24,10 +26,20 @@ const COMMAND_SCHEMAS = {
 	projects: {
 		description: 'List projects in the repo workspace',
 		params: {
-			status: { type: 'enum', flag: '--status', values: ['active', 'completed', 'archived'], description: 'Filter by project status' }
+			status: { type: 'enum', flag: '--status', values: VALID_PROJECT_STATUSES_SCHEMA, description: 'Filter by project status' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
+	},
+	'projects-create': {
+		description: 'Create a new project (project tag) in the repo workspace',
+		params: {
+			name: { type: 'string', required: true, flag: '--name', maxLength: MAX_PROJECT_NAME_LENGTH, description: 'Project name (positional or via --name)' },
+			color: { type: 'string', flag: '--color', description: 'Hex color (e.g. #FF9D00 or #F90)' },
+			status: { type: 'enum', flag: '--status', values: VALID_PROJECT_STATUSES_SCHEMA, default: 'active', description: 'Initial project status' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: true
 	},
 	create: {
 		description: 'Create a new task',

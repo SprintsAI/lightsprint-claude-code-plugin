@@ -151,6 +151,24 @@ function createMockServer() {
 				return Response.json({ task: newTask }, { status: 201 });
 			}
 
+			// List projects
+			if (path === `/api/repos/${repoId}/projects` && method === 'GET') {
+				return Response.json({ projects: [] });
+			}
+
+			// Create project
+			if (path === `/api/repos/${repoId}/projects` && method === 'POST') {
+				const newId = 'project-' + randomBytes(4).toString('hex');
+				const newProject = {
+					id: newId,
+					name: body?.name || 'Untitled',
+					color: body?.color || null,
+					projectNumber: 1,
+					status: body?.status || 'active',
+				};
+				return Response.json({ project: newProject }, { status: 201 });
+			}
+
 			// Get task
 			const getTaskMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
 			if (getTaskMatch && method === 'GET') {
@@ -374,6 +392,50 @@ describe('E2E: Mock Server', () => {
 
 		test('create rejects missing title', async () => {
 			const result = await runCli(['create']);
+			expect(result.exitCode).not.toBe(0);
+		});
+	});
+
+	// ─── CLI: projects create ────────────────────────────────────────────
+
+	describe('CLI: projects create', () => {
+		test('creates a project via mock server', async () => {
+			const result = await runCliJson(['projects', 'create', 'E2E Project Tag']);
+			expect(result.exitCode).toBe(0);
+			expect(result.json).toBeDefined();
+			expect(result.json.project).toBeDefined();
+			expect(result.json.project.name).toBe('E2E Project Tag');
+			expect(result.json.project.id).toMatch(/^project-/);
+		});
+
+		test('sends color and status to API', async () => {
+			await runCliJson(['projects', 'create', '--name', 'Colored', '--color', '#FF9D00', '--status', 'active']);
+			const req = mockServer.requests.find(r => r.path.includes('/projects') && r.method === 'POST');
+			expect(req).toBeDefined();
+			expect(req.body.name).toBe('Colored');
+			expect(req.body.color).toBe('#FF9D00');
+			expect(req.body.status).toBe('active');
+		});
+
+		test('--dry-run does not hit API', async () => {
+			const result = await runCliJson(['projects', 'create', 'DryRun Tag', '--dry-run']);
+			expect(result.exitCode).toBe(0);
+			const req = mockServer.requests.find(r => r.method === 'POST' && r.path.includes('/projects'));
+			expect(req).toBeUndefined();
+		});
+
+		test('rejects missing name', async () => {
+			const result = await runCli(['projects', 'create']);
+			expect(result.exitCode).not.toBe(0);
+		});
+
+		test('rejects invalid hex color', async () => {
+			const result = await runCli(['projects', 'create', 'Bad Color', '--color', 'notacolor']);
+			expect(result.exitCode).not.toBe(0);
+		});
+
+		test('rejects invalid status', async () => {
+			const result = await runCli(['projects', 'create', 'Bad Status', '--status', 'pending']);
 			expect(result.exitCode).not.toBe(0);
 		});
 	});

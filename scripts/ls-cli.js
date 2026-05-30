@@ -8,6 +8,7 @@
  * Commands:
  *   tasks [--status backlog|todo|in_progress|in_review|done] [--assignee <name>] [--project <filter>] [--sort position|updated_at|created_at] [--limit N] [--offset N]
  *   projects [--status active|completed|archived]
+ *   projects create <name> [--color <hex>] [--status active|completed|archived]
  *   create <title> [--description <text>] [--complexity <level>] [--status <status>] [--project <projectId>] [--depends-on <id1,id2,...>] [--cc-pid <pid>]
  *   update <taskId> [--title <text>] [--description <text>] [--status <status>] [--complexity <level>] [--assignee <name>] [--add-dep <taskId>] [--remove-dep <taskId>]
  *   get <taskId>
@@ -34,7 +35,7 @@ import { join } from 'path';
 import { apiRequest, apiRequestSSE, getRepoId, getRepoInfo } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
-import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider } from './lib/validate.js';
+import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider, validateProjectName, validateHexColor } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByRepoId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
@@ -105,7 +106,7 @@ function showSubcommandHelp(commandName) {
 	const schema = getCommandSchema(commandName);
 	if (schema) {
 		// For compound schemas like "review-hub-signals", display as "review-hub signals"
-		const displayName = commandName.replace(/^(review-hub|agent)-/, '$1 ');
+		const displayName = commandName.replace(/^(review-hub|agent|projects)-/, '$1 ');
 		console.log(`lightsprint ${displayName}\n`);
 		console.log(`  ${schema.description}\n`);
 		const params = Object.entries(schema.params || {});
@@ -246,6 +247,18 @@ Commands:
     Example:
       lightsprint projects
       lightsprint projects --status active
+
+  projects create <name> [options]
+    Create a new project (project tag) in the repo's workspace.
+    Name can be positional or via --name flag.
+    Options:
+      --name <text>               Project name (alternative to positional)
+      --color <hex>               Hex color (e.g. #FF9D00 or #F90)
+      --status <status>           Initial status: active (default), completed, archived
+      --json-body <json>          Raw JSON request body (replaces individual flags)
+    Example:
+      lightsprint projects create "Auth refactor"
+      lightsprint projects create "Auth refactor" --color "#FF9D00"
 
   create <title> [options]
     Create a new task. Title can be positional or via --title flag.
@@ -596,6 +609,16 @@ async function cmdTasks(args, opts) {
 const VALID_PROJECT_STATUSES = ['active', 'completed', 'archived'];
 
 async function cmdProjects(args, opts) {
+	// Dispatch to subcommand. First non-flag arg may be a subcommand like "create".
+	// If it's not a known subcommand, treat the whole arg list as filters for list.
+	const subcommand = args[0];
+	if (subcommand === 'create') {
+		return await cmdProjectsCreate(args.slice(1), opts);
+	}
+	return await cmdProjectsList(args, opts);
+}
+
+async function cmdProjectsList(args, opts) {
 	const repoId = await getRepoId();
 
 	let statusFilter = null;
@@ -646,6 +669,90 @@ async function cmdProjects(args, opts) {
 				: ` (${p.taskCount} tasks)`;
 			console.log(`  P-${p.projectNumber}  ${p.name}${statusLabel}${taskLabel}`);
 		}
+	});
+}
+
+async function cmdProjectsCreate(args, opts) {
+	const repoId = await getRepoId();
+
+	let name = null;
+	let color = null;
+	let status = null;
+	let jsonBody = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if ((args[i] === '--json-body' || args[i] === '--json') && args[i + 1]) {
+			jsonBody = args[++i];
+		} else if (args[i] === '--name' && args[i + 1]) {
+			name = args[++i];
+		} else if (args[i] === '--color' && args[i + 1]) {
+			color = args[++i];
+		} else if (args[i] === '--status' && args[i + 1]) {
+			status = args[++i];
+		} else if (!name && !args[i].startsWith('-')) {
+			// Positional: first non-flag arg is the name
+			name = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint projects create <name> [--color <hex>] [--status active|completed|archived]`);
+		}
+	}
+
+	let body;
+	if (jsonBody) {
+		if (name || color || status) {
+			throw new Error('Cannot combine --json/--json-body with --name, --color, or --status. Use --json/--json-body alone.');
+		}
+		try {
+			body = JSON.parse(jsonBody);
+		} catch {
+			throw new Error('Invalid JSON in --json/--json-body.');
+		}
+		if ('name' in body) validateProjectName(body.name);
+		if ('color' in body && body.color !== null) validateHexColor(body.color);
+		if ('status' in body) validateEnum(body.status, VALID_PROJECT_STATUSES, 'project status');
+		if (!('name' in body)) throw new Error('Project name is required.');
+	} else {
+		if (!name) {
+			throw new Error('Usage: lightsprint projects create <name> [--color <hex>] [--status active|completed|archived]');
+		}
+		validateProjectName(name);
+		if (color) validateHexColor(color);
+		if (status) validateEnum(status, VALID_PROJECT_STATUSES, 'project status');
+
+		body = { name };
+		if (color) body.color = color;
+		if (status) body.status = status;
+	}
+
+	validateId(repoId, 'Repo ID');
+
+	if (opts.dryRun) {
+		return outputDryRun('projects create', body, `POST /api/repos/${repoId}/projects`, opts);
+	}
+
+	const data = await apiRequest(`/api/repos/${repoId}/projects`, {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
+
+	const project = data.project || data;
+
+	const result = {
+		project: {
+			id: project.id,
+			name: project.name,
+			color: project.color || null,
+			projectNumber: project.projectNumber,
+			status: project.status || 'active'
+		}
+	};
+
+	outputResult(result, opts, () => {
+		console.log(`Created project: ${project.name}`);
+		console.log(`ID: ${project.id}`);
+		if (project.projectNumber !== undefined) console.log(`Number: P-${project.projectNumber}`);
+		if (project.color) console.log(`Color: ${project.color}`);
+		console.log(`Status: ${project.status || 'active'}`);
 	});
 }
 

@@ -48,4 +48,16 @@ describe('CLI routing', () => {
 		expect(stdout).toContain('lightsprint review-plan');
 		expect(stdout).toContain('Review');
 	});
+
+	test('help mentions projects create', async () => {
+		const stdout = await runCli('help');
+		expect(stdout).toContain('projects create');
+	});
+
+	test('projects create --help shows schema-based usage', async () => {
+		const stdout = await runCli('projects', 'create', '--help');
+		expect(stdout).toContain('lightsprint projects create');
+		expect(stdout).toContain('--name');
+		expect(stdout).toContain('--color');
+	});
 });

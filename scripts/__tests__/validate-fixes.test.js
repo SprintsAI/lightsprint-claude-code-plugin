@@ -5,7 +5,10 @@ import {
 	validatePid,
 	validatePositiveInt,
 	validateAssignee,
+	validateProjectName,
+	validateHexColor,
 	VALID_STATUSES,
+	MAX_PROJECT_NAME_LENGTH,
 } from '../lib/validate.js';
 
 describe('validateEnum', () => {
@@ -94,5 +97,71 @@ describe('validateAssignee', () => {
 
 	test('rejects control characters', () => {
 		expect(() => validateAssignee('john\x00doe')).toThrow(/control characters/);
+	});
+});
+
+describe('validateProjectName', () => {
+	test('accepts simple name', () => {
+		expect(validateProjectName('Auth refactor')).toBe('Auth refactor');
+	});
+
+	test('accepts name with punctuation', () => {
+		expect(validateProjectName('Q2 2026 — sprint goals!')).toBe('Q2 2026 — sprint goals!');
+	});
+
+	test('rejects empty string', () => {
+		expect(() => validateProjectName('')).toThrow(/Project name is required/);
+	});
+
+	test('rejects whitespace-only', () => {
+		expect(() => validateProjectName('   ')).toThrow(/Project name is required/);
+	});
+
+	test('rejects non-string', () => {
+		expect(() => validateProjectName(123)).toThrow(/Project name is required/);
+		expect(() => validateProjectName(null)).toThrow(/Project name is required/);
+	});
+
+	test('rejects string over max length', () => {
+		expect(() => validateProjectName('a'.repeat(MAX_PROJECT_NAME_LENGTH + 1))).toThrow(/exceeds maximum length/);
+	});
+
+	test('rejects control characters', () => {
+		expect(() => validateProjectName('bad\x00name')).toThrow(/control characters/);
+	});
+});
+
+describe('validateHexColor', () => {
+	test('accepts #RRGGBB', () => {
+		expect(validateHexColor('#FF9D00')).toBe('#FF9D00');
+	});
+
+	test('accepts #rgb shorthand', () => {
+		expect(validateHexColor('#F90')).toBe('#F90');
+	});
+
+	test('accepts lowercase', () => {
+		expect(validateHexColor('#ff9d00')).toBe('#ff9d00');
+	});
+
+	test('rejects missing hash', () => {
+		expect(() => validateHexColor('FF9D00')).toThrow(/Invalid color/);
+	});
+
+	test('rejects invalid characters', () => {
+		expect(() => validateHexColor('#GG9D00')).toThrow(/Invalid color/);
+	});
+
+	test('rejects wrong length', () => {
+		expect(() => validateHexColor('#FF9D0')).toThrow(/Invalid color/);
+		expect(() => validateHexColor('#FF9D000')).toThrow(/Invalid color/);
+	});
+
+	test('rejects empty string', () => {
+		expect(() => validateHexColor('')).toThrow(/Color is required/);
+	});
+
+	test('rejects non-string', () => {
+		expect(() => validateHexColor(null)).toThrow(/Color is required/);
 	});
 });

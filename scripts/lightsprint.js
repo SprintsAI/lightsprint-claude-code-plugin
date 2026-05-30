@@ -5,6 +5,8 @@
  * Subcommands (all accept positional args OR explicit flags):
  *   review-plan [input]    Plan review hook handler (invoked by Claude Code hooks)
  *   tasks [options]         List tasks from the repo board
+ *   projects [options]      List projects in the repo workspace
+ *   projects create <name>  Create a new project (project tag)
  *   create <title> [opts]   Create a new task (also: --title <text>)
  *   update <taskId> [opts]  Update an existing task (also: --task <id>)
  *   get <taskId>            Show full task details (also: --task <id>)
@@ -78,6 +80,8 @@ Usage:
 Commands:
   review-plan [input]     Review an implementation plan (Claude Code hook)
   tasks [options]         List tasks from the repo board
+  projects [options]      List projects in the repo workspace
+  projects create <name>  Create a new project (project tag)
   create <title> [opts]   Create a new task (also: --title <text>)
   update <taskId> [opts]  Update an existing task (also: --task <id>)
   get <taskId>            Show full task details (also: --task <id>)
