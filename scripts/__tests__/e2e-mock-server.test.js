@@ -102,8 +102,8 @@ function createMockServer() {
 			if (path === '/api/repo-key/info' && method === 'GET') {
 				return Response.json({
 					user: { name: 'test-user', email: 'test@example.com', id: 'user-1' },
-					repo: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY },
-					project: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY },
+					repo: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY, workspaceId: 'mock-workspace-id' },
+					project: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY, workspaceId: 'mock-workspace-id' },
 					scopes: ['repo:read', 'repo:write'],
 				});
 			}
@@ -149,6 +149,28 @@ function createMockServer() {
 				};
 				tasks.set(newId, newTask);
 				return Response.json({ task: newTask }, { status: 201 });
+			}
+
+			// Create default-stack task
+			if (path === '/api/tasks' && method === 'POST') {
+				const newId = 'task-' + randomBytes(4).toString('hex');
+				const newTask = {
+					id: newId,
+					displayId: 'MOCK-' + (tasks.size + 1),
+					taskNumber: tasks.size + 1,
+					title: body?.title || 'Untitled',
+					status: body?.status || 'backlog',
+					complexity: body?.complexity || 'medium',
+					repoId: null,
+					stackId: 'mock-default-stack-id',
+					workspaceId: body?.workspaceId || 'mock-workspace-id',
+					assignee: null,
+					description: body?.description || '',
+					creator: { name: 'test-user' },
+					dependencies: [],
+				};
+				tasks.set(newId, newTask);
+				return Response.json({ task: newTask, taskPrefix: 'MOCK' }, { status: 201 });
 			}
 
 			// Get task
@@ -240,6 +262,7 @@ function setupMockRepos(baseUrl) {
 		refreshToken: 'mock-refresh-token',
 		expiresAt: Date.now() + 3600000, // 1 hour from now
 		repoId: 'mock-repo-id',
+		workspaceId: 'mock-workspace-id',
 		repoName: 'Mock Repository',
 		baseUrl,
 	};
@@ -357,8 +380,10 @@ describe('E2E: Mock Server', () => {
 
 		test('create sends correct payload to API', async () => {
 			await runCliJson(['create', '--title', 'Payload Test', '--status', 'todo', '--complexity', 'high']);
-			const createReq = mockServer.requests.find(r => r.path.includes('/tasks') && r.method === 'POST');
+			const createReq = mockServer.requests.find(r => r.path === '/api/tasks' && r.method === 'POST');
 			expect(createReq).toBeDefined();
+			expect(createReq.body.scope).toBe('default');
+			expect(createReq.body.workspaceId).toBe('mock-workspace-id');
 			expect(createReq.body.title).toBe('Payload Test');
 			expect(createReq.body.status).toBe('todo');
 			expect(createReq.body.complexity).toBe('high');

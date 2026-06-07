@@ -1,9 +1,9 @@
 ---
 name: create
-description: Create a new task on the Lightsprint (ls) repo board. Use to add work items directly from Claude Code.
+description: Create a new task in the workspace default stack. Use to add work items directly from Claude Code.
 ---
 
-Run this command to create a new Lightsprint task:
+Run this command to create a new Lightsprint task in the workspace default stack:
 
 ```bash
 lightsprint create --cc-pid $PPID --title "$ARGUMENTS"

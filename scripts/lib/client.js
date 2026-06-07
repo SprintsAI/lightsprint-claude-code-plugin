@@ -303,6 +303,22 @@ export async function getRepoId() {
 }
 
 /**
+ * Get the workspace ID for the connected repo.
+ * @returns {Promise<string>}
+ */
+export async function getWorkspaceId() {
+	const cfg = await config();
+	if (cfg.workspaceId) return cfg.workspaceId;
+
+	const info = await getRepoInfo();
+	const workspaceId = info.repo?.workspaceId || info.project?.workspaceId || info.workspace?.id;
+	if (!workspaceId) {
+		throw new Error('Lightsprint API did not return a workspaceId for this repository. Please upgrade the Lightsprint app before creating default-stack tasks.');
+	}
+	return workspaceId;
+}
+
+/**
  * Make an authenticated SSE request to the Lightsprint API.
  * Consumes the event stream and returns the final 'complete' event payload.
  * @param {string} path - API path

@@ -31,7 +31,7 @@ import { execFileSync, execSync } from 'child_process';
 import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
-import { apiRequest, apiRequestSSE, getRepoId, getRepoInfo } from './lib/client.js';
+import { apiRequest, apiRequestSSE, getRepoId, getRepoInfo, getWorkspaceId } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider } from './lib/validate.js';
@@ -656,7 +656,7 @@ async function cmdCreate(args, opts) {
 		throw new Error('Usage: lightsprint create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--project <projectId>] [--depends-on <id1,id2,...>] [--parent <taskId>] [--cc-pid <pid>]');
 	}
 
-	const repoId = await getRepoId();
+	const workspaceId = await getWorkspaceId();
 
 	// Check for --json-body
 	let jsonBody = null;
@@ -736,6 +736,9 @@ async function cmdCreate(args, opts) {
 		body.projectId = projectId;
 	}
 
+	body.scope = 'default';
+	body.workspaceId = workspaceId;
+
 	// Resolve dependency IDs (supports display IDs like LIG-024)
 	let dependencyTaskIds = null;
 	if (dependsOn) {
@@ -767,11 +770,11 @@ async function cmdCreate(args, opts) {
 
 	// Dry-run: validate only, don't call API
 	if (opts.dryRun) {
-		return outputDryRun('create', body, `POST /api/repos/${repoId}/tasks`, opts);
+		return outputDryRun('create', body, 'POST /api/tasks', opts);
 	}
 
-	validateId(repoId, 'Repo ID');
-	const data = await apiRequest(`/api/repos/${repoId}/tasks`, {
+	validateId(workspaceId, 'Workspace ID');
+	const data = await apiRequest('/api/tasks', {
 		method: 'POST',
 		body: JSON.stringify(body)
 	});
@@ -2304,9 +2307,17 @@ async function resolveTaskPrId(taskIdInput) {
  *   - Raw ID: "YCRFHw7OeZUbogdOtYnFh" (returned as-is)
  */
 async function resolveTaskId(input) {
+	const DISPLAY_ID_PATTERN = /^[A-Z]{2,4}-\d{1,6}$/;
+	const BARE_NUMBER_PATTERN = /^\d{1,6}$/;
+
+	// Raw task IDs are globally addressable by /api/tasks/:id. Returning them
+	// directly avoids sending stack tasks through the legacy repo-board resolver,
+	// which only accepts tasks whose repoId matches the connected repo.
+	if (!DISPLAY_ID_PATTERN.test(input) && !BARE_NUMBER_PATTERN.test(input)) {
+		return input;
+	}
+
 	const repoId = await getRepoId();
 	const data = await apiRequest(`/api/repos/${repoId}/tasks/resolve?ref=${encodeURIComponent(input)}`);
 	return data.taskId;
 }
-
-

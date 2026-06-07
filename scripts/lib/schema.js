@@ -30,7 +30,7 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	create: {
-		description: 'Create a new task',
+		description: 'Create a new task in the workspace default stack',
 		params: {
 			title: { type: 'string', required: true, flag: '--title', maxLength: MAX_TITLE_LENGTH, description: 'Task title' },
 			description: { type: 'string', flag: '--description', maxLength: MAX_DESCRIPTION_LENGTH, description: 'Task description' },
