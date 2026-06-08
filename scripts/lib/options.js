@@ -11,17 +11,20 @@ const VALID_OUTPUT_FORMATS = ['json', 'text'];
 /**
  * Parse global options from an args array.
  * @param {string[]} args
- * @returns {{ globalOptions: { outputFormat: 'json'|'text', dryRun: boolean, fields: string[]|null }, remainingArgs: string[] }}
+ * @returns {{ globalOptions: { outputFormat: 'json'|'text', dryRun: boolean, fields: string[]|null, stack: string|null }, remainingArgs: string[] }}
  */
 export function parseGlobalOptions(args) {
 	let outputFormat = 'text';
 	let dryRun = false;
 	let fields = null;
+	let stack = null;
 	let userSetOutput = false;
 	const remaining = [];
 
 	for (let i = 0; i < args.length; i++) {
-		if (args[i] === '--output' && args[i + 1]) {
+		if (args[i] === '--stack' && args[i + 1]) {
+			stack = args[++i];
+		} else if (args[i] === '--output' && args[i + 1]) {
 			const fmt = args[++i];
 			if (!VALID_OUTPUT_FORMATS.includes(fmt)) {
 				throw new Error(`Invalid output format: "${fmt}". Allowed values: ${VALID_OUTPUT_FORMATS.join(', ')}`);
@@ -54,7 +57,7 @@ export function parseGlobalOptions(args) {
 	}
 
 	return {
-		globalOptions: { outputFormat, dryRun, fields },
+		globalOptions: { outputFormat, dryRun, fields, stack },
 		remainingArgs: remaining
 	};
 }

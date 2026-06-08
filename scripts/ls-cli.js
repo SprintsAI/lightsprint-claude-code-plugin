@@ -31,10 +31,10 @@ import { execFileSync, execSync } from 'child_process';
 import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
-import { apiRequest, apiRequestSSE, getRepoId, getRepoInfo } from './lib/client.js';
+import { apiRequest, apiRequestSSE, getRepoId, getRepoInfo, getWorkspaceId } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
-import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider } from './lib/validate.js';
+import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider, validateStackId, validateWorkspaceId, validateTaskPrefix, validateLength } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByRepoId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
@@ -64,7 +64,7 @@ const VALID_COMMANDS = [
 	'tasks', 'projects', 'create', 'update', 'get', 'claim', 'current-task',
 	'link-pr', 'unlink-pr', 'delete', 'comment', 'create-plan', 'whoami',
 	'open', 'status', 'connect', 'disconnect', 'upgrade', 'config', 'describe',
-	'agent', 'merge', 'review-hub'
+	'agent', 'merge', 'review-hub', 'stack'
 ];
 
 function suggestCommand(input) {
@@ -105,7 +105,7 @@ function showSubcommandHelp(commandName) {
 	const schema = getCommandSchema(commandName);
 	if (schema) {
 		// For compound schemas like "review-hub-signals", display as "review-hub signals"
-		const displayName = commandName.replace(/^(review-hub|agent)-/, '$1 ');
+		const displayName = commandName.replace(/^(review-hub|agent|stack)-/, '$1 ');
 		console.log(`lightsprint ${displayName}\n`);
 		console.log(`  ${schema.description}\n`);
 		const params = Object.entries(schema.params || {});
@@ -186,6 +186,7 @@ export async function cliMain(command, args, context = {}) {
 			case 'agent': return await cmdAgent(remainingArgs, opts);
 			case 'merge': return await cmdMerge(remainingArgs, opts);
 			case 'review-hub': return await cmdReviewHub(remainingArgs, opts);
+			case 'stack': return await cmdStack(remainingArgs, opts);
 			default: {
 				const suggestion = suggestCommand(command);
 				const hint = suggestion ? ` Did you mean '${suggestion}'?` : '';
@@ -257,8 +258,11 @@ Commands:
       --status <status>           backlog, todo, in_progress, in_review, or done (default: backlog)
       --project <projectId>       Assign to a project by ID
       --depends-on <ids>          Comma-separated task IDs this task depends on
+      --stack <stackId>           Create on a specific stack (default: current/workspace default stack)
       --cc-pid <pid>              Claude Code PID for session linking
       --json-body <json>          Raw JSON request body (replaces individual flags)
+    Note: tasks are created on a stack (repo-scoped creation is retired). Select a
+    stack with 'lightsprint stack use', or pass --stack. Falls back to the workspace default.
     Example:
       lightsprint create "Fix login bug" --description "Users can't log in" --complexity high
       lightsprint create --title "Fix login bug" --description "Users can't log in"
@@ -371,6 +375,25 @@ Commands:
       lightsprint review-hub scores LIG-024
       lightsprint review-hub scores LIG-024 --refresh
 
+  stack <subcommand> [options]
+    Manage stacks — the unit of execution that task creation targets.
+    Subcommands:
+      stack list                       List stacks in the connected workspace
+      stack create --name <name> --task-prefix <PREFIX> --repos <r1,r2,...> [--description <text>] [--color #RRGGBB]
+                                       Create a new stack (taskPrefix: uppercase, ≤12 chars; 1-10 repos)
+      stack use <stackId>              Persist the current stack for task creation
+      stack current                    Show the persisted current stack
+      stack clear                      Unset the current stack (fall back to workspace default)
+    Notes:
+      'lightsprint create' creates tasks on a stack. Resolution order:
+        --stack flag → persisted current stack → workspace default stack.
+      Repo-scoped task creation is retired server-side; tasks belong to stacks.
+    Example:
+      lightsprint stack list
+      lightsprint stack create --name "Web" --task-prefix WEB --repos repo1,repo2
+      lightsprint stack use stk_abc123
+      lightsprint create "Fix login" --stack stk_abc123
+
   config <subcommand> [key] [value]
     Manage user preferences (stored in ~/.lightsprint/preferences.json)
     Subcommands:
@@ -379,7 +402,8 @@ Commands:
       config delete <key>       Remove a preference
       config list               Show all preferences
     Known keys:
-      link-pr.no-task-behavior   prompt | always-skip (default: prompt)
+      link-pr.no-task-behavior   prompt | always-skip | always-create (default: prompt)
+      current-stack              Stack ID used by 'create' (prefer 'lightsprint stack use')
     Example:
       lightsprint config set link-pr.no-task-behavior always-skip
       lightsprint config get link-pr.no-task-behavior
@@ -421,6 +445,7 @@ Global Flags:
   --json                  Shorthand for --output json
   --dry-run               Validate inputs without making API calls (create, update, claim, comment)
   --fields f1,f2          Return only specified fields (implies --output json)
+  --stack <stackId>       Target a specific stack (overrides the persisted current stack)
   --help, -h              Show this help message
 `);
 }
@@ -651,12 +676,28 @@ async function cmdProjects(args, opts) {
 
 // ─── create ──────────────────────────────────────────────────────────────
 
+/**
+ * Resolve the scope a task should be created under.
+ * Precedence: --stack flag → persisted current-stack preference → workspace default stack.
+ * Returns a body fragment for POST /api/tasks plus a human label and endpoint string.
+ * @param {{ stack?: string|null }} opts
+ * @returns {Promise<{ scope: 'stack'|'default', stackId?: string, workspaceId?: string, label: string }>}
+ */
+async function resolveCreateScope(opts) {
+	const stackId = opts.stack || getPreference('current-stack');
+	if (stackId) {
+		validateStackId(stackId);
+		return { scope: 'stack', stackId, label: `stack ${stackId}` };
+	}
+	const workspaceId = await getWorkspaceId();
+	validateWorkspaceId(workspaceId);
+	return { scope: 'default', workspaceId, label: 'workspace default stack' };
+}
+
 async function cmdCreate(args, opts) {
 	if (args.length === 0) {
-		throw new Error('Usage: lightsprint create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--project <projectId>] [--depends-on <id1,id2,...>] [--parent <taskId>] [--cc-pid <pid>]');
+		throw new Error('Usage: lightsprint create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--project <projectId>] [--depends-on <id1,id2,...>] [--parent <taskId>] [--stack <stackId>] [--cc-pid <pid>]');
 	}
-
-	const repoId = await getRepoId();
 
 	// Check for --json-body
 	let jsonBody = null;
@@ -743,8 +784,6 @@ async function cmdCreate(args, opts) {
 		for (const id of rawIds) validateId(id, 'Dependency task ID');
 		dependencyTaskIds = await Promise.all(rawIds.map(id => resolveTaskId(id)));
 	}
-	if (dependencyTaskIds) body.dependencyTaskIds = dependencyTaskIds;
-
 	// Resolve parent task ID (supports display IDs like LS-1100)
 	let resolvedParentId = null;
 	if (parentId) {
@@ -752,31 +791,67 @@ async function cmdCreate(args, opts) {
 		resolvedParentId = await resolveTaskId(parentId);
 	}
 
-	// Best-effort: discover the active CC session's Lightsprint session ID
-	let lsSessionId;
-	try {
-		const ccPid = ccPidArg || getClaudeCodePid();
-		const daemonState = findRunningDaemonForCcPid(ccPid);
-		if (daemonState?.lsSessionId) {
-			lsSessionId = daemonState.lsSessionId;
-		}
-	} catch {
-		// Session discovery failed — continue without linking
+	// The scoped POST /api/tasks endpoint only accepts a fixed set of fields
+	// (title, description, status, projectId). Complexity and dependencies are
+	// applied with follow-up calls after the task is created.
+	const { complexity: taskComplexity, dependencyTaskIds: _ignoredDeps, ...createFields } = body;
+
+	// Resolve the scope this task is created under (stack flag → current-stack → workspace default).
+	let scope;
+	if (opts.dryRun && (opts.stack || getPreference('current-stack'))) {
+		const stackId = opts.stack || getPreference('current-stack');
+		validateStackId(stackId);
+		scope = { scope: 'stack', stackId, label: `stack ${stackId}` };
+	} else if (opts.dryRun) {
+		// Avoid an API call in dry-run: report the default scope without resolving the workspace.
+		scope = { scope: 'default', workspaceId: '<resolved-from-token>', label: 'workspace default stack' };
+	} else {
+		scope = await resolveCreateScope(opts);
 	}
-	if (lsSessionId) body.lsSessionId = lsSessionId;
+
+	const createBody = scope.scope === 'stack'
+		? { scope: 'stack', stackId: scope.stackId, ...createFields }
+		: { scope: 'default', workspaceId: scope.workspaceId, ...createFields };
 
 	// Dry-run: validate only, don't call API
 	if (opts.dryRun) {
-		return outputDryRun('create', body, `POST /api/repos/${repoId}/tasks`, opts);
+		return outputDryRun('create', { ...createBody, ...(taskComplexity ? { _complexity: taskComplexity } : {}), ...(dependencyTaskIds ? { _dependencyTaskIds: dependencyTaskIds } : {}) }, 'POST /api/tasks', opts);
 	}
 
-	validateId(repoId, 'Repo ID');
-	const data = await apiRequest(`/api/repos/${repoId}/tasks`, {
+	const data = await apiRequest(`/api/tasks`, {
 		method: 'POST',
-		body: JSON.stringify(body)
+		body: JSON.stringify(createBody)
 	});
 
 	const task = data.task;
+
+	// Apply complexity via a follow-up PATCH (not supported by the scoped create body).
+	if (taskComplexity && task?.id) {
+		try {
+			validateId(task.id, 'New task ID');
+			await apiRequest(`/api/tasks/${task.id}`, {
+				method: 'PATCH',
+				body: JSON.stringify({ complexity: taskComplexity })
+			});
+			task.complexity = taskComplexity;
+		} catch (err) {
+			console.error(`Warning: task created but failed to set complexity: ${err.message}`);
+		}
+	}
+
+	// Apply dependencies via follow-up dependency calls (not supported by the scoped create body).
+	if (dependencyTaskIds && task?.id) {
+		for (const depId of dependencyTaskIds) {
+			try {
+				await apiRequest(`/api/tasks/${task.id}/dependencies`, {
+					method: 'POST',
+					body: JSON.stringify({ dependsOnTaskId: depId })
+				});
+			} catch (err) {
+				console.error(`Warning: task created but failed to add dependency ${depId}: ${err.message}`);
+			}
+		}
+	}
 
 	// Link as subtask: parent depends-on this new task
 	let parentLinked = false;
@@ -797,6 +872,7 @@ async function cmdCreate(args, opts) {
 
 	const result = {
 		task: buildTaskData(task),
+		scope: scope.scope === 'stack' ? { type: 'stack', stackId: scope.stackId } : { type: 'default', workspaceId: scope.workspaceId },
 		dependenciesAdded: dependencyTaskIds ? dependencyTaskIds.length : 0,
 		...(resolvedParentId ? { parent: { id: resolvedParentId, linked: parentLinked } } : {})
 	};
@@ -804,6 +880,7 @@ async function cmdCreate(args, opts) {
 	outputResult(result, opts, () => {
 		console.log(`Created task: ${task.title}`);
 		console.log(`ID: ${task.id}`);
+		console.log(`Scope: ${scope.label}`);
 		console.log(`Status: ${(task.status || 'unknown')}`);
 		if (task.complexity && task.complexity !== 'unknown') {
 			console.log(`Complexity: ${task.complexity}`);
@@ -2250,6 +2327,191 @@ async function cmdReviewHubScores(args, opts) {
 				console.log(`    - ${typeof a === 'string' ? a : a.message || JSON.stringify(a)}`);
 			}
 		}
+	});
+}
+
+// ─── stack ───────────────────────────────────────────────────────────────
+
+const STACK_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+const MAX_STACK_NAME_LENGTH = 80;
+const MAX_STACK_DESCRIPTION_LENGTH = 500;
+
+async function cmdStack(args, opts) {
+	const subcommand = args[0];
+	const subArgs = args.slice(1);
+
+	switch (subcommand) {
+		case 'list': return await cmdStackList(subArgs, opts);
+		case 'create': return await cmdStackCreate(subArgs, opts);
+		case 'use': return await cmdStackUse(subArgs, opts);
+		case 'current': return cmdStackCurrent(subArgs, opts);
+		case 'clear': return cmdStackClear(subArgs, opts);
+		default:
+			throw new Error(`Unknown stack subcommand: "${subcommand || ''}". Use: list, create, use, current, clear`);
+	}
+}
+
+function mapStack(s) {
+	return {
+		id: s.id,
+		name: s.name,
+		taskPrefix: s.taskPrefix || null,
+		description: s.description || null,
+		color: s.color || null,
+		memberRepoIds: s.memberRepoIds || []
+	};
+}
+
+async function cmdStackList(args, opts) {
+	const workspaceId = await getWorkspaceId();
+	validateWorkspaceId(workspaceId);
+
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
+	const stacks = (data.stacks || []).map(mapStack);
+	const current = getPreference('current-stack');
+
+	const result = { workspaceId, currentStack: current, stacks };
+
+	outputResult(result, opts, () => {
+		if (stacks.length === 0) {
+			console.log('No stacks found in this workspace. Create one with: lightsprint stack create --name <name> --task-prefix <PREFIX> --repos <r1,r2>');
+			return;
+		}
+		console.log(`Found ${stacks.length} stack(s) in workspace ${workspaceId}:\n`);
+		for (const s of stacks) {
+			const marker = current && s.id === current ? '* ' : '  ';
+			const prefix = s.taskPrefix ? ` [${s.taskPrefix}]` : '';
+			console.log(`${marker}${s.id}${prefix}  ${s.name}  (${s.memberRepoIds.length} repo(s))`);
+		}
+		if (current) console.log(`\n* = current stack (used by 'lightsprint create')`);
+	});
+}
+
+async function cmdStackCreate(args, opts) {
+	let name = null;
+	let taskPrefix = null;
+	let reposArg = null;
+	let description = null;
+	let color = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--name' && args[i + 1]) {
+			name = args[++i];
+		} else if (args[i] === '--task-prefix' && args[i + 1]) {
+			taskPrefix = args[++i];
+		} else if (args[i] === '--repos' && args[i + 1]) {
+			reposArg = args[++i];
+		} else if (args[i] === '--description' && args[i + 1]) {
+			description = args[++i];
+		} else if (args[i] === '--color' && args[i + 1]) {
+			color = args[++i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --name, --task-prefix, --repos, --description, --color.`);
+		}
+	}
+
+	if (!name) throw new Error('Usage: lightsprint stack create --name <name> --task-prefix <PREFIX> --repos <r1,r2,...> [--description <text>] [--color #RRGGBB]');
+	if (!taskPrefix) throw new Error('Error: --task-prefix is required (uppercase alphanumeric, e.g. "LIG").');
+	if (!reposArg) throw new Error('Error: --repos is required (comma-separated repo IDs, 1-10).');
+
+	validateLength(name, MAX_STACK_NAME_LENGTH, 'Stack name');
+	validateTaskPrefix(taskPrefix);
+
+	const repoIds = [...new Set(reposArg.split(',').map(s => s.trim()).filter(Boolean))];
+	if (repoIds.length === 0) throw new Error('Error: --repos must contain at least one repo ID.');
+	if (repoIds.length > 10) throw new Error('Error: --repos supports at most 10 repo IDs.');
+	for (const id of repoIds) validateId(id, 'Repo ID');
+
+	const body = { name, taskPrefix, repoIds };
+	if (description) {
+		validateLength(description, MAX_STACK_DESCRIPTION_LENGTH, 'Stack description', { allowNewlines: true });
+		body.description = description;
+	}
+	if (color) {
+		if (!STACK_COLOR_PATTERN.test(color)) {
+			throw new Error(`Invalid color: "${color}". Expected hex format #RRGGBB (e.g. #3B82F6).`);
+		}
+		body.color = color;
+	}
+
+	if (opts.dryRun) {
+		return outputDryRun('stack create', body, 'POST /api/workspaces/{workspaceId}/stacks', opts);
+	}
+
+	const workspaceId = await getWorkspaceId();
+	validateWorkspaceId(workspaceId);
+
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`, {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
+
+	const stack = data.stack || {};
+	const result = { stack: mapStack(stack), workspaceId };
+
+	outputResult(result, opts, () => {
+		console.log(`Created stack: ${stack.name}`);
+		console.log(`ID: ${stack.id}`);
+		if (stack.taskPrefix) console.log(`Task prefix: ${stack.taskPrefix}`);
+		console.log(`Repos: ${repoIds.length}`);
+		console.log(`\nSelect it for task creation with:\n  lightsprint stack use ${stack.id}`);
+	});
+}
+
+async function cmdStackUse(args, opts) {
+	let stackId = null;
+	for (let i = 0; i < args.length; i++) {
+		if (!stackId && !args[i].startsWith('-')) {
+			stackId = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint stack use <stackId>`);
+		}
+	}
+
+	if (!stackId) throw new Error('Usage: lightsprint stack use <stackId>');
+	validateStackId(stackId);
+
+	if (opts.dryRun) {
+		return outputDryRun('stack use', { stackId }, 'set preference current-stack', opts);
+	}
+
+	// Verify the stack exists in the workspace (catches hallucinated IDs before persisting).
+	const workspaceId = await getWorkspaceId();
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
+	const match = (data.stacks || []).find(s => s.id === stackId);
+	if (!match) {
+		throw new Error(`Stack "${stackId}" not found in workspace ${workspaceId}. Run 'lightsprint stack list' to see available stacks.`);
+	}
+
+	setPreference('current-stack', stackId);
+
+	const result = { currentStack: stackId, name: match.name, taskPrefix: match.taskPrefix || null };
+	outputResult(result, opts, () => {
+		console.log(`Current stack set to: ${match.name} (${stackId})`);
+		if (match.taskPrefix) console.log(`Task prefix: ${match.taskPrefix}`);
+	});
+}
+
+function cmdStackCurrent(args, opts) {
+	const current = getPreference('current-stack');
+	const result = { currentStack: current };
+	outputResult(result, opts, () => {
+		if (current) {
+			console.log(current);
+		} else {
+			console.log("No current stack set. Tasks are created on the workspace default stack. Set one with 'lightsprint stack use <stackId>'.");
+		}
+	});
+}
+
+function cmdStackClear(args, opts) {
+	const current = getPreference('current-stack');
+	if (current) deletePreference('current-stack');
+	const result = { cleared: !!current, previous: current };
+	outputResult(result, opts, () => {
+		console.log(current
+			? `Cleared current stack (was ${current}). Tasks now use the workspace default stack.`
+			: 'No current stack was set.');
 	});
 }
 

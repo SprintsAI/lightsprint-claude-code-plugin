@@ -17,9 +17,12 @@ const REPOS_FILE = join(CONFIG_DIR, 'repos.json');
 const PLUGIN_CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 const PREFERENCES_FILE = join(CONFIG_DIR, 'preferences.json');
 
-// Known preference keys and their valid values
+// Known preference keys and their valid values.
+// A value of `null` means the key accepts any non-empty string (free-form),
+// e.g. an ID that can't be enumerated ahead of time like the current stack.
 const KNOWN_PREFERENCES = {
 	'link-pr.no-task-behavior': ['prompt', 'always-skip', 'always-create'],
+	'current-stack': null,
 };
 
 export function ensureConfigDir() {
@@ -173,7 +176,12 @@ export function setPreference(key, value) {
 		throw new Error(`Unknown preference key: "${key}". Known keys: ${knownKeys}`);
 	}
 	const validValues = KNOWN_PREFERENCES[key];
-	if (!validValues.includes(value)) {
+	if (validValues === null) {
+		// Free-form key: accept any non-empty string value.
+		if (typeof value !== 'string' || value.trim() === '') {
+			throw new Error(`Invalid value for "${key}": a non-empty string is required.`);
+		}
+	} else if (!validValues.includes(value)) {
 		throw new Error(`Invalid value "${value}" for "${key}". Valid values: ${validValues.join(', ')}`);
 	}
 	const prefs = readPreferences();

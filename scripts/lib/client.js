@@ -303,6 +303,21 @@ export async function getRepoId() {
 }
 
 /**
+ * Get the workspace ID for the connected repo from the token.
+ * The CLI is repo-scoped; stacks live at the workspace layer, so most
+ * stack/task operations resolve the workspace from `/api/repo-key/info`.
+ * @returns {Promise<string>}
+ */
+export async function getWorkspaceId() {
+	const info = await getRepoInfo();
+	const workspaceId = info.workspaceId || info.repo?.workspaceId || info.project?.workspaceId;
+	if (!workspaceId) {
+		throw new Error('Could not resolve a workspace for this connection. Re-run "lightsprint connect" to refresh your credentials.');
+	}
+	return workspaceId;
+}
+
+/**
  * Make an authenticated SSE request to the Lightsprint API.
  * Consumes the event stream and returns the final 'complete' event payload.
  * @param {string} path - API path

@@ -47,6 +47,50 @@ export function validateId(id, label = 'ID') {
 	return id;
 }
 
+/**
+ * Validate a stack ID. Same character rules as any other ID.
+ * @param {string} id
+ * @returns {string}
+ */
+export function validateStackId(id) {
+	return validateId(id, 'Stack ID');
+}
+
+/**
+ * Validate a workspace ID. Same character rules as any other ID.
+ * @param {string} id
+ * @returns {string}
+ */
+export function validateWorkspaceId(id) {
+	return validateId(id, 'Workspace ID');
+}
+
+// ─── Task prefix validation ───────────────────────────────────────────────
+
+export const MAX_TASK_PREFIX_LENGTH = 12;
+const TASK_PREFIX_PATTERN = /^[A-Z][A-Z0-9]*$/;
+
+/**
+ * Validate a stack task prefix (e.g. "LIG").
+ * Must be uppercase alphanumeric, start with a letter, and be ≤12 chars.
+ * Mirrors the server-side zod schema in api/workspaces/[workspaceId]/stacks.
+ * @param {string} prefix
+ * @returns {string}
+ */
+export function validateTaskPrefix(prefix) {
+	if (!prefix || typeof prefix !== 'string') {
+		throw new Error('Task prefix is required.');
+	}
+	if (prefix.length > MAX_TASK_PREFIX_LENGTH) {
+		throw new Error(`Task prefix exceeds maximum length of ${MAX_TASK_PREFIX_LENGTH} characters (got ${prefix.length}).`);
+	}
+	if (!TASK_PREFIX_PATTERN.test(prefix)) {
+		emitBreadcrumb(`Invalid task prefix: "${prefix}"`, { prefix });
+		throw new Error(`Invalid task prefix: "${prefix}". Must be uppercase alphanumeric, starting with a letter (e.g. "LIG").`);
+	}
+	return prefix;
+}
+
 // ─── Enum validation ────────────────────────────────────────────────────
 
 export const VALID_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'done'];

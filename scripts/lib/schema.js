@@ -36,12 +36,14 @@ const COMMAND_SCHEMAS = {
 			description: { type: 'string', flag: '--description', maxLength: MAX_DESCRIPTION_LENGTH, description: 'Task description' },
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, default: 'backlog', description: 'Initial status' },
 			complexity: { type: 'enum', flag: '--complexity', values: VALID_COMPLEXITIES, description: 'Complexity estimate' },
-			dependsOn: { type: 'string[]', flag: '--depends-on', description: 'Comma-separated task IDs this task depends on' },
+			dependsOn: { type: 'string[]', flag: '--depends-on', description: 'Comma-separated task IDs this task depends on (applied after creation)' },
 			projectId: { type: 'string', flag: '--project', description: 'Assign to a project by ID' },
+			stack: { type: 'string', flag: '--stack', description: 'Stack ID to create on (default: current/workspace default stack)' },
 			ccPid: { type: 'integer', flag: '--cc-pid', description: 'Claude Code PID for session linking' }
 		},
 		supportsDryRun: true,
-		supportsJsonBody: true
+		supportsJsonBody: true,
+		notes: 'Creates the task on a stack via POST /api/tasks. Scope resolution: --stack → current stack → workspace default. Repo-scoped creation is retired. complexity and dependencies are applied via follow-up calls.'
 	},
 	update: {
 		description: 'Update an existing task',
@@ -231,6 +233,44 @@ const COMMAND_SCHEMAS = {
 			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID like LIG-024)' }
 		},
 		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'stack-list': {
+		description: 'List stacks in the connected workspace (with member repo IDs)',
+		params: {},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'stack-create': {
+		description: 'Create a stack in the connected workspace',
+		params: {
+			name: { type: 'string', required: true, flag: '--name', maxLength: 80, description: 'Stack name (≤80 chars)' },
+			taskPrefix: { type: 'string', required: true, flag: '--task-prefix', maxLength: 12, pattern: '^[A-Z][A-Z0-9]*$', description: 'Uppercase alphanumeric task prefix, starting with a letter (e.g. LIG)' },
+			repos: { type: 'string[]', required: true, flag: '--repos', description: 'Comma-separated repo IDs (1-10)' },
+			description: { type: 'string', flag: '--description', maxLength: 500, description: 'Optional stack description' },
+			color: { type: 'string', flag: '--color', pattern: '^#[0-9a-fA-F]{6}$', description: 'Optional hex color #RRGGBB' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'stack-use': {
+		description: 'Persist the current stack used by task creation',
+		params: {
+			stackId: { type: 'string', required: true, flag: '--stack', description: 'Stack ID to select (positional or --stack)' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'stack-current': {
+		description: 'Show the persisted current stack',
+		params: {},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'stack-clear': {
+		description: 'Unset the current stack (fall back to workspace default)',
+		params: {},
+		supportsDryRun: false,
 		supportsJsonBody: false
 	}
 };

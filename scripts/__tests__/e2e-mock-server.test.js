@@ -102,8 +102,9 @@ function createMockServer() {
 			if (path === '/api/repo-key/info' && method === 'GET') {
 				return Response.json({
 					user: { name: 'test-user', email: 'test@example.com', id: 'user-1' },
-					repo: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY },
+					repo: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY, workspaceId: 'mock-workspace-id' },
 					project: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY },
+					workspaceId: 'mock-workspace-id',
 					scopes: ['repo:read', 'repo:write'],
 				});
 			}
@@ -133,8 +134,8 @@ function createMockServer() {
 				});
 			}
 
-			// Create task
-			if (path === `/api/repos/${repoId}/tasks` && method === 'POST') {
+			// Create task — stack-scoped (POST /api/tasks) or legacy repo-scoped
+			if ((path === '/api/tasks' || path === `/api/repos/${repoId}/tasks`) && method === 'POST') {
 				const newId = 'task-' + randomBytes(4).toString('hex');
 				const newTask = {
 					id: newId,
@@ -149,6 +150,24 @@ function createMockServer() {
 				};
 				tasks.set(newId, newTask);
 				return Response.json({ task: newTask }, { status: 201 });
+			}
+
+			// List/create stacks
+			const stacksMatch = path.match(/^\/api\/workspaces\/([^/]+)\/stacks$/);
+			if (stacksMatch && method === 'GET') {
+				return Response.json({ stacks: [
+					{ id: 'stk-1', name: 'Default', taskPrefix: 'MOCK', description: null, color: null, memberRepoIds: [repoId] },
+				] });
+			}
+			if (stacksMatch && method === 'POST') {
+				return Response.json({ stack: {
+					id: 'stk-' + randomBytes(4).toString('hex'),
+					name: body?.name || 'Untitled',
+					taskPrefix: body?.taskPrefix || null,
+					description: body?.description || null,
+					color: body?.color || null,
+					memberRepoIds: body?.repoIds || [],
+				} }, { status: 201 });
 			}
 
 			// Get task
@@ -357,11 +376,15 @@ describe('E2E: Mock Server', () => {
 
 		test('create sends correct payload to API', async () => {
 			await runCliJson(['create', '--title', 'Payload Test', '--status', 'todo', '--complexity', 'high']);
-			const createReq = mockServer.requests.find(r => r.path.includes('/tasks') && r.method === 'POST');
+			const createReq = mockServer.requests.find(r => /\/tasks$/.test(r.path) && r.method === 'POST');
 			expect(createReq).toBeDefined();
 			expect(createReq.body.title).toBe('Payload Test');
 			expect(createReq.body.status).toBe('todo');
-			expect(createReq.body.complexity).toBe('high');
+			// Complexity is applied either in the create body (legacy repo-scoped) or via a
+			// follow-up PATCH (stack-scoped POST /api/tasks accepts only a fixed field set).
+			const complexityApplied = createReq.body.complexity === 'high'
+				|| mockServer.requests.some(r => r.method === 'PATCH' && /\/api\/tasks\//.test(r.path) && r.body?.complexity === 'high');
+			expect(complexityApplied).toBe(true);
 		});
 
 		test('create --dry-run does not hit API', async () => {
