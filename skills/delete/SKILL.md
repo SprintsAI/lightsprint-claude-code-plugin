@@ -1,6 +1,6 @@
 ---
 name: delete
-description: Delete a Lightsprint (ls) task permanently from the repo board. Use when a task is no longer needed, was created by mistake, or is a duplicate.
+description: Delete a Lightsprint (ls) task permanently from the workspace board. Use when a task is no longer needed, was created by mistake, or is a duplicate.
 ---
 
 Run this command to delete a Lightsprint task:

@@ -21,12 +21,12 @@ const log = createLogger('cc-start');
  * Uses systemMessage (user-visible) + additionalContext (AI context).
  */
 function outputConnectedMessage(cfg) {
-	const repoLabel = cfg.repo || cfg.repoName || cfg.repoId;
+	const repoLabel = cfg.workspaceName || cfg.workspaceId;
 	const output = {
-		systemMessage: `Connected to Lightsprint repo: ${repoLabel}`,
+		systemMessage: `Connected to Lightsprint workspace: ${repoLabel}`,
 		hookSpecificOutput: {
 			hookEventName: 'SessionStart',
-			additionalContext: `Connected to Lightsprint repo: ${repoLabel}`,
+			additionalContext: `Connected to Lightsprint workspace: ${repoLabel}`,
 		},
 	};
 	process.stdout.write(JSON.stringify(output));
@@ -101,7 +101,7 @@ export async function main(args) {
 				ccPid: existingDaemonState.ccPid,
 				ccSessionId,
 				lsSessionId: existingDaemonState.lsSessionId,
-				repoId: existingDaemonState.repoId,
+				workspaceId: existingDaemonState.workspaceId,
 				daemonToken: existingDaemonState.daemonToken,
 			});
 			outputConnectedMessage(cfg);
@@ -110,7 +110,7 @@ export async function main(args) {
 
 		// Spawn cc-daemon as detached child
 		const gitBranch = getGitBranch(cwd);
-		log('Spawning daemon', { ccSessionId, repoId: cfg.repoId, ccPid, cwd });
+		log('Spawning daemon', { ccSessionId, workspaceId: cfg.workspaceId, ccPid, cwd });
 
 		// Write credentials to a temp file (0o600) so they don't leak via /proc/pid/environ
 		const credsDir = join(configDir, 'cc-sessions');
@@ -138,7 +138,7 @@ export async function main(args) {
 				LIGHTSPRINT_BASE_URL: process.env.LIGHTSPRINT_BASE_URL || '',
 				LS_CREDS_FILE: credsPath,
 				LS_BASE_URL: cfg.baseUrl,
-				LS_REPO_ID: cfg.repoId,
+				LS_WORKSPACE_ID: cfg.workspaceId,
 				LS_SESSION_ID: ccSessionId,
 				LS_CWD: cwd,
 				LS_CC_PID: String(ccPid),

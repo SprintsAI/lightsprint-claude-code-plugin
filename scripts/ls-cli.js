@@ -31,11 +31,11 @@ import { execFileSync, execSync } from 'child_process';
 import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
-import { apiRequest, apiRequestSSE, getRepoId, getRepoInfo } from './lib/client.js';
+import { apiRequest, apiRequestSSE, getWorkspaceId } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
-import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
+import { getConfig, getDefaultBaseUrl, readConnection, clearConnection, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider } from './lib/validate.js';
-import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByRepoId } from './lib/cc-utils.js';
+import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByWorkspaceId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
 import { getCommandSchema, getAllCommandNames } from './lib/schema.js';
@@ -61,7 +61,7 @@ const COMMAND_ALIASES = {
 
 // All valid command names for "did you mean?" suggestions
 const VALID_COMMANDS = [
-	'tasks', 'projects', 'create', 'update', 'get', 'claim', 'current-task',
+	'tasks', 'projects', 'stacks', 'create', 'update', 'get', 'claim', 'current-task',
 	'link-pr', 'unlink-pr', 'delete', 'comment', 'create-plan', 'whoami',
 	'open', 'status', 'connect', 'disconnect', 'upgrade', 'config', 'describe',
 	'agent', 'merge', 'review-hub'
@@ -165,6 +165,7 @@ export async function cliMain(command, args, context = {}) {
 		switch (resolvedCommand) {
 			case 'tasks': return await cmdTasks(remainingArgs, opts);
 			case 'projects': return await cmdProjects(remainingArgs, opts);
+			case 'stacks': return remainingArgs[0] === 'get' ? await cmdStackGet(remainingArgs.slice(1), opts) : await cmdStacks(remainingArgs, opts);
 			case 'create': return await cmdCreate(remainingArgs, opts);
 			case 'update': return await cmdUpdate(remainingArgs, opts);
 			case 'get': return await cmdGet(remainingArgs, opts);
@@ -197,8 +198,8 @@ export async function cliMain(command, args, context = {}) {
 		// Fire-and-forget error reporting to Sentry via daemon
 		try {
 			const cfg = getConfig();
-			if (cfg?.repoId) {
-				const sessionId = findSessionByRepoId(cfg.repoId);
+			if (cfg?.workspaceId) {
+				const sessionId = findSessionByWorkspaceId(cfg.workspaceId);
 				if (sessionId) {
 					reportError(sessionId, err, 'ls-cli').catch(() => {});
 				}
@@ -212,7 +213,7 @@ export async function cliMain(command, args, context = {}) {
 // ─── help ────────────────────────────────────────────────────────────────
 
 function showHelp() {
-	console.log(`Lightsprint CLI — Manage tasks on your Lightsprint repo board
+	console.log(`Lightsprint CLI — Manage tasks in your Lightsprint workspace
 
 Usage:
   lightsprint <command> [options] [--output json|text] [--dry-run] [--fields f1,f2]
@@ -221,7 +222,7 @@ Usage:
 Commands:
 
   tasks [options]
-    List tasks from the repo board
+    List tasks from the active workspace board
     Options:
       --status <status>     Filter by status (comma-separated): backlog, todo, in_progress, in_review, done
       --complexity <level>  Filter by complexity: low, medium, high
@@ -230,6 +231,7 @@ Commands:
       --unassigned           Only show tasks with no assignee
       --deps <filter>       Filter by dependencies: has-dependencies, has-dependents, unblocked
       --project <filter>    Filter by project ID(s) or "none" for tasks without a project
+      --stack <ref>         Filter by stack (stack ID, task prefix, or name)
       --sort <field>        Sort tasks by: position (default), updated_at, created_at
       --limit <N>           Limit number of results (default: 20)
       --offset <N>          Skip first N results (for pagination)
@@ -240,12 +242,23 @@ Commands:
       lightsprint tasks --deps unblocked --status todo
 
   projects [options]
-    List projects in the repo's workspace
+    List projects in the active workspace
     Options:
       --status <status>     Filter by project status: active, completed, archived
     Example:
       lightsprint projects
       lightsprint projects --status active
+
+  stacks
+    List stacks in the active workspace
+    Example:
+      lightsprint stacks
+
+  stacks get <stackId|prefix|name>
+    Show a stack and its member repos. Accepts a stack ID, task prefix, or name.
+    Example:
+      lightsprint stacks get ENG
+      lightsprint stacks get stk_123
 
   create <title> [options]
     Create a new task. Title can be positional or via --title flag.
@@ -256,6 +269,7 @@ Commands:
       --complexity <level>        low, medium, or high
       --status <status>           backlog, todo, in_progress, in_review, or done (default: backlog)
       --project <projectId>       Assign to a project by ID
+      --stack <ref>               Create in a stack (stack ID, task prefix, or name)
       --depends-on <ids>          Comma-separated task IDs this task depends on
       --cc-pid <pid>              Claude Code PID for session linking
       --json-body <json>          Raw JSON request body (replaces individual flags)
@@ -391,16 +405,16 @@ Commands:
       lightsprint describe create
 
   open
-    Open the repo board in your browser
+    Open the active workspace board in your browser
 
   status
-    Show Lightsprint connection status for the current repository
+    Show Lightsprint connection status for the active workspace
 
   whoami
-    Display current repo and authentication info
+    Display the connected workspace and authentication info
 
   connect [--base-url <url>]
-    Authenticate and connect to Lightsprint (run this first if not authenticated)
+    Authenticate and connect to a Lightsprint workspace (run this first if not authenticated)
     Options:
       --base-url <url>        Connect to a custom Lightsprint instance
     Example:
@@ -408,7 +422,7 @@ Commands:
       lightsprint connect --base-url https://staging.lightsprint.ai
 
   disconnect
-    Remove Lightsprint credentials for the current repository
+    Remove the active workspace's Lightsprint credentials
 
   review-plan [input]
     Review an implementation plan (typically invoked by Claude Code hooks)
@@ -428,7 +442,7 @@ Global Flags:
 // ─── tasks ───────────────────────────────────────────────────────────────
 
 async function cmdTasks(args, opts) {
-	const repoId = await getRepoId();
+	const workspaceId = await getWorkspaceId();
 	const params = new URLSearchParams();
 
 	// Parse args
@@ -439,6 +453,7 @@ async function cmdTasks(args, opts) {
 	let complexity = null;
 	let depsFilter = null;
 	let projectFilter = null;
+	let stackFilter = null;
 	let unassigned = false;
 	let mine = false;
 	let pageAll = false;
@@ -458,6 +473,8 @@ async function cmdTasks(args, opts) {
 			depsFilter = args[++i];
 		} else if (args[i] === '--project' && args[i + 1]) {
 			projectFilter = args[++i];
+		} else if (args[i] === '--stack' && args[i + 1]) {
+			stackFilter = args[++i];
 		} else if (args[i] === '--sort' && args[i + 1]) {
 			sort = args[++i];
 		} else if (args[i] === '--unassigned') {
@@ -491,9 +508,13 @@ async function cmdTasks(args, opts) {
 		validateEnum(sort, VALID_SORT_FIELDS, 'sort field');
 	}
 
-	// All filtering is server-side — build query params
-	params.set('limit', String(limit));
-	params.set('offset', String(offset));
+	// All filtering is server-side — build query params.
+	// The workspace board endpoint's default (kanban) shape has NO top-level
+	// `tasks`/`totalCount`. Use the LIST layout: without a sectionId it returns
+	// `{ listSectionsWithTasks: [{ id, name, status, tasks: [...] }, ...] }`,
+	// per-section-capped via `perSectionLimit` (max 100). We flatten sections.
+	params.set('layoutType', 'list');
+	params.set('perSectionLimit', String(Math.min(limit, 100)));
 	if (status) params.set('status', status);
 	if (complexity) params.set('complexity', complexity);
 	if (unassigned) params.set('unassigned', 'true');
@@ -503,66 +524,89 @@ async function cmdTasks(args, opts) {
 	if (mine) params.set('assignee', 'me');
 	else if (assigneeFilter) params.set('assignee', assigneeFilter);
 
-	validateId(repoId, 'Repo ID');
+	const stackId = stackFilter ? await resolveStackId(workspaceId, stackFilter) : null;
+	if (stackId) params.set('stack', stackId);
 
-	// --page-all: stream all pages as NDJSON (one task per line)
+	validateId(workspaceId, 'Workspace ID');
+
+	// Map a board task summary to our display shape. Board task objects may
+	// carry their own display fields; prefer task.displayId, fall back to id.
+	const mapTask = task => ({
+		displayId: task.displayId ?? task.id,
+		id: task.id,
+		title: task.title,
+		status: (task.status || 'unknown'),
+		assignee: task.assignedUser?.name || task.assignee || null,
+		complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
+		project: task.project ? { id: task.project.id, name: task.project.name, color: task.project.color || null, projectNumber: task.project.projectNumber } : null,
+		description: task.description || null
+	});
+
+	// --page-all: stream ALL tasks across ALL sections as NDJSON (one task/line).
+	// The no-sectionId list path is per-section-capped (not globally paginated),
+	// so we first discover the section ids/names, then paginate each section via
+	// `?layoutType=list&sectionId=<id>&limit=100&offset=...` (flat { tasks, totalCount })
+	// until each section is exhausted.
 	if (pageAll) {
-		let pageOffset = 0;
-		const pageLimit = 100; // max per page
-		let hasMore = true;
-		while (hasMore) {
-			params.set('limit', String(pageLimit));
-			params.set('offset', String(pageOffset));
-			const pageData = await apiRequest(`/api/repos/${repoId}/tasks?${params}`);
-			const pageTasks = pageData.tasks || [];
-			const prefix = pageData.taskPrefix || 'LS';
-			for (const task of pageTasks) {
-				const displayId = task.taskNumber != null
-					? `${prefix}-${task.taskNumber < 100 ? task.taskNumber.toString().padStart(3, '0') : task.taskNumber}`
-					: task.id;
-				const line = {
-					displayId, id: task.id, title: task.title,
-					status: (task.status || 'unknown'),
-					assignee: task.assignedUser?.name || task.assignee || null,
-					complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
-					project: task.project ? { id: task.project.id, name: task.project.name, color: task.project.color || null, projectNumber: task.project.projectNumber } : null,
-					description: task.description || null
-				};
+		const boardData = await apiRequest(`/api/workspaces/${workspaceId}/board?${params}`);
+		const sections = boardData.listSectionsWithTasks || [];
+
+		// Guard: if the server ever returns a flat { tasks } shape, stream it directly.
+		if (sections.length === 0 && Array.isArray(boardData.tasks)) {
+			for (const task of boardData.tasks) {
+				const line = mapTask(task);
 				const output = opts.fields ? filterFields(line, opts.fields) : line;
 				process.stdout.write(JSON.stringify(output) + '\n');
 			}
-			hasMore = pageData.pagination?.hasMore || false;
-			pageOffset += pageTasks.length || pageLimit;
-			if (pageTasks.length === 0) break;
+			return;
+		}
+
+		const pageLimit = 100; // max per page (server clamps to 100)
+		for (const section of sections) {
+			if (!section || !section.id) continue;
+			const sectionParams = new URLSearchParams(params);
+			sectionParams.delete('perSectionLimit');
+			sectionParams.set('sectionId', section.id);
+			sectionParams.set('limit', String(pageLimit));
+
+			let pageOffset = 0;
+			let totalCount = Infinity;
+			while (pageOffset < totalCount) {
+				sectionParams.set('offset', String(pageOffset));
+				const pageData = await apiRequest(`/api/workspaces/${workspaceId}/board?${sectionParams}`);
+				const pageTasks = pageData.tasks || [];
+				totalCount = pageData.totalCount ?? pageTasks.length;
+				for (const task of pageTasks) {
+					const line = mapTask(task);
+					const output = opts.fields ? filterFields(line, opts.fields) : line;
+					process.stdout.write(JSON.stringify(output) + '\n');
+				}
+				if (pageTasks.length === 0) break;
+				pageOffset += pageLimit;
+			}
 		}
 		return;
 	}
 
-	const data = await apiRequest(`/api/repos/${repoId}/tasks?${params}`);
-	let tasks = data.tasks || [];
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/board?${params}`);
+	const sections = data.listSectionsWithTasks || [];
+	// Flatten the per-section task arrays into one list. Guard: fall back to a
+	// flat { tasks } shape if the server ever returns one.
+	let tasks = sections.length > 0
+		? sections.flatMap(s => s.tasks || [])
+		: (data.tasks || []);
 
-	const prefix = data.taskPrefix || 'LS';
-	const resultTasks = tasks.map(task => {
-		const displayId = task.taskNumber != null
-			? `${prefix}-${task.taskNumber < 100 ? task.taskNumber.toString().padStart(3, '0') : task.taskNumber}`
-			: task.id;
-		return {
-			displayId,
-			id: task.id,
-			title: task.title,
-			status: (task.status || 'unknown'),
-			assignee: task.assignedUser?.name || task.assignee || null,
-			complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
-			project: task.project ? { id: task.project.id, name: task.project.name, color: task.project.color || null, projectNumber: task.project.projectNumber } : null,
-			description: task.description || null
-		};
-	});
+	const resultTasks = tasks.map(mapTask);
 
+	const totalCount = tasks.length;
+	// The list path is per-section-capped. If any section returned exactly the
+	// per-section limit, it was likely truncated → suggest --page-all/--limit.
+	const perSectionLimit = Math.min(limit, 100);
+	const hasMore = sections.some(s => (s.tasks || []).length >= perSectionLimit);
 	const result = {
 		tasks: resultTasks,
-		totalCount: data.totalCount || tasks.length,
-		hasMore: data.pagination?.hasMore || false,
-		taskPrefix: prefix
+		totalCount,
+		hasMore
 	};
 
 	outputResult(result, opts, () => {
@@ -571,7 +615,7 @@ async function cmdTasks(args, opts) {
 			return;
 		}
 
-		const totalLabel = data.totalCount > tasks.length ? ` of ${data.totalCount} total` : '';
+		const totalLabel = totalCount > tasks.length ? ` of ${totalCount} total` : '';
 		console.log(`Found ${resultTasks.length} task(s)${totalLabel}:\n`);
 
 		for (const task of resultTasks) {
@@ -586,7 +630,7 @@ async function cmdTasks(args, opts) {
 		}
 
 		if (result.hasMore) {
-			console.log(`\n  ... and ${data.totalCount - tasks.length} more. Use --limit/--offset to see more.`);
+			console.log(`\n  ... some sections may have more tasks (capped at ${perSectionLimit}/section). Use --limit to raise the cap or --page-all for all tasks.`);
 		}
 	});
 }
@@ -596,7 +640,7 @@ async function cmdTasks(args, opts) {
 const VALID_PROJECT_STATUSES = ['active', 'completed', 'archived'];
 
 async function cmdProjects(args, opts) {
-	const repoId = await getRepoId();
+	const workspaceId = await getWorkspaceId();
 
 	let statusFilter = null;
 	for (let i = 0; i < args.length; i++) {
@@ -609,13 +653,13 @@ async function cmdProjects(args, opts) {
 		validateEnum(statusFilter, VALID_PROJECT_STATUSES, 'project status');
 	}
 
-	validateId(repoId, 'Repo ID');
+	validateId(workspaceId, 'Workspace ID');
 
 	const params = new URLSearchParams();
 	if (statusFilter) params.set('status', statusFilter);
 
 	const queryStr = params.toString();
-	const url = `/api/repos/${repoId}/projects${queryStr ? '?' + queryStr : ''}`;
+	const url = `/api/workspaces/${workspaceId}/projects${queryStr ? '?' + queryStr : ''}`;
 	const data = await apiRequest(url);
 	const projects = data.projects || [];
 
@@ -625,8 +669,7 @@ async function cmdProjects(args, opts) {
 		color: p.color || null,
 		projectNumber: p.projectNumber,
 		status: p.status || 'active',
-		taskCount: p.taskCount ?? 0,
-		repoTaskCount: p.repoTaskCount ?? 0
+		taskCount: p.taskCount ?? 0
 	}));
 
 	const result = { projects: resultProjects };
@@ -641,11 +684,34 @@ async function cmdProjects(args, opts) {
 
 		for (const p of resultProjects) {
 			const statusLabel = p.status !== 'active' ? ` [${p.status}]` : '';
-			const taskLabel = p.repoTaskCount !== undefined
-				? ` (${p.repoTaskCount} tasks in repo, ${p.taskCount} total)`
-				: ` (${p.taskCount} tasks)`;
+			const taskLabel = ` (${p.taskCount} tasks)`;
 			console.log(`  P-${p.projectNumber}  ${p.name}${statusLabel}${taskLabel}`);
 		}
+	});
+}
+
+// ─── stacks ──────────────────────────────────────────────────────────────
+
+async function cmdStacks(args, opts) {
+	const workspaceId = await getWorkspaceId();
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
+	const stacks = (data.stacks || []).map(s => ({ id: s.id, name: s.name, taskPrefix: s.taskPrefix, repoIds: s.memberRepoIds || [] }));
+	outputResult({ stacks }, opts, () => {
+		if (stacks.length === 0) { console.log('No stacks found.'); return; }
+		console.log(`Found ${stacks.length} stack(s):\n`);
+		for (const s of stacks) console.log(`  ${s.taskPrefix}  ${s.name}  (${s.repoIds.length} repos)  ${s.id}`);
+	});
+}
+
+async function cmdStackGet(args, opts) {
+	const workspaceId = await getWorkspaceId();
+	const stackId = await resolveStackId(workspaceId, args[0]);
+	validateId(stackId, 'Stack ID');
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks/${stackId}`);
+	outputResult(data, opts, () => {
+		const s = data.stack || data;
+		console.log(`${s.taskPrefix}  ${s.name}  ${s.id}`);
+		for (const r of (data.memberRepos || data.repos || data.members || [])) console.log(`  - ${r.fullName || r.name || r.id}`);
 	});
 }
 
@@ -656,7 +722,7 @@ async function cmdCreate(args, opts) {
 		throw new Error('Usage: lightsprint create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--project <projectId>] [--depends-on <id1,id2,...>] [--parent <taskId>] [--cc-pid <pid>]');
 	}
 
-	const repoId = await getRepoId();
+	const workspaceId = await getWorkspaceId();
 
 	// Check for --json-body
 	let jsonBody = null;
@@ -669,6 +735,7 @@ async function cmdCreate(args, opts) {
 	let dependsOn = null;
 	let parentId = null;
 	let projectId = null;
+	let stackFilter = null;
 	let ccPidArg;
 
 	for (let i = 0; i < args.length; i++) {
@@ -688,6 +755,8 @@ async function cmdCreate(args, opts) {
 			parentId = args[++i];
 		} else if (args[i] === '--project' && args[i + 1]) {
 			projectId = args[++i];
+		} else if (args[i] === '--stack' && args[i + 1]) {
+			stackFilter = args[++i];
 		} else if (args[i] === '--cc-pid' && args[i + 1]) {
 			ccPidArg = parseInt(args[++i], 10);
 			validatePid(ccPidArg);
@@ -736,6 +805,13 @@ async function cmdCreate(args, opts) {
 		body.projectId = projectId;
 	}
 
+	body.scope = 'default';
+	body.workspaceId = workspaceId;
+
+	if (stackFilter) {
+		body.stackId = await resolveStackId(workspaceId, stackFilter);
+	}
+
 	// Resolve dependency IDs (supports display IDs like LIG-024)
 	let dependencyTaskIds = null;
 	if (dependsOn) {
@@ -767,11 +843,11 @@ async function cmdCreate(args, opts) {
 
 	// Dry-run: validate only, don't call API
 	if (opts.dryRun) {
-		return outputDryRun('create', body, `POST /api/repos/${repoId}/tasks`, opts);
+		return outputDryRun('create', body, 'POST /api/tasks', opts);
 	}
 
-	validateId(repoId, 'Repo ID');
-	const data = await apiRequest(`/api/repos/${repoId}/tasks`, {
+	validateId(workspaceId, 'Workspace ID');
+	const data = await apiRequest('/api/tasks', {
 		method: 'POST',
 		body: JSON.stringify(body)
 	});
@@ -1328,7 +1404,7 @@ async function cmdCreatePlan(args, opts) {
 		throw new Error('Usage: lightsprint create-plan --content <markdown> [--title <text>] [--task <taskId>] [--cc-pid <pid>]');
 	}
 
-	const repoId = await getRepoId();
+	const workspaceId = await getWorkspaceId();
 
 	let content = null;
 	let title = null;
@@ -1385,11 +1461,11 @@ async function cmdCreatePlan(args, opts) {
 
 	// Dry-run: validate only
 	if (opts.dryRun) {
-		return outputDryRun('create-plan', body, `POST /api/repos/${repoId}/plans`, opts);
+		return outputDryRun('create-plan', body, `POST /api/workspaces/${workspaceId}/plans`, opts);
 	}
 
-	validateId(repoId, 'Repo ID');
-	const data = await apiRequest(`/api/repos/${repoId}/plans`, {
+	validateId(workspaceId, 'Workspace ID');
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/plans`, {
 		method: 'POST',
 		body: JSON.stringify(body)
 	});
@@ -1413,31 +1489,19 @@ async function cmdCreatePlan(args, opts) {
 // ─── whoami ──────────────────────────────────────────────────────────────
 
 async function cmdWhoami(opts) {
-	const info = await getRepoInfo();
-
-	const repo = info.repo || info.project;
+	const workspaceId = await getWorkspaceId();
+	const [ws, user] = await Promise.all([
+		apiRequest(`/api/workspaces/${workspaceId}`),
+		apiRequest(`/api/user/profile`).catch(() => null),
+	]);
+	const wsObj = ws.workspace || ws;
 	const result = {
-		user: info.user ? {
-			name: info.user.name,
-			email: info.user.email,
-			id: info.user.id
-		} : null,
-		repo: {
-			name: repo.name,
-			fullName: repo.fullName || null,
-			id: repo.id
-		},
-		scopes: info.scopes
+		user: user ? { name: user.name, email: user.email, id: user.id } : null,
+		workspace: { id: workspaceId, name: wsObj?.name ?? null },
 	};
-
 	outputResult(result, opts, () => {
-		if (info.user) {
-			console.log(`User: ${info.user.name}`);
-			if (info.user.email) console.log(`Email: ${info.user.email}`);
-		}
-		if (repo.fullName) console.log(`Repository: ${repo.fullName}`);
-		console.log(`Repo ID: ${repo.id}`);
-		console.log(`Scopes: ${info.scopes.join(', ')}`);
+		if (result.user) console.log(`User: ${result.user.name}${result.user.email ? ` <${result.user.email}>` : ''}`);
+		console.log(`Workspace: ${result.workspace.name ?? workspaceId} (${result.workspace.id})`);
 	});
 }
 
@@ -1451,7 +1515,7 @@ function cmdOpen(opts) {
 		throw new Error('Not connected to Lightsprint. Run "lightsprint connect" first.');
 	}
 
-	const url = `${cfg.baseUrl}/repos/${cfg.repoId}`;
+	const url = `${cfg.baseUrl}/workspaces/${cfg.workspaceId}/tasks`;
 
 	let opened = false;
 	const platform = process.platform;
@@ -1485,13 +1549,9 @@ function cmdStatus(opts) {
 	const cfg = getConfig(cwd);
 
 	if (!cfg) {
-		const result = { connected: false, message: 'Not connected to Lightsprint. Run "lightsprint connect" first.' };
+		const result = { connected: false, message: 'Not connected to Lightsprint. Run "lightsprint connect".' };
 		return outputResult(result, opts, () => {
-			console.log('Not connected to Lightsprint.\n');
-			console.log('To get started:\n');
-			console.log('  1. Run:  lightsprint connect');
-			console.log('  2. Authorize in the browser when prompted');
-			console.log('  3. Select the repo to link to this repository\n');
+			console.log('Not connected to Lightsprint. Run "lightsprint connect".\n');
 			console.log('For a custom instance:\n');
 			console.log('  lightsprint connect --base-url https://your-instance.lightsprint.ai');
 		});
@@ -1506,24 +1566,23 @@ function cmdStatus(opts) {
 
 	const result = {
 		connected: true,
-		repoName: cfg.repoName || 'unknown',
-		repoId: cfg.repoId,
-		repo: cfg.repo,
+		workspaceId: cfg.workspaceId,
+		workspaceName: cfg.workspaceName || 'unknown',
 		baseUrl: cfg.baseUrl,
 		token: { valid: tokenValid, remainingMs: remainingMs != null ? Math.max(0, remainingMs) : null }
 	};
 
 	outputResult(result, opts, () => {
-		console.log(`Repo ID:    ${cfg.repoId}`);
-		console.log(`Repository: ${cfg.repo}`);
-		console.log(`Base URL:   ${cfg.baseUrl}`);
+		console.log(`Workspace:    ${cfg.workspaceName || 'unknown'}`);
+		console.log(`Workspace ID: ${cfg.workspaceId}`);
+		console.log(`Base URL:     ${cfg.baseUrl}`);
 		if (cfg.expiresAt) {
 			if (!tokenValid) {
-				console.log(`Token:      expired`);
+				console.log(`Token:        expired`);
 			} else {
 				const hours = Math.floor(remainingMs / 3600000);
 				const mins = Math.floor((remainingMs % 3600000) / 60000);
-				console.log(`Token:      valid (${hours}h ${mins}m remaining)`);
+				console.log(`Token:        valid (${hours}h ${mins}m remaining)`);
 			}
 		}
 	});
@@ -1548,9 +1607,8 @@ async function cmdConnect(args, opts) {
 	if (cfg && opts.outputFormat === 'json') {
 		const result = {
 			connected: true,
-			repoName: cfg.repoName || null,
-			repoId: cfg.repoId,
-			repo: cfg.repo
+			workspaceId: cfg.workspaceId,
+			workspaceName: cfg.workspaceName
 		};
 		console.log(JSON.stringify(result));
 	}
@@ -1559,40 +1617,14 @@ async function cmdConnect(args, opts) {
 // ─── disconnect ──────────────────────────────────────────────────────
 
 async function cmdDisconnect(args, opts) {
-	const repos = readReposFile();
-	const cwd = process.cwd();
-
-	// Find matching entries: repo name + walk up from cwd
-	const toRemove = [];
-	const repoName = getGitRepoFullName(cwd);
-	if (repoName && repos[repoName]) {
-		toRemove.push(repoName);
-	}
-	for (const [folder] of Object.entries(repos)) {
-		if (!cwd.startsWith(folder) && folder !== cwd) continue;
-		toRemove.push(folder);
-	}
-
-	if (toRemove.length === 0) {
-		const result = { disconnected: [], message: 'No Lightsprint connection found for this folder.' };
-		return outputResult(result, opts, () => console.log(result.message));
-	}
-
-	const disconnected = [];
-	for (const folder of toRemove) {
-		const entry = repos[folder];
-		const repoDisplayName = entry.repoName || entry.baseUrl || 'unknown';
-		delete repos[folder];
-		disconnected.push({ key: folder, repoName: repoDisplayName });
-	}
-
-	writeReposFile(repos);
-
-	const result = { disconnected };
+	const conn = readConnection();
+	clearConnection();
+	const result = conn
+		? { disconnected: [{ workspaceId: conn.workspaceId, workspaceName: conn.workspaceName || null }] }
+		: { disconnected: [], message: 'No active Lightsprint connection.' };
 	outputResult(result, opts, () => {
-		for (const d of disconnected) {
-			console.log(`Disconnected: ${d.repoName} (${d.key})`);
-		}
+		if (!conn) console.log(result.message);
+		else console.log(`Disconnected workspace: ${conn.workspaceName || conn.workspaceId}`);
 	});
 }
 
@@ -2304,9 +2336,33 @@ async function resolveTaskPrId(taskIdInput) {
  *   - Raw ID: "YCRFHw7OeZUbogdOtYnFh" (returned as-is)
  */
 async function resolveTaskId(input) {
-	const repoId = await getRepoId();
-	const data = await apiRequest(`/api/repos/${repoId}/tasks/resolve?ref=${encodeURIComponent(input)}`);
+	const DISPLAY_ID_PATTERN = /^[A-Z]{2,4}-\d{1,6}$/;
+	const BARE_NUMBER_PATTERN = /^\d{1,6}$/;
+
+	// Raw task IDs are globally addressable by /api/tasks/:id. Returning them
+	// directly avoids sending stack tasks through the legacy repo-board resolver,
+	// which only accepts tasks whose repoId matches the connected repo.
+	if (!DISPLAY_ID_PATTERN.test(input) && !BARE_NUMBER_PATTERN.test(input)) {
+		return input;
+	}
+
+	const workspaceId = await getWorkspaceId();
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/tasks/resolve?ref=${encodeURIComponent(input)}`);
 	return data.taskId;
 }
 
-
+/**
+ * Resolve a stack reference (id, taskPrefix, or name) to a stack ID.
+ * Returns null when no ref is given. Throws if no stack matches.
+ */
+async function resolveStackId(workspaceId, ref) {
+	if (!ref) return null;
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
+	const stacks = data.stacks || [];
+	const lc = String(ref).toLowerCase();
+	const hit = stacks.find(s => s.id === ref)
+		|| stacks.find(s => (s.taskPrefix || '').toLowerCase() === lc)
+		|| stacks.find(s => (s.name || '').toLowerCase() === lc);
+	if (!hit) throw new Error(`No stack matches "${ref}". Run "lightsprint stacks" to list stacks.`);
+	return hit.id;
+}

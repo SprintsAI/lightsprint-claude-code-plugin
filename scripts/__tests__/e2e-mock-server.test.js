@@ -17,6 +17,7 @@ import { tmpdir } from 'os';
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { spawn } from 'child_process';
+import { writeConnection } from '../lib/connection.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -102,14 +103,14 @@ function createMockServer() {
 			if (path === '/api/repo-key/info' && method === 'GET') {
 				return Response.json({
 					user: { name: 'test-user', email: 'test@example.com', id: 'user-1' },
-					repo: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY },
-					project: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY },
+					repo: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY, workspaceId: 'mock-workspace-id' },
+					project: { id: repoId, name: 'lightsprint-claude-code-plugin', fullName: REPO_KEY, workspaceId: 'mock-workspace-id' },
 					scopes: ['repo:read', 'repo:write'],
 				});
 			}
 
-			// Resolve task ID (display ID → raw ID)
-			const resolveMatch = path.match(new RegExp(`^/api/repos/${repoId}/tasks/resolve$`));
+			// Resolve task ID (display ID → raw ID) — workspace-scoped
+			const resolveMatch = path.match(/^\/api\/workspaces\/[^/]+\/tasks\/resolve$/);
 			if (resolveMatch && method === 'GET') {
 				const ref = url.searchParams.get('ref');
 				// If ref is already a raw task ID, return it directly
@@ -122,33 +123,74 @@ function createMockServer() {
 				return Response.json({ error: 'Not found' }, { status: 404 });
 			}
 
-			// List tasks
-			if (path === `/api/repos/${repoId}/tasks` && method === 'GET') {
+			// List tasks (workspace board). Mirrors the REAL server shape:
+			//  - layoutType=list (no sectionId) → { listSectionsWithTasks: [{ id, name, status, tasks }] }
+			//  - layoutType=list&sectionId=X    → { tasks, totalCount }  (one section, paginated)
+			if (path.match(/^\/api\/workspaces\/[^/]+\/board$/) && method === 'GET') {
 				const allTasks = [...tasks.values()];
+				const sectionId = url.searchParams.get('sectionId');
+				if (sectionId) {
+					// Single-section paginated path used by --page-all.
+					const offset = parseInt(url.searchParams.get('offset') || '0', 10) || 0;
+					const limit = parseInt(url.searchParams.get('limit') || '100', 10) || 100;
+					// All seeded tasks live in the single 'sec-todo' section here.
+					const sectionTasks = sectionId === 'sec-todo' ? allTasks : [];
+					return Response.json({
+						tasks: sectionTasks.slice(offset, offset + limit),
+						totalCount: sectionTasks.length,
+					});
+				}
 				return Response.json({
-					tasks: allTasks,
-					total: allTasks.length,
-					limit: 20,
-					offset: 0,
+					listSectionsWithTasks: [
+						{ id: 'sec-todo', name: 'Todo', status: 'todo', tasks: allTasks },
+					],
 				});
 			}
 
-			// Create task
-			if (path === `/api/repos/${repoId}/tasks` && method === 'POST') {
+			// List stacks (workspace-scoped)
+			if (path.match(/^\/api\/workspaces\/[^/]+\/stacks$/) && method === 'GET') {
+				return Response.json({
+					stacks: [
+						{ id: 'stk_1', name: 'Eng', taskPrefix: 'ENG', memberRepoIds: ['r1'] },
+					],
+				});
+			}
+
+			// Get a single stack + member repos (workspace-scoped)
+			const stackGetMatch = path.match(/^\/api\/workspaces\/[^/]+\/stacks\/([^/]+)$/);
+			if (stackGetMatch && method === 'GET') {
+				const stackId = stackGetMatch[1];
+				return Response.json({
+					stack: { id: stackId, name: 'Eng', taskPrefix: 'ENG' },
+					members: [
+						{ stackId, repoId: 'r1' },
+					],
+					memberRepos: [
+						{ id: 'r1', name: 'core', fullName: 'SprintsAI/core' },
+					],
+				});
+			}
+
+			// Create default-stack task
+			if (path === '/api/tasks' && method === 'POST') {
 				const newId = 'task-' + randomBytes(4).toString('hex');
 				const newTask = {
 					id: newId,
 					displayId: 'MOCK-' + (tasks.size + 1),
+					taskNumber: tasks.size + 1,
 					title: body?.title || 'Untitled',
 					status: body?.status || 'backlog',
 					complexity: body?.complexity || 'medium',
+					repoId: null,
+					stackId: 'mock-default-stack-id',
+					workspaceId: body?.workspaceId || 'mock-workspace-id',
 					assignee: null,
 					description: body?.description || '',
 					creator: { name: 'test-user' },
 					dependencies: [],
 				};
 				tasks.set(newId, newTask);
-				return Response.json({ task: newTask }, { status: 201 });
+				return Response.json({ task: newTask, taskPrefix: 'MOCK' }, { status: 201 });
 			}
 
 			// Get task
@@ -211,14 +253,27 @@ function createMockServer() {
 				return Response.json({ task: null });
 			}
 
-			// Plans
-			if (path.match(/^\/api\/repos\/[^/]+\/plans$/) && method === 'POST') {
+			// Plans (workspace-scoped)
+			if (path.match(/^\/api\/workspaces\/[^/]+\/plans$/) && method === 'POST') {
 				return Response.json({ planId: 'plan-' + randomBytes(4).toString('hex') });
 			}
 
 			// Plan versions (PUT)
 			if (path.match(/^\/api\/plans\/[^/]+\/versions$/) && method === 'PUT') {
 				return Response.json({ ok: true, versionId: 'ver-' + randomBytes(4).toString('hex') });
+			}
+
+			// Workspace details (for whoami)
+			const wsGetMatch = path.match(/^\/api\/workspaces\/([^/]+)$/);
+			if (wsGetMatch && method === 'GET') {
+				return Response.json({
+					workspace: { id: wsGetMatch[1], name: 'Mock Workspace' },
+				});
+			}
+
+			// User profile (for whoami)
+			if (path === '/api/user/profile' && method === 'GET') {
+				return Response.json({ name: 'test-user', email: 'test@example.com', id: 'user-1' });
 			}
 
 			return Response.json({ error: 'Not found', path, method }, { status: 404 });
@@ -234,16 +289,15 @@ let mockServer;
 
 function setupMockRepos(baseUrl) {
 	mkdirSync(TEST_CONFIG_DIR, { recursive: true, mode: 0o700 });
-	const repos = {};
-	repos[REPO_KEY] = {
+	// Workspace-scoped connection model: the CLI reads connection.json (not repos.json).
+	writeConnection({
+		workspaceId: 'mock-workspace-id',
+		workspaceName: 'Mock Workspace',
 		accessToken: 'mock-access-token',
 		refreshToken: 'mock-refresh-token',
 		expiresAt: Date.now() + 3600000, // 1 hour from now
-		repoId: 'mock-repo-id',
-		repoName: 'Mock Repository',
 		baseUrl,
-	};
-	writeFileSync(REPOS_FILE, JSON.stringify(repos, null, 2), { mode: 0o600 });
+	});
 }
 
 function cleanupTestConfigDir() {
@@ -328,6 +382,12 @@ describe('E2E: Mock Server', () => {
 			expect(result.json).toBeDefined();
 			expect(result.json.tasks).toBeArray();
 			expect(result.json.tasks.length).toBe(2);
+			// Confirm tasks were flattened out of listSectionsWithTasks[].tasks.
+			const ids = result.json.tasks.map(t => t.id);
+			expect(ids).toContain('task-1');
+			expect(ids).toContain('task-2');
+			const displayIds = result.json.tasks.map(t => t.displayId);
+			expect(displayIds).toContain('MOCK-1');
 		});
 
 		test('lists tasks in text mode', async () => {
@@ -339,7 +399,7 @@ describe('E2E: Mock Server', () => {
 
 		test('API request hits correct endpoint', async () => {
 			await runCliJson(['tasks']);
-			const tasksReq = mockServer.requests.find(r => r.path.includes('/tasks') && r.method === 'GET');
+			const tasksReq = mockServer.requests.find(r => /\/api\/workspaces\/[^/]+\/board/.test(r.path) && r.method === 'GET');
 			expect(tasksReq).toBeDefined();
 		});
 	});
@@ -357,8 +417,10 @@ describe('E2E: Mock Server', () => {
 
 		test('create sends correct payload to API', async () => {
 			await runCliJson(['create', '--title', 'Payload Test', '--status', 'todo', '--complexity', 'high']);
-			const createReq = mockServer.requests.find(r => r.path.includes('/tasks') && r.method === 'POST');
+			const createReq = mockServer.requests.find(r => r.path === '/api/tasks' && r.method === 'POST');
 			expect(createReq).toBeDefined();
+			expect(createReq.body.scope).toBe('default');
+			expect(createReq.body.workspaceId).toBe('mock-workspace-id');
 			expect(createReq.body.title).toBe('Payload Test');
 			expect(createReq.body.status).toBe('todo');
 			expect(createReq.body.complexity).toBe('high');
@@ -379,6 +441,41 @@ describe('E2E: Mock Server', () => {
 	});
 
 	// ─── CLI: get ────────────────────────────────────────────────────────
+
+	describe('CLI: stacks', () => {
+		test('lists stacks from mock server', async () => {
+			const result = await runCliJson(['stacks']);
+			if (result.exitCode !== 0) {
+				console.error('CLI stacks --output json failed:', { stderr: result.stderr, stdout: result.stdout });
+			}
+			expect(result.exitCode).toBe(0);
+			expect(result.json).toBeDefined();
+			expect(result.json.stacks).toBeArray();
+			expect(result.json.stacks.length).toBe(1);
+			expect(result.json.stacks[0].id).toBe('stk_1');
+			expect(result.json.stacks[0].taskPrefix).toBe('ENG');
+			// The CLI sources repoIds from the server's memberRepoIds field, so the
+			// member repo count must come through (1 repo).
+			expect(result.json.stacks[0].repoIds).toEqual(['r1']);
+		});
+
+		test('stacks get resolves ENG prefix to stk_1 and returns detail', async () => {
+			const result = await runCliJson(['stacks', 'get', 'ENG']);
+			expect(result.exitCode).toBe(0);
+			expect(result.json).toBeDefined();
+			// resolveStackId matches the ENG prefix to stk_1, so the detail request
+			// targets /api/workspaces/:wsId/stacks/stk_1.
+			const detailReq = mockServer.requests.find(r => r.method === 'GET' && /\/stacks\/stk_1$/.test(r.path));
+			expect(detailReq).toBeDefined();
+			const stack = result.json.stack || result.json;
+			expect(stack.id).toBe('stk_1');
+			// The server returns resolved repos under memberRepos; the CLI renders
+			// these (fullName) for the human view.
+			expect(result.json.memberRepos).toBeArray();
+			expect(result.json.memberRepos.length).toBe(1);
+			expect(result.json.memberRepos[0].fullName).toBe('SprintsAI/core');
+		});
+	});
 
 	describe('CLI: get', () => {
 		test('gets a task by ID', async () => {
@@ -502,7 +599,8 @@ describe('E2E: Mock Server', () => {
 		test('shows connection info', async () => {
 			const result = await runCli(['whoami']);
 			expect(result.exitCode).toBe(0);
-			expect(result.stdout).toContain(REPO_KEY);
+			expect(result.stdout).toContain('mock-workspace-id');
+			expect(result.stdout).toContain('Mock Workspace');
 		});
 	});
 });
@@ -548,14 +646,15 @@ describe('E2E: Session Lifecycle', () => {
 					return Response.json({ task: null });
 				}
 
-				// Task endpoints for task sync
-				if (url.pathname.match(/\/api\/repos\/.*\/tasks/) && req.method === 'POST') {
+				// Task endpoints for task sync (workspace-scoped global create)
+				if (url.pathname === '/api/tasks' && req.method === 'POST') {
 					const body = await req.json().catch(() => ({}));
 					return Response.json({
 						task: {
 							id: 'created-task-' + randomBytes(4).toString('hex'),
 							title: body.title || '',
 							status: body.status || 'backlog',
+							workspaceId: body.workspaceId || 'mock-workspace-id',
 						}
 					}, { status: 201 });
 				}
@@ -568,8 +667,8 @@ describe('E2E: Session Lifecycle', () => {
 					return Response.json({ task: { id: 'patched', status: 'done' } });
 				}
 
-				// Plans - POST new plan
-				if (url.pathname.match(/\/api\/repos\/[^/]+\/plans$/) && req.method === 'POST') {
+				// Plans - POST new plan (workspace-scoped)
+				if (url.pathname.match(/\/api\/workspaces\/[^/]+\/plans$/) && req.method === 'POST') {
 					return Response.json({ planId: 'plan-' + randomBytes(4).toString('hex') });
 				}
 
@@ -664,7 +763,7 @@ describe('E2E: Session Lifecycle', () => {
 				LIGHTSPRINT_NO_BROWSER: '1',
 				LS_CREDS_FILE: credsPath,
 				LS_BASE_URL: `http://localhost:${mockPort}`,
-				LS_REPO_ID: 'mock-repo-id',
+				LS_WORKSPACE_ID: 'mock-workspace-id',
 				LS_SESSION_ID: sessionId,
 				LS_CWD: process.cwd(),
 				LS_CC_PID: String(ccPid),
@@ -1338,7 +1437,7 @@ describe('E2E: Session Lifecycle', () => {
 						ccPid: 999998,
 						ccSessionId: staleSessionId,
 						lsSessionId: null,
-						repoId: 'mock-repo-id',
+						workspaceId: 'mock-workspace-id',
 					}),
 					{ mode: 0o600 }
 				);

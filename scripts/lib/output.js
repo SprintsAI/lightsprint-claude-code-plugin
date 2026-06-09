@@ -125,8 +125,12 @@ export function formatTaskText(task, options = {}) {
 export function buildTaskData(task) {
 	return {
 		id: task.id,
+		taskNumber: task.taskNumber ?? null,
 		title: task.title,
 		status: task.status || 'unknown',
+		repoId: task.repoId ?? null,
+		stackId: task.stackId ?? null,
+		workspaceId: task.workspaceId ?? null,
 		assignee: task.assignedUser?.name || task.assignee || null,
 		complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
 		project: task.project ? { id: task.project.id, name: task.project.name, color: task.project.color || null, projectNumber: task.project.projectNumber } : null,

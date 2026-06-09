@@ -1,12 +1,12 @@
 # Lightsprint Claude Code Plugin
 
-Claude Code plugin for Lightsprint — plan review, task management skills, and repo board integration.
+Claude Code plugin for Lightsprint — plan review, task management skills, and workspace board integration.
 
 ## Prerequisites
 
 - **Claude Code** CLI installed
 - **Node.js >= 18** (for built-in `fetch`)
-- A **Lightsprint repo** at [lightsprint.ai](https://lightsprint.ai)
+- A **Lightsprint workspace** at [lightsprint.ai](https://lightsprint.ai)
 
 ## Quick Start
 
@@ -22,7 +22,7 @@ Then use any `/lightsprint:` command — the plugin opens your browser to connec
 /lightsprint:tasks
 ```
 
-That's it. Each new repo folder auto-prompts for authorization when you first use a command there.
+That's it. The first command auto-prompts for authorization and connects you to a Lightsprint workspace.
 
 ---
 
@@ -56,27 +56,19 @@ Or with curl:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/install.sh)" <<< $'Y\nY'
 ```
 
-The plugin will be installed but the repo connection step will be skipped. You can connect later by running `/lightsprint:tasks` inside a git repository.
+The plugin will be installed but the workspace connection step will be skipped. You can connect later by running `/lightsprint:tasks`, which prompts you to authorize and pick a workspace.
 
 ---
 
 ## Authentication
 
-Authentication is **on-demand** — the first time you use a `/lightsprint:` command in an unconnected folder, the plugin opens your browser to authorize. You pick a Lightsprint repo, and tokens are saved locally. Tokens refresh automatically.
+Authentication is **on-demand** — the first time you use a `/lightsprint:` command without an active connection, the plugin opens your browser to authorize. You pick a Lightsprint workspace, and tokens are saved locally. Tokens refresh automatically.
 
-### Token resolution
+The active workspace is stored in a single connection file (`~/.lightsprint/connection.json`). All commands (`tasks`, `projects`, `stacks`, `create`, etc.) operate against that connected workspace. Hooks silently skip if no connection exists (they never prompt).
 
-The plugin resolves tokens by:
+### Switching workspaces
 
-1. Walking up from the current directory (covers monorepos and subdirectories)
-2. Falling back to the git main worktree (covers `git worktree` checkouts)
-3. If no token found, opening the browser to authorize
-
-A single authorization at your repo root works for all subdirectories and worktrees. Hooks silently skip if no authorization exists (they never prompt).
-
-### Multiple repos
-
-Each folder can connect to a different Lightsprint repo. The plugin prompts automatically when you use a command in a new folder.
+Run `lightsprint connect` again to authorize and switch to a different workspace, or `lightsprint disconnect` to clear the active connection. Use `lightsprint status` / `lightsprint whoami` to see which workspace is currently connected.
 
 ### Optional: Custom base URL
 
@@ -94,14 +86,19 @@ Defaults to `https://lightsprint.ai`.
 
 ### Skills (slash commands)
 
+All skills operate on the connected workspace.
+
 | Command | Description |
 |---|---|
-| `/lightsprint:tasks` | List tasks from the board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--limit N` |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity trivial\|low\|medium\|high\|critical`, `--status backlog\|todo\|in_progress\|in_review\|done` |
+| `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
+| `/lightsprint:projects` | List projects in the workspace |
+| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
 | `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+
+Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
 ### Claiming tasks
 
@@ -151,7 +148,7 @@ Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
 
 | File | Purpose |
 |---|---|
-| `~/.lightsprint/repos.json` | Per-folder OAuth tokens (access + refresh + expiry + repo ID) |
+| `~/.lightsprint/connection.json` | Active workspace connection — OAuth tokens (access + refresh + expiry) and workspace ID/name |
 | `~/.lightsprint/active-task.json` | Currently in-progress task |
 
 ---
@@ -162,7 +159,7 @@ Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
 curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-plugin/main/uninstall.sh | bash
 ```
 
-This removes the plugin from Claude Code and deletes the authorization for the current folder. Other folders' authorizations in `~/.lightsprint/repos.json` are preserved.
+This removes the plugin from Claude Code and clears the active workspace connection in `~/.lightsprint/connection.json`.
 
 ---
 

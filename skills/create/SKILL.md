@@ -1,9 +1,9 @@
 ---
 name: create
-description: Create a new task on the Lightsprint (ls) repo board. Use to add work items directly from Claude Code.
+description: Create a new task in the workspace default stack. Use to add work items directly from Claude Code.
 ---
 
-Run this command to create a new Lightsprint task:
+Run this command to create a new Lightsprint task in the workspace default stack:
 
 ```bash
 lightsprint create --cc-pid $PPID --title "$ARGUMENTS"
@@ -24,6 +24,7 @@ Aliases: `create-task`, `new`, `add` all resolve to `create`.
 | `--complexity <level>` | No | Complexity estimate: `low`, `medium`, or `high`. |
 | `--status <status>` | No | Initial status: `backlog` (default), `todo`, `in_progress`, `in_review`, or `done`. |
 | `--project <projectId>` | No | Assign to a project by ID. Use `lightsprint projects` to find project IDs. |
+| `--stack <ref>` | No | Create the task in a specific stack. Accepts a stack ID, task prefix, or name. Use `lightsprint stacks` to list stacks. Defaults to the workspace default stack. |
 | `--depends-on <ids>` | No | Comma-separated list of task IDs this task depends on. Supports raw IDs, display IDs (e.g. `LIG-024`), or bare task numbers (e.g. `6`). All formats are resolved server-side. |
 | `--parent <taskId>` | No | Parent task ID. Links the new task as a subtask (dependency) of the specified parent. Supports raw IDs and display IDs (e.g. `LS-1100`). |
 | `--json-body <json>` | No | Raw JSON request body (replaces all other flags). Cannot combine with `--title` or other field flags. |

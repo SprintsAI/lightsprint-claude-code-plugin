@@ -26,7 +26,7 @@ import { appendFileSync, mkdirSync, existsSync, readFileSync, realpathSync } fro
 import { join, resolve, normalize } from 'path';
 import { homedir } from 'os';
 import { getConfig } from './lib/config.js';
-import { apiRequest, getRepoId } from './lib/client.js';
+import { apiRequest, getWorkspaceId } from './lib/client.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
 import { findFreePort, reportError } from './lib/cc-utils.js';
@@ -419,14 +419,14 @@ export async function reviewPlanMain(args) {
 
 	try {
 		// 3. Upload plan
-		log('info', 'Getting repo ID...');
-		const repoId = await getRepoId();
-		log('info', 'Got repo ID', { repoId });
+		log('info', 'Getting workspace ID...');
+		const workspaceId = await getWorkspaceId();
+		log('info', 'Got workspace ID', { workspaceId });
 		let planId;
 
 		const activePlan = getActivePlan();
 
-		if (activePlan && activePlan.repoId === repoId && activePlan.sessionId === sessionId) {
+		if (activePlan && activePlan.repoId === workspaceId && activePlan.sessionId === sessionId) {
 			// Try PUT to create a new version on the existing plan
 			try {
 				validateId(activePlan.planId, 'Plan ID');
@@ -445,8 +445,8 @@ export async function reviewPlanMain(args) {
 
 		if (!planId) {
 			// POST new plan
-			validateId(repoId, 'Repo ID');
-			const createResult = await apiRequest(`/api/repos/${repoId}/plans`, {
+			validateId(workspaceId, 'Workspace ID');
+			const createResult = await apiRequest(`/api/workspaces/${workspaceId}/plans`, {
 				method: 'POST',
 				body: JSON.stringify({ content: plan, allowedPrompts })
 			});
@@ -458,11 +458,11 @@ export async function reviewPlanMain(args) {
 				process.exit(0);
 			}
 
-			log('info', 'Created new plan', { planId, repoId });
+			log('info', 'Created new plan', { planId, workspaceId });
 		}
 
-		// Update active plan tracker
-		setActivePlan(planId, repoId, sessionId);
+		// Update active plan tracker (scoped by workspace)
+		setActivePlan(planId, workspaceId, sessionId);
 
 		// 4. Start callback server
 		const port = await findFreePort();

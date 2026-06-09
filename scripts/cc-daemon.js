@@ -17,7 +17,7 @@
  *
  * Env vars (set by cc-start.js):
  *   LS_ACCESS_TOKEN, LS_REFRESH_TOKEN, LS_EXPIRES_AT, LS_BASE_URL,
- *   LS_REPO_ID, LS_SESSION_ID, LS_CWD, LS_CC_PID, LS_GIT_BRANCH
+ *   LS_WORKSPACE_ID, LS_SESSION_ID, LS_CWD, LS_CC_PID, LS_GIT_BRANCH
  */
 
 import { createServer } from 'http';
@@ -29,7 +29,7 @@ import { ccToLsStatus } from './lib/status-mapper.js';
 import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
 import { openBrowser } from './lib/browser.js';
 import { withFileLock } from './lib/filelock.js';
-import { getConfig, readReposFile, writeReposFile } from './lib/config.js';
+import { getConfig, readConnection, writeConnection } from './lib/config.js';
 import { createHash, randomBytes } from 'crypto';
 import { hostname, homedir } from 'os';
 import { resolve, normalize, join } from 'path';
@@ -38,7 +38,7 @@ import { initSentry, setSentryContext, addBreadcrumb, captureException, shutdown
 
 import { readFileSync, unlinkSync, realpathSync } from 'fs';
 
-// Resolve config: credentials file (secure) > env vars (legacy) > repos.json
+// Resolve config: credentials file (secure) > env vars (legacy) > connection.json
 const CWD = process.env.LS_CWD || process.cwd();
 const repoConfig = getConfig(CWD);
 
@@ -62,7 +62,7 @@ let REFRESH_TOKEN = _refreshToken || process.env.LS_REFRESH_TOKEN || repoConfig?
 let EXPIRES_AT = _expiresAt || (process.env.LS_EXPIRES_AT ? parseInt(process.env.LS_EXPIRES_AT, 10) : repoConfig?.expiresAt);
 if (EXPIRES_AT != null && !Number.isFinite(EXPIRES_AT)) EXPIRES_AT = 0; // force refresh
 const BASE_URL = process.env.LS_BASE_URL || repoConfig?.baseUrl;
-const REPO_ID = process.env.LS_REPO_ID || repoConfig?.repoId;
+const WORKSPACE_ID = process.env.LS_WORKSPACE_ID || repoConfig?.workspaceId;
 const CC_SESSION_ID = process.env.LS_SESSION_ID;
 const CC_PID = parseInt(process.env.LS_CC_PID, 10);
 const CC_PID_VALID = Number.isFinite(CC_PID) && CC_PID > 0;
@@ -201,24 +201,21 @@ async function refreshTokenIfNeeded() {
 		REFRESH_TOKEN = data.refresh_token;
 		EXPIRES_AT = Date.now() + (data.expires_in * 1000);
 
-		// Persist to repos.json with file lock so other processes pick up the new tokens
-		if (repoConfig?.repo) {
-			try {
-				const configDir = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
-				const lockPath = join(configDir, 'repos.json.lock');
-				await withFileLock(lockPath, () => {
-					const repos = readReposFile();
-					const key = repoConfig.repo;
-					if (repos[key]) {
-						repos[key].accessToken = ACCESS_TOKEN;
-						repos[key].refreshToken = REFRESH_TOKEN;
-						repos[key].expiresAt = EXPIRES_AT;
-						writeReposFile(repos);
-					}
-				});
-			} catch (err) {
-				log('Failed to persist refreshed tokens', { error: err.message });
-			}
+		// Persist to connection.json with file lock so other processes pick up the new tokens
+		try {
+			const configDir = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
+			const lockPath = join(configDir, 'connection.json.lock');
+			await withFileLock(lockPath, () => {
+				const conn = readConnection();
+				if (conn) {
+					conn.accessToken = ACCESS_TOKEN;
+					conn.refreshToken = REFRESH_TOKEN;
+					conn.expiresAt = EXPIRES_AT;
+					writeConnection(conn);
+				}
+			});
+		} catch (err) {
+			log('Failed to persist refreshed tokens', { error: err.message });
 		}
 
 		log('Token refreshed successfully');
@@ -284,6 +281,7 @@ async function connectWebSocket() {
 		try {
 			const response = await sendRequest('session:start', {
 				ccSessionId: CC_SESSION_ID,
+				workspaceId: WORKSPACE_ID,
 				gitBranch: GIT_BRANCH,
 				machineId: MACHINE_ID,
 			});
@@ -550,7 +548,7 @@ async function handlePlanReview(data) {
 	let planId;
 	const activePlan = getActivePlan();
 
-	if (activePlan && activePlan.repoId === REPO_ID && activePlan.sessionId === hookSessionId) {
+	if (activePlan && activePlan.repoId === WORKSPACE_ID && activePlan.sessionId === hookSessionId) {
 		try {
 			validateId(activePlan.planId, 'Plan ID');
 			await apiRequest(`/api/plans/${activePlan.planId}/versions`, {
@@ -564,8 +562,8 @@ async function handlePlanReview(data) {
 	}
 
 	if (!planId) {
-		validateId(REPO_ID, 'Repo ID');
-		const createResult = await apiRequest(`/api/repos/${REPO_ID}/plans`, {
+		validateId(WORKSPACE_ID, 'Workspace ID');
+		const createResult = await apiRequest(`/api/workspaces/${WORKSPACE_ID}/plans`, {
 			method: 'POST',
 			body: JSON.stringify({ content: planContent, allowedPrompts, ccSessionId: lsSessionId || undefined })
 		});
@@ -573,7 +571,7 @@ async function handlePlanReview(data) {
 		if (!planId) return { decision: 'allow' };
 	}
 
-	setActivePlan(planId, REPO_ID, hookSessionId);
+	setActivePlan(planId, WORKSPACE_ID, hookSessionId);
 
 	// Start callback server and open browser
 	const callbackPort = await findFreePort();
@@ -641,10 +639,10 @@ async function handleTaskCreate(payload) {
 	const description = payload.tool_input?.description || '';
 
 	try {
-		validateId(REPO_ID, 'Repo ID');
-		const data = await apiRequest(`/api/repos/${REPO_ID}/tasks`, {
+		validateId(WORKSPACE_ID, 'Workspace ID');
+		const data = await apiRequest(`/api/tasks`, {
 			method: 'POST',
-			body: JSON.stringify({ title, description, status: ccToLsStatus('pending'), ccSessionId: lsSessionId || undefined })
+			body: JSON.stringify({ workspaceId: WORKSPACE_ID, title, description, status: ccToLsStatus('pending'), ccSessionId: lsSessionId || undefined })
 		});
 		const newLsId = data?.task?.id;
 		if (!newLsId) {
@@ -774,21 +772,21 @@ function startWatchdog() {
 // -- Main --
 
 export async function main() {
-	log('Starting daemon', { ccSessionId: CC_SESSION_ID, repoId: REPO_ID, ccPid: CC_PID });
+	log('Starting daemon', { ccSessionId: CC_SESSION_ID, workspaceId: WORKSPACE_ID, ccPid: CC_PID });
 
 	// Initialize Sentry crash reporting
 	initSentry({ baseUrl: BASE_URL });
 	wireCrashHandlers();
 	setSentryContext({
 		email: repoConfig?.email,
-		repoId: REPO_ID,
+		workspaceId: WORKSPACE_ID,
 		sessionId: CC_SESSION_ID,
 		machineId: MACHINE_ID,
 	});
 	setErrorReporter((error, context) => captureException(error, context));
 	setValidationBreadcrumbReporter((category, message, level, data) => addBreadcrumb(category, message, level, data));
 
-	if (!ACCESS_TOKEN || !BASE_URL || !REPO_ID || !CC_SESSION_ID) {
+	if (!ACCESS_TOKEN || !BASE_URL || !WORKSPACE_ID || !CC_SESSION_ID) {
 		log('Missing required env vars');
 		process.exit(1);
 	}
@@ -804,8 +802,7 @@ export async function main() {
 		get refreshToken() { return REFRESH_TOKEN; },
 		get expiresAt() { return EXPIRES_AT; },
 		baseUrl: BASE_URL,
-		repoId: REPO_ID,
-		repo: repoConfig?.repo,
+		workspaceId: WORKSPACE_ID,
 	});
 
 	// Start local HTTP server
@@ -822,7 +819,7 @@ export async function main() {
 		ccPid: CC_PID,
 		ccSessionId: CC_SESSION_ID,
 		lsSessionId: null, // Updated after session:start ack
-		repoId: REPO_ID,
+		workspaceId: WORKSPACE_ID,
 		daemonToken: DAEMON_AUTH_TOKEN,
 	});
 

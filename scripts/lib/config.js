@@ -1,19 +1,19 @@
 /**
  * Configuration loader for Lightsprint plugin.
  *
- * Per-repo auth resolution:
- * 1. Git repo full name lookup (owner/repo) in ~/.lightsprint/repos.json
- * 2. If no match found, trigger browser-based OAuth (interactive only)
+ * Workspace-first auth: a single active workspace is stored in
+ * ~/.lightsprint/connection.json (managed by connection.js).
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs';
-import { randomBytes } from 'crypto';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
+import { readConnection, writeConnection, clearConnection } from './connection.js';
 
-const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
-const REPOS_FILE = join(CONFIG_DIR, 'repos.json');
+export { readConnection, writeConnection, clearConnection };
+
+export const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
 const PLUGIN_CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 const PREFERENCES_FILE = join(CONFIG_DIR, 'preferences.json');
 
@@ -71,24 +71,6 @@ export function getDefaultBaseUrl() {
 	return url;
 }
 
-export function readReposFile() {
-	try {
-		if (existsSync(REPOS_FILE)) {
-			return JSON.parse(readFileSync(REPOS_FILE, 'utf-8'));
-		}
-	} catch {
-		// Corrupted file, ignore
-	}
-	return {};
-}
-
-export function writeReposFile(data) {
-	ensureConfigDir();
-	const tmp = REPOS_FILE + '.' + randomBytes(4).toString('hex');
-	writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
-	renameSync(tmp, REPOS_FILE);
-}
-
 /**
  * Try to extract the GitHub owner/repo from the git remote URL.
  * @param {string} [cwd] - Working directory to run git in
@@ -106,45 +88,33 @@ export function getGitRepoFullName(cwd) {
 }
 
 /**
- * Find the repo config by git repo full name (owner/repo).
- *
- * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, repoId: string, repoName: string, repo: string } | null}
+ * Get the Lightsprint config for the active workspace.
+ * The cwd argument is accepted but ignored — the active workspace is global.
+ * Returns null if no workspace is connected.
+ * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, workspaceId: string, workspaceName: string, baseUrl: string } | null}
  */
-function findRepoConfig(startDir) {
-	const repos = readReposFile();
-	const dir = startDir || process.cwd();
-
-	const repoName = getGitRepoFullName(dir);
-	if (repoName && repos[repoName]) {
-		return { ...repos[repoName], repo: repoName };
-	}
-
-	return null;
-}
-
-/**
- * Get the Lightsprint config for the current repo.
- * Returns null for unconfigured and skipped repos (hooks should skip silently).
- * @returns {{ accessToken: string, refreshToken: string, expiresAt: number, repoId: string, repoName: string, repo: string, baseUrl: string } | null}
- */
-export function getConfig(cwd) {
-	const repo = findRepoConfig(cwd);
-	if (!repo || repo.skipped) return null;
-
-	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || repo.baseUrl || getDefaultBaseUrl();
-
-	return {
-		...repo,
-		baseUrl
-	};
+export function getConfig() {
+	const conn = readConnection();
+	if (!conn || !conn.workspaceId) return null;
+	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || conn.baseUrl || getDefaultBaseUrl();
+	return { ...conn, baseUrl };
 }
 
 /**
  * Get config or trigger on-demand OAuth.
  * Only call from interactive contexts (skills/CLI), not hooks.
- * Returns null if the user previously skipped this repo.
- * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, repoId: string, repoName: string, repo: string, baseUrl: string } | null>}
+ * Returns null if authentication was skipped or failed.
+ * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, workspaceId: string, workspaceName: string, baseUrl: string } | null>}
  */
+export async function requireConfig() {
+	const existing = getConfig();
+	if (existing) return existing;
+	const { authenticate } = await import('./auth.js');
+	const result = await authenticate(getDefaultBaseUrl());
+	if (!result || result.skipped) return null;
+	return result;
+}
+
 // ─── User preferences ────────────────────────────────────────────────
 
 export function readPreferences() {
@@ -191,23 +161,3 @@ export function deletePreference(key) {
 }
 
 export { KNOWN_PREFERENCES };
-
-export async function requireConfig() {
-	const repo = findRepoConfig();
-	if (repo?.skipped) {
-		console.log('Lightsprint is not connected for this repository (previously skipped).');
-		return null;
-	}
-
-	const existing = getConfig();
-	if (existing) return existing;
-
-	// No config for this repo — trigger OAuth
-	const { authenticate } = await import('./auth.js');
-	const baseUrl = getDefaultBaseUrl();
-	const result = await authenticate(baseUrl);
-
-	if (result.skipped) return null;
-
-	return result;
-}

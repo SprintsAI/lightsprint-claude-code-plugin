@@ -52,7 +52,7 @@ describe('sentry module', () => {
 	test('setSentryContext calls setUser with hashed email and setTag for each field', () => {
 		setSentryContext({
 			email: 'test@example.com',
-			repoId: 'repo-123',
+			workspaceId: 'ws-123',
 			sessionId: 'session-abc',
 			machineId: 'machine-xyz',
 		});
@@ -63,7 +63,7 @@ describe('sentry module', () => {
 		expect(userArg.id.length).toBe(16);
 
 		const tagCalls = sentryMock.setTag.mock.calls.map(c => c[0]);
-		expect(tagCalls).toContain('repoId');
+		expect(tagCalls).toContain('workspaceId');
 		expect(tagCalls).toContain('sessionId');
 		expect(tagCalls).toContain('machineId');
 	});

@@ -4,7 +4,7 @@
  * Handles automatic token refresh when access token expires.
  */
 
-import { requireConfig, readReposFile, writeReposFile } from './config.js';
+import { requireConfig, readConnection, writeConnection } from './config.js';
 import { withFileLock } from './filelock.js';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -45,7 +45,7 @@ async function config() {
 
 /**
  * Refresh the access token using the refresh token.
- * Updates repos.json with new tokens atomically.
+ * Updates connection.json with new tokens atomically.
  * @returns {boolean} true if refresh succeeded
  */
 async function refreshTokenIfNeeded() {
@@ -80,17 +80,16 @@ async function refreshTokenIfNeeded() {
 
 		const data = await response.json();
 
-		// Update repos.json atomically with file lock
+		// Update connection.json atomically with file lock
 		const configDir = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
-		const lockPath = join(configDir, 'repos.json.lock');
+		const lockPath = join(configDir, 'connection.json.lock');
 		await withFileLock(lockPath, () => {
-			const repos = readReposFile();
-			const key = cfg.repo;
-			if (repos[key]) {
-				repos[key].accessToken = data.access_token;
-				repos[key].refreshToken = data.refresh_token;
-				repos[key].expiresAt = Date.now() + (data.expires_in * 1000);
-				writeReposFile(repos);
+			const conn = readConnection();
+			if (conn) {
+				conn.accessToken = data.access_token;
+				conn.refreshToken = data.refresh_token;
+				conn.expiresAt = Date.now() + (data.expires_in * 1000);
+				writeConnection(conn);
 			}
 		});
 
@@ -279,27 +278,13 @@ export async function apiRequest(path, options = {}) {
 }
 
 /**
- * Get repo info from the token.
- * @returns {Promise<{ repo: { id: string, name: string }, scopes: string[] }>}
- */
-let _repoInfo = null;
-export async function getRepoInfo() {
-	if (_repoInfo) return _repoInfo;
-	_repoInfo = await apiRequest('/api/repo-key/info');
-	return _repoInfo;
-}
-
-/**
- * Get the repo ID from the token.
+ * Get the workspace ID for the connected workspace.
  * @returns {Promise<string>}
  */
-export async function getRepoId() {
-	// Use the repoId from config first (faster, no API call)
+export async function getWorkspaceId() {
 	const cfg = await config();
-	if (cfg.repoId) return cfg.repoId;
-
-	const info = await getRepoInfo();
-	return info.repo?.id || info.project?.id;
+	if (!cfg.workspaceId) throw new Error('Not connected to a workspace. Run "lightsprint connect".');
+	return cfg.workspaceId;
 }
 
 /**
