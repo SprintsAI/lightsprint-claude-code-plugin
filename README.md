@@ -1,6 +1,6 @@
 # Lightsprint Claude Code Plugin
 
-Claude Code plugin for Lightsprint — plan review, task management skills, and workspace board integration.
+Claude Code plugin for Lightsprint — task management, plan review, cloud agents, PR linking, and workspace board integration.
 
 ## Prerequisites
 
@@ -88,15 +88,38 @@ Defaults to `https://lightsprint.ai`.
 
 All skills operate on the connected workspace.
 
+**Task management**
+
 | Command | Description |
 |---|---|
 | `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
-| `/lightsprint:projects` | List projects in the workspace |
+| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, dependencies, complexity |
 | `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
+| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>`, `--position`, `--dependencies` |
+| `/lightsprint:delete <id>` | Delete a task permanently from the board |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:current-task` | Get the task linked to the current Claude Code session (auto-discovered via session PID) |
+| `/lightsprint:projects` | List projects in the workspace |
+| `/lightsprint:create-plan` | Upload an implementation plan / design doc from markdown for team review |
+
+**Cloud agents**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:agent` | Launch, stop, or check settings for cloud agents on a task (anthropic, cursor, codex providers) |
+| `/lightsprint:agent-settings` | Check which agent providers are configured and their default models |
+| `/lightsprint:agent-create-pr` | Create a GitHub PR from a cloud agent's working branch |
+
+**Pull requests & review hub**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:link-pr <id> <pr>` | Link a GitHub PR to a task |
+| `/lightsprint:unlink-pr <id>` | Remove a linked PR from a task |
+| `/lightsprint:merge <id>` | Merge the PR linked to a task (direct merge or merge queue) |
+| `/lightsprint:review-hub-scores <id>` | Get AI readiness analysis (score, summaries, callouts, suggested actions) for a task's PR |
+| `/lightsprint:review-hub-signals <id>` | Get PR signals (CI checks, reviews, comments, deployments) for a task's PR |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -117,32 +140,28 @@ lightsprint-claude-code-plugin/
 │   ├── plugin.json             # Plugin manifest
 │   └── marketplace.json        # Marketplace registry entry
 ├── hooks/
-│   └── hooks.json              # PermissionRequest hook for plan review
+│   └── hooks.json              # Lifecycle hooks (plan review, session tracking, PR detection)
 ├── scripts/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
-│   ├── review-plan.js          # Plan review handler (exports reviewPlanMain)
 │   ├── ls-cli.js               # Task management commands (exports cliMain)
+│   ├── review-plan.js          # Plan review handler (exports reviewPlanMain)
+│   ├── cc-start.js             # SessionStart hook — connect + start tracking
+│   ├── cc-end.js               # SessionEnd hook — flush + stop tracking
+│   ├── cc-event.js             # Activity/lifecycle event reporter
+│   ├── cc-review.js            # ExitPlanMode plan-review hook
+│   ├── cc-pr-created.js        # Detects `gh pr create` and links the PR
+│   ├── cc-daemon.js            # Background sync daemon
 │   ├── compile.sh              # Build script for lightsprint binary
-│   └── lib/
-│       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
-│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
-│       ├── client.js           # HTTP client with automatic token refresh
-│       ├── task-map.js         # CC↔LS task ID mapping
-│       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   └── lib/                    # auth, client, config, connection, task-map,
+│                               #   status-mapper, validate, output, schema, sentry, …
+├── skills/                     # One SKILL.md per /lightsprint: command (see table above)
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
 └── README.md
 ```
 
-Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
+Runtime dependencies are minimal — Node.js built-ins (`fetch`, `crypto`, `fs`) plus `@sentry/node` for error reporting. The CLI is compiled to a self-contained `lightsprint` binary with Bun.
 
 ### Local files
 
@@ -177,4 +196,4 @@ Verify the plugin is loaded:
 claude --debug
 ```
 
-Check that `hooks/hooks.json` is being picked up and `PostToolUse` matchers are registered.
+Check that `hooks/hooks.json` is being picked up and the hook matchers are registered. The plugin registers `PermissionRequest` (plan review on `ExitPlanMode`), `SessionStart`/`SessionEnd`, `UserPromptSubmit`, `Stop`, and `PostToolUse` hooks (PR detection on `Bash`, task sync on `TaskCreate`/`TaskUpdate`).
