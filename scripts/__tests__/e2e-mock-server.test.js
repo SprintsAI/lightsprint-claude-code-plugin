@@ -618,14 +618,15 @@ describe('E2E: Session Lifecycle', () => {
 					return Response.json({ task: null });
 				}
 
-				// Task endpoints for task sync
-				if (url.pathname.match(/\/api\/repos\/.*\/tasks/) && req.method === 'POST') {
+				// Task endpoints for task sync (workspace-scoped global create)
+				if (url.pathname === '/api/tasks' && req.method === 'POST') {
 					const body = await req.json().catch(() => ({}));
 					return Response.json({
 						task: {
 							id: 'created-task-' + randomBytes(4).toString('hex'),
 							title: body.title || '',
 							status: body.status || 'backlog',
+							workspaceId: body.workspaceId || 'mock-workspace-id',
 						}
 					}, { status: 201 });
 				}
@@ -638,8 +639,8 @@ describe('E2E: Session Lifecycle', () => {
 					return Response.json({ task: { id: 'patched', status: 'done' } });
 				}
 
-				// Plans - POST new plan
-				if (url.pathname.match(/\/api\/repos\/[^/]+\/plans$/) && req.method === 'POST') {
+				// Plans - POST new plan (workspace-scoped)
+				if (url.pathname.match(/\/api\/workspaces\/[^/]+\/plans$/) && req.method === 'POST') {
 					return Response.json({ planId: 'plan-' + randomBytes(4).toString('hex') });
 				}
 
@@ -734,7 +735,7 @@ describe('E2E: Session Lifecycle', () => {
 				LIGHTSPRINT_NO_BROWSER: '1',
 				LS_CREDS_FILE: credsPath,
 				LS_BASE_URL: `http://localhost:${mockPort}`,
-				LS_REPO_ID: 'mock-repo-id',
+				LS_WORKSPACE_ID: 'mock-workspace-id',
 				LS_SESSION_ID: sessionId,
 				LS_CWD: process.cwd(),
 				LS_CC_PID: String(ccPid),
@@ -1408,7 +1409,7 @@ describe('E2E: Session Lifecycle', () => {
 						ccPid: 999998,
 						ccSessionId: staleSessionId,
 						lsSessionId: null,
-						repoId: 'mock-repo-id',
+						workspaceId: 'mock-workspace-id',
 					}),
 					{ mode: 0o600 }
 				);
