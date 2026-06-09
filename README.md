@@ -102,6 +102,28 @@ Defaults to `https://lightsprint.ai`.
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:delete <id>` | Delete a task permanently from the board |
+| `/lightsprint:current-task` | Get the task linked to the current Claude Code session (auto-discovered by PID) |
+| `/lightsprint:projects` | List projects in the workspace (e.g. to find a project ID for filtering) |
+| `/lightsprint:create-plan` | Create a plan on Lightsprint from markdown content |
+
+#### PR linking & merge
+
+| Command | Description |
+|---|---|
+| `/lightsprint:link-pr <id> <pr>` | Link a GitHub PR to a task |
+| `/lightsprint:unlink-pr <id>` | Remove a linked PR from a task |
+| `/lightsprint:merge <id>` | Merge the PR linked to a task (direct merge or merge queue) |
+| `/lightsprint:review-hub-scores <id>` | AI readiness analysis (score, summaries, callouts) for a task's linked PR |
+| `/lightsprint:review-hub-signals <id>` | PR signals (CI checks, reviews, comments, deployments) for a task's linked PR |
+
+#### Cloud agents
+
+| Command | Description |
+|---|---|
+| `/lightsprint:agent` | Launch, stop, or check cloud agents on a task (anthropic, cursor, codex providers) |
+| `/lightsprint:agent-settings` | Show which cloud agent providers are configured and their default models |
+| `/lightsprint:agent-create-pr` | Open a GitHub PR from a cloud agent's working branch |
 
 ### Claiming tasks
 
@@ -125,27 +147,34 @@ lightsprint-claude-code-plugin/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
 │   ├── review-plan.js          # Plan review handler (exports reviewPlanMain)
 │   ├── ls-cli.js               # Task management commands (exports cliMain)
+│   ├── cc-*.js                 # Claude Code hook handlers (cc-daemon, cc-start, cc-end, cc-event, cc-review, cc-pr-created)
 │   ├── compile.sh              # Build script for lightsprint binary
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
-│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
+│       ├── browser.js          # Opens the system browser for auth
 │       ├── client.js           # HTTP client with automatic token refresh
+│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
+│       ├── cc-utils.js         # Claude Code session/PID helpers
+│       ├── filelock.js         # File-based locking for concurrent safety
+│       ├── options.js          # CLI flag parsing
+│       ├── output.js           # JSON / human output formatting
+│       ├── plan-tracker.js     # Plan review state tracking
+│       ├── schema.js           # Command schema (drives `describe`)
+│       ├── sentry.js           # Error tracking init
+│       ├── status-mapper.js    # Status mapping logic
 │       ├── task-map.js         # CC↔LS task ID mapping
-│       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│       └── validate.js         # Input validation (task IDs, enums, control chars)
+├── skills/                     # One SKILL.md per slash command (tasks, create, update, get,
+│   └── …                       #   claim, comment, delete, current-task, projects, create-plan,
+│                               #   link-pr, unlink-pr, merge, review-hub-scores/-signals,
+│                               #   agent, agent-settings, agent-create-pr)
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
 └── README.md
 ```
 
-Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
+A single npm dependency (`@sentry/node` for error tracking); otherwise relies on Node.js built-ins (`fetch`, `crypto`, `fs`).
 
 ### Local files
 
@@ -180,4 +209,4 @@ Verify the plugin is loaded:
 claude --debug
 ```
 
-Check that `hooks/hooks.json` is being picked up and `PostToolUse` matchers are registered.
+Check that `hooks/hooks.json` is being picked up and its matchers are registered — `PermissionRequest` (plan review on `ExitPlanMode`), `PostToolUse` (task create/update sync), and the session lifecycle hooks (`SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `TaskCompleted`, `SubagentStart`/`SubagentStop`).
