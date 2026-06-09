@@ -1,6 +1,6 @@
 ---
 name: tasks
-description: List tasks from the Lightsprint (ls) repo board. Use when you need to see what work is available.
+description: List tasks from the Lightsprint (ls) workspace board. Use when you need to see what work is available.
 ---
 
 Run this command to list tasks from Lightsprint. By default, only root tasks (no parent) are shown — subtasks are excluded.
@@ -9,7 +9,7 @@ Run this command to list tasks from Lightsprint. By default, only root tasks (no
 lightsprint tasks $ARGUMENTS
 ```
 
-Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--mine] [--unassigned] [--deps <filter>] [--project <filter>] [--sort <field>] [--limit N] [--offset N]`
+Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--mine] [--unassigned] [--deps <filter>] [--project <filter>] [--stack <ref>] [--sort <field>] [--limit N] [--offset N]`
 
 ## Flags
 
@@ -22,6 +22,7 @@ Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--
 | `--unassigned` | — | Show only tasks with no assignee. |
 | `--deps <filter>` | all | Filter by dependencies: `has-dependencies`, `has-no-dependencies`, `has-dependents`, `unblocked`. |
 | `--project <filter>` | all | Filter by project. Comma-separated project IDs, or `none` for tasks without a project. Use `lightsprint projects` to list available project IDs. |
+| `--stack <ref>` | all | Filter by stack. Accepts a stack ID, task prefix, or name. Use `lightsprint stacks` to list available stacks. |
 | `--sort <field>` | `position` | Sort order: `position` (board order), `updated_at` (most recently updated first), `created_at` (newest first). |
 | `--limit N` | 20 | Maximum number of tasks to return (server max: 100). |
 | `--offset N` | 0 | Skip first N tasks (for pagination). |
@@ -47,7 +48,12 @@ lightsprint tasks --status backlog --unassigned --complexity low
 lightsprint tasks --deps unblocked --status todo
 lightsprint tasks --project none --status todo
 lightsprint tasks --project <projectId> --mine
+lightsprint tasks --stack ENG --status todo
 ```
+
+## Stacks
+
+Tasks live in stacks within the active workspace. List stacks with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and scope this command to a stack with `--stack <ref>` (stack ID, task prefix, or name).
 
 ## Invariants
 

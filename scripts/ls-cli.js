@@ -213,7 +213,7 @@ export async function cliMain(command, args, context = {}) {
 // ─── help ────────────────────────────────────────────────────────────────
 
 function showHelp() {
-	console.log(`Lightsprint CLI — Manage tasks on your Lightsprint repo board
+	console.log(`Lightsprint CLI — Manage tasks in your Lightsprint workspace
 
 Usage:
   lightsprint <command> [options] [--output json|text] [--dry-run] [--fields f1,f2]
@@ -222,7 +222,7 @@ Usage:
 Commands:
 
   tasks [options]
-    List tasks from the repo board
+    List tasks from the active workspace board
     Options:
       --status <status>     Filter by status (comma-separated): backlog, todo, in_progress, in_review, done
       --complexity <level>  Filter by complexity: low, medium, high
@@ -242,7 +242,7 @@ Commands:
       lightsprint tasks --deps unblocked --status todo
 
   projects [options]
-    List projects in the repo's workspace
+    List projects in the active workspace
     Options:
       --status <status>     Filter by project status: active, completed, archived
     Example:
@@ -405,16 +405,16 @@ Commands:
       lightsprint describe create
 
   open
-    Open the repo board in your browser
+    Open the active workspace board in your browser
 
   status
-    Show Lightsprint connection status for the current repository
+    Show Lightsprint connection status for the active workspace
 
   whoami
-    Display current repo and authentication info
+    Display the connected workspace and authentication info
 
   connect [--base-url <url>]
-    Authenticate and connect to Lightsprint (run this first if not authenticated)
+    Authenticate and connect to a Lightsprint workspace (run this first if not authenticated)
     Options:
       --base-url <url>        Connect to a custom Lightsprint instance
     Example:
@@ -422,7 +422,7 @@ Commands:
       lightsprint connect --base-url https://staging.lightsprint.ai
 
   disconnect
-    Remove Lightsprint credentials for the current repository
+    Remove the active workspace's Lightsprint credentials
 
   review-plan [input]
     Review an implementation plan (typically invoked by Claude Code hooks)

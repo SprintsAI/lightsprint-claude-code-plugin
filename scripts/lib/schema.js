@@ -9,11 +9,12 @@ import { VALID_STATUSES, VALID_COMPLEXITIES, VALID_PROVIDERS, MAX_TITLE_LENGTH, 
 
 const COMMAND_SCHEMAS = {
 	tasks: {
-		description: 'List tasks from the repo board',
+		description: 'List tasks from the active workspace board',
 		params: {
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'Filter by status' },
 			assignee: { type: 'string', flag: '--assignee', description: 'Filter by assignee name/email (case-insensitive substring)' },
 			project: { type: 'string', flag: '--project', description: 'Filter by project. Comma-separated project IDs or "none" for unassigned. Max 10.' },
+			stack: { type: 'string', flag: '--stack', description: 'Filter by stack (stack ID, task prefix, or name)' },
 			limit: { type: 'integer', flag: '--limit', default: 20, description: 'Max results (server max: 100)' },
 			offset: { type: 'integer', flag: '--offset', default: 0, description: 'Skip first N results' },
 			sort: { type: 'enum', flag: '--sort', values: ['position', 'updated_at', 'created_at'], default: 'position', description: 'Sort order: position (board order), updated_at, created_at' }
@@ -22,15 +23,29 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	projects: {
-		description: 'List projects in the repo workspace',
+		description: 'List projects in the active workspace',
 		params: {
 			status: { type: 'enum', flag: '--status', values: ['active', 'completed', 'archived'], description: 'Filter by project status' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
+	stacks: {
+		description: 'List stacks in the active workspace',
+		params: {},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'stacks-get': {
+		description: 'Show a stack and its member repos (accepts stack ID, task prefix, or name)',
+		params: {
+			ref: { type: 'string', required: true, description: 'Stack ID, task prefix, or name' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
 	create: {
-		description: 'Create a new task in the workspace default stack',
+		description: 'Create a new task in the active workspace (default stack unless --stack given)',
 		params: {
 			title: { type: 'string', required: true, flag: '--title', maxLength: MAX_TITLE_LENGTH, description: 'Task title' },
 			description: { type: 'string', flag: '--description', maxLength: MAX_DESCRIPTION_LENGTH, description: 'Task description' },
@@ -38,6 +53,7 @@ const COMMAND_SCHEMAS = {
 			complexity: { type: 'enum', flag: '--complexity', values: VALID_COMPLEXITIES, description: 'Complexity estimate' },
 			dependsOn: { type: 'string[]', flag: '--depends-on', description: 'Comma-separated task IDs this task depends on' },
 			projectId: { type: 'string', flag: '--project', description: 'Assign to a project by ID' },
+			stack: { type: 'string', flag: '--stack', description: 'Create in a stack (stack ID, task prefix, or name)' },
 			ccPid: { type: 'integer', flag: '--cc-pid', description: 'Claude Code PID for session linking' }
 		},
 		supportsDryRun: true,
@@ -123,13 +139,13 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	whoami: {
-		description: 'Show current repo and auth info',
+		description: 'Show the connected workspace and auth info',
 		params: {},
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
 	open: {
-		description: 'Open repo board in browser',
+		description: 'Open the active workspace board in browser',
 		params: {},
 		supportsDryRun: false,
 		supportsJsonBody: false
@@ -141,7 +157,7 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	connect: {
-		description: 'Authenticate and connect to Lightsprint',
+		description: 'Authenticate and connect to a Lightsprint workspace',
 		params: {
 			baseUrl: { type: 'string', flag: '--base-url', description: 'Custom Lightsprint instance URL' }
 		},
@@ -149,7 +165,7 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	disconnect: {
-		description: 'Remove credentials for this repository',
+		description: 'Remove the active workspace credentials',
 		params: {},
 		supportsDryRun: false,
 		supportsJsonBody: false
