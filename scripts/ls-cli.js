@@ -31,9 +31,9 @@ import { execFileSync, execSync } from 'child_process';
 import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
-import { apiRequest, apiRequestSSE, getRepoId, getRepoInfo, getWorkspaceId } from './lib/client.js';
+import { apiRequest, apiRequestSSE, getWorkspaceId } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
-import { getConfig, getDefaultBaseUrl, readReposFile, writeReposFile, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
+import { getConfig, getDefaultBaseUrl, readConnection, clearConnection, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByRepoId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
@@ -198,8 +198,8 @@ export async function cliMain(command, args, context = {}) {
 		// Fire-and-forget error reporting to Sentry via daemon
 		try {
 			const cfg = getConfig();
-			if (cfg?.repoId) {
-				const sessionId = findSessionByRepoId(cfg.repoId);
+			if (cfg?.workspaceId) {
+				const sessionId = findSessionByRepoId(cfg.workspaceId);
 				if (sessionId) {
 					reportError(sessionId, err, 'ls-cli').catch(() => {});
 				}
@@ -1452,31 +1452,19 @@ async function cmdCreatePlan(args, opts) {
 // ─── whoami ──────────────────────────────────────────────────────────────
 
 async function cmdWhoami(opts) {
-	const info = await getRepoInfo();
-
-	const repo = info.repo || info.project;
+	const workspaceId = await getWorkspaceId();
+	const [ws, user] = await Promise.all([
+		apiRequest(`/api/workspaces/${workspaceId}`),
+		apiRequest(`/api/user/profile`).catch(() => null),
+	]);
+	const wsObj = ws.workspace || ws;
 	const result = {
-		user: info.user ? {
-			name: info.user.name,
-			email: info.user.email,
-			id: info.user.id
-		} : null,
-		repo: {
-			name: repo.name,
-			fullName: repo.fullName || null,
-			id: repo.id
-		},
-		scopes: info.scopes
+		user: user ? { name: user.name, email: user.email, id: user.id } : null,
+		workspace: { id: workspaceId, name: wsObj?.name ?? null },
 	};
-
 	outputResult(result, opts, () => {
-		if (info.user) {
-			console.log(`User: ${info.user.name}`);
-			if (info.user.email) console.log(`Email: ${info.user.email}`);
-		}
-		if (repo.fullName) console.log(`Repository: ${repo.fullName}`);
-		console.log(`Repo ID: ${repo.id}`);
-		console.log(`Scopes: ${info.scopes.join(', ')}`);
+		if (result.user) console.log(`User: ${result.user.name}${result.user.email ? ` <${result.user.email}>` : ''}`);
+		console.log(`Workspace: ${result.workspace.name ?? workspaceId} (${result.workspace.id})`);
 	});
 }
 
@@ -1524,13 +1512,9 @@ function cmdStatus(opts) {
 	const cfg = getConfig(cwd);
 
 	if (!cfg) {
-		const result = { connected: false, message: 'Not connected to Lightsprint. Run "lightsprint connect" first.' };
+		const result = { connected: false, message: 'Not connected to Lightsprint. Run "lightsprint connect".' };
 		return outputResult(result, opts, () => {
-			console.log('Not connected to Lightsprint.\n');
-			console.log('To get started:\n');
-			console.log('  1. Run:  lightsprint connect');
-			console.log('  2. Authorize in the browser when prompted');
-			console.log('  3. Select the repo to link to this repository\n');
+			console.log('Not connected to Lightsprint. Run "lightsprint connect".\n');
 			console.log('For a custom instance:\n');
 			console.log('  lightsprint connect --base-url https://your-instance.lightsprint.ai');
 		});
@@ -1545,24 +1529,23 @@ function cmdStatus(opts) {
 
 	const result = {
 		connected: true,
-		repoName: cfg.repoName || 'unknown',
-		repoId: cfg.repoId,
-		repo: cfg.repo,
+		workspaceId: cfg.workspaceId,
+		workspaceName: cfg.workspaceName || 'unknown',
 		baseUrl: cfg.baseUrl,
 		token: { valid: tokenValid, remainingMs: remainingMs != null ? Math.max(0, remainingMs) : null }
 	};
 
 	outputResult(result, opts, () => {
-		console.log(`Repo ID:    ${cfg.repoId}`);
-		console.log(`Repository: ${cfg.repo}`);
-		console.log(`Base URL:   ${cfg.baseUrl}`);
+		console.log(`Workspace:    ${cfg.workspaceName || 'unknown'}`);
+		console.log(`Workspace ID: ${cfg.workspaceId}`);
+		console.log(`Base URL:     ${cfg.baseUrl}`);
 		if (cfg.expiresAt) {
 			if (!tokenValid) {
-				console.log(`Token:      expired`);
+				console.log(`Token:        expired`);
 			} else {
 				const hours = Math.floor(remainingMs / 3600000);
 				const mins = Math.floor((remainingMs % 3600000) / 60000);
-				console.log(`Token:      valid (${hours}h ${mins}m remaining)`);
+				console.log(`Token:        valid (${hours}h ${mins}m remaining)`);
 			}
 		}
 	});
@@ -1587,9 +1570,8 @@ async function cmdConnect(args, opts) {
 	if (cfg && opts.outputFormat === 'json') {
 		const result = {
 			connected: true,
-			repoName: cfg.repoName || null,
-			repoId: cfg.repoId,
-			repo: cfg.repo
+			workspaceId: cfg.workspaceId,
+			workspaceName: cfg.workspaceName
 		};
 		console.log(JSON.stringify(result));
 	}
@@ -1598,40 +1580,14 @@ async function cmdConnect(args, opts) {
 // ─── disconnect ──────────────────────────────────────────────────────
 
 async function cmdDisconnect(args, opts) {
-	const repos = readReposFile();
-	const cwd = process.cwd();
-
-	// Find matching entries: repo name + walk up from cwd
-	const toRemove = [];
-	const repoName = getGitRepoFullName(cwd);
-	if (repoName && repos[repoName]) {
-		toRemove.push(repoName);
-	}
-	for (const [folder] of Object.entries(repos)) {
-		if (!cwd.startsWith(folder) && folder !== cwd) continue;
-		toRemove.push(folder);
-	}
-
-	if (toRemove.length === 0) {
-		const result = { disconnected: [], message: 'No Lightsprint connection found for this folder.' };
-		return outputResult(result, opts, () => console.log(result.message));
-	}
-
-	const disconnected = [];
-	for (const folder of toRemove) {
-		const entry = repos[folder];
-		const repoDisplayName = entry.repoName || entry.baseUrl || 'unknown';
-		delete repos[folder];
-		disconnected.push({ key: folder, repoName: repoDisplayName });
-	}
-
-	writeReposFile(repos);
-
-	const result = { disconnected };
+	const conn = readConnection();
+	clearConnection();
+	const result = conn
+		? { disconnected: [{ workspaceId: conn.workspaceId, workspaceName: conn.workspaceName || null }] }
+		: { disconnected: [], message: 'No active Lightsprint connection.' };
 	outputResult(result, opts, () => {
-		for (const d of disconnected) {
-			console.log(`Disconnected: ${d.repoName} (${d.key})`);
-		}
+		if (!conn) console.log(result.message);
+		else console.log(`Disconnected workspace: ${conn.workspaceName || conn.workspaceId}`);
 	});
 }
 

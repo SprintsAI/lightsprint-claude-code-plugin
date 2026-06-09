@@ -247,6 +247,19 @@ function createMockServer() {
 				return Response.json({ ok: true, versionId: 'ver-' + randomBytes(4).toString('hex') });
 			}
 
+			// Workspace details (for whoami)
+			const wsGetMatch = path.match(/^\/api\/workspaces\/([^/]+)$/);
+			if (wsGetMatch && method === 'GET') {
+				return Response.json({
+					workspace: { id: wsGetMatch[1], name: 'Mock Workspace' },
+				});
+			}
+
+			// User profile (for whoami)
+			if (path === '/api/user/profile' && method === 'GET') {
+				return Response.json({ name: 'test-user', email: 'test@example.com', id: 'user-1' });
+			}
+
 			return Response.json({ error: 'Not found', path, method }, { status: 404 });
 		},
 	});
@@ -558,7 +571,8 @@ describe('E2E: Mock Server', () => {
 		test('shows connection info', async () => {
 			const result = await runCli(['whoami']);
 			expect(result.exitCode).toBe(0);
-			expect(result.stdout).toContain(REPO_KEY);
+			expect(result.stdout).toContain('mock-workspace-id');
+			expect(result.stdout).toContain('Mock Workspace');
 		});
 	});
 });
