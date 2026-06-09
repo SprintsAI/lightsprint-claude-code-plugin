@@ -2,11 +2,11 @@
  * On-demand OAuth flow for Lightsprint.
  *
  * Opens the browser to authorize-cli, waits for the callback,
- * and saves tokens to ~/.lightsprint/repos.json.
+ * and saves the active workspace connection to ~/.lightsprint/connection.json.
  */
 
 import { createServer } from 'http';
-import { readReposFile, writeReposFile, ensureConfigDir, getGitRepoFullName } from './config.js';
+import { writeConnection, ensureConfigDir, getGitRepoFullName } from './config.js';
 import { findBrowserProfileForEmail, openBrowser } from './browser.js';
 import { findFreePort } from './cc-utils.js';
 
@@ -14,7 +14,7 @@ import { findFreePort } from './cc-utils.js';
  * Start a local HTTP server and wait for the OAuth callback.
  * @param {number} port
  * @param {number} [timeoutMs=120000]
- * @returns {Promise<{ skipped?: boolean, accessToken?: string, refreshToken?: string, expiresIn?: string, repoDisplayName?: string, repoId?: string }>}
+ * @returns {Promise<{ skipped?: boolean, accessToken?: string, refreshToken?: string, expiresIn?: string, workspaceId?: string, workspaceName?: string, email?: string }>}
  */
 function waitForCallback(port, timeoutMs = 120000) {
 	return new Promise((resolve, reject) => {
@@ -58,9 +58,9 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 					accessToken: url.searchParams.get('access_token'),
 					refreshToken: url.searchParams.get('refresh_token'),
 					expiresIn: url.searchParams.get('expires_in'),
-					repoDisplayName: url.searchParams.get('repo'),
-					repoId: url.searchParams.get('repo_id'),
-					email: url.searchParams.get('email')
+					workspaceId: url.searchParams.get('workspace_id'),
+					workspaceName: url.searchParams.get('workspace_name'),
+					email: url.searchParams.get('email'),
 				};
 				res.writeHead(200, { 'Content-Type': 'text/html', 'Connection': 'close' });
 				res.end(`<!DOCTYPE html>
@@ -119,7 +119,7 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 /**
  * Run the full OAuth flow: open browser, wait for callback, save tokens.
  * @param {string} [baseUrl='https://lightsprint.ai']
- * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, repoId: string, repoName: string, repo: string, baseUrl: string }>}
+ * @returns {Promise<{ workspaceId: string, workspaceName: string|null, accessToken: string, refreshToken: string, expiresAt: number, baseUrl: string }>}
  */
 export async function authenticate(baseUrl = 'https://lightsprint.ai', options = {}) {
 	const { cwd, quiet } = options;
@@ -143,36 +143,31 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai', options =
 	const result = await waitForCallback(port);
 
 	if (result.skipped) {
-		const repos = readReposFile();
-		repos[repoFullName] = { skipped: true };
-		writeReposFile(repos);
 		if (!quiet) console.log('Lightsprint skipped for this repository.');
 		return { skipped: true, repo: repoFullName, baseUrl };
 	}
 
-	if (!result.accessToken) {
-		throw new Error('Authorization failed — no access token received.');
+	if (!result.accessToken || !result.workspaceId) {
+		throw new Error('Authorization failed — no workspace token received.');
 	}
 
 	// Detect browser profile from email for correct profile targeting
 	const browserProfile = result.email ? findBrowserProfileForEmail(result.email) : null;
 
 	const entry = {
+		workspaceId: result.workspaceId,
+		workspaceName: result.workspaceName || null,
 		accessToken: result.accessToken,
 		refreshToken: result.refreshToken,
 		expiresAt: Date.now() + (parseInt(result.expiresIn, 10) * 1000),
-		repoId: result.repoId,
-		repoName: result.repoDisplayName,
 		baseUrl,
 		...(result.email ? { email: result.email } : {}),
 		...(browserProfile || {}),
 	};
 
-	const repos = readReposFile();
-	repos[repoFullName] = entry;
-	writeReposFile(repos);
+	writeConnection(entry);
 
-	if (!quiet) console.log(`Connected to repo: ${result.repoDisplayName}`);
+	if (!quiet) console.log(`Connected to workspace: ${entry.workspaceName || entry.workspaceId}`);
 
-	return { ...entry, repo: repoFullName, baseUrl };
+	return { ...entry };
 }
