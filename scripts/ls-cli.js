@@ -508,9 +508,13 @@ async function cmdTasks(args, opts) {
 		validateEnum(sort, VALID_SORT_FIELDS, 'sort field');
 	}
 
-	// All filtering is server-side — build query params
-	params.set('limit', String(limit));
-	params.set('offset', String(offset));
+	// All filtering is server-side — build query params.
+	// The workspace board endpoint's default (kanban) shape has NO top-level
+	// `tasks`/`totalCount`. Use the LIST layout: without a sectionId it returns
+	// `{ listSectionsWithTasks: [{ id, name, status, tasks: [...] }, ...] }`,
+	// per-section-capped via `perSectionLimit` (max 100). We flatten sections.
+	params.set('layoutType', 'list');
+	params.set('perSectionLimit', String(Math.min(limit, 100)));
 	if (status) params.set('status', status);
 	if (complexity) params.set('complexity', complexity);
 	if (unassigned) params.set('unassigned', 'true');
@@ -538,38 +542,71 @@ async function cmdTasks(args, opts) {
 		description: task.description || null
 	});
 
-	// --page-all: stream all pages as NDJSON (one task per line)
+	// --page-all: stream ALL tasks across ALL sections as NDJSON (one task/line).
+	// The no-sectionId list path is per-section-capped (not globally paginated),
+	// so we first discover the section ids/names, then paginate each section via
+	// `?layoutType=list&sectionId=<id>&limit=100&offset=...` (flat { tasks, totalCount })
+	// until each section is exhausted.
 	if (pageAll) {
-		let pageOffset = 0;
-		const pageLimit = 100; // max per page
-		let totalCount = Infinity;
-		while (pageOffset < totalCount) {
-			params.set('limit', String(pageLimit));
-			params.set('offset', String(pageOffset));
-			const pageData = await apiRequest(`/api/workspaces/${workspaceId}/board?${params}`);
-			const pageTasks = pageData.tasks || [];
-			totalCount = pageData.totalCount ?? pageTasks.length;
-			for (const task of pageTasks) {
+		const boardData = await apiRequest(`/api/workspaces/${workspaceId}/board?${params}`);
+		const sections = boardData.listSectionsWithTasks || [];
+
+		// Guard: if the server ever returns a flat { tasks } shape, stream it directly.
+		if (sections.length === 0 && Array.isArray(boardData.tasks)) {
+			for (const task of boardData.tasks) {
 				const line = mapTask(task);
 				const output = opts.fields ? filterFields(line, opts.fields) : line;
 				process.stdout.write(JSON.stringify(output) + '\n');
 			}
-			if (pageTasks.length === 0) break;
-			pageOffset += pageLimit;
+			return;
+		}
+
+		const pageLimit = 100; // max per page (server clamps to 100)
+		for (const section of sections) {
+			if (!section || !section.id) continue;
+			const sectionParams = new URLSearchParams(params);
+			sectionParams.delete('perSectionLimit');
+			sectionParams.set('sectionId', section.id);
+			sectionParams.set('limit', String(pageLimit));
+
+			let pageOffset = 0;
+			let totalCount = Infinity;
+			while (pageOffset < totalCount) {
+				sectionParams.set('offset', String(pageOffset));
+				const pageData = await apiRequest(`/api/workspaces/${workspaceId}/board?${sectionParams}`);
+				const pageTasks = pageData.tasks || [];
+				totalCount = pageData.totalCount ?? pageTasks.length;
+				for (const task of pageTasks) {
+					const line = mapTask(task);
+					const output = opts.fields ? filterFields(line, opts.fields) : line;
+					process.stdout.write(JSON.stringify(output) + '\n');
+				}
+				if (pageTasks.length === 0) break;
+				pageOffset += pageLimit;
+			}
 		}
 		return;
 	}
 
 	const data = await apiRequest(`/api/workspaces/${workspaceId}/board?${params}`);
-	let tasks = data.tasks || [];
+	const sections = data.listSectionsWithTasks || [];
+	// Flatten the per-section task arrays into one list. Guard: fall back to a
+	// flat { tasks } shape if the server ever returns one.
+	let tasks = sections.length > 0
+		? sections.flatMap(s => s.tasks || [])
+		: (data.tasks || []);
 
 	const resultTasks = tasks.map(mapTask);
 
-	const totalCount = data.totalCount ?? tasks.length;
+	const totalCount = tasks.length;
+	// The list path is per-section-capped. If any section returned exactly the
+	// per-section limit, it was likely truncated → suggest --page-all/--limit.
+	const perSectionLimit = Math.min(limit, 100);
+	const hasMore = sections.some(s => (s.tasks || []).length >= perSectionLimit);
 	const result = {
 		tasks: resultTasks,
 		totalCount,
-		hasMore: offset + tasks.length < totalCount
+		hasMore
 	};
 
 	outputResult(result, opts, () => {
@@ -593,7 +630,7 @@ async function cmdTasks(args, opts) {
 		}
 
 		if (result.hasMore) {
-			console.log(`\n  ... and ${totalCount - offset - tasks.length} more. Use --limit/--offset to see more.`);
+			console.log(`\n  ... some sections may have more tasks (capped at ${perSectionLimit}/section). Use --limit to raise the cap or --page-all for all tasks.`);
 		}
 	});
 }

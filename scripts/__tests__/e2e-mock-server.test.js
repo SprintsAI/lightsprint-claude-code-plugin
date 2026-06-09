@@ -123,14 +123,27 @@ function createMockServer() {
 				return Response.json({ error: 'Not found' }, { status: 404 });
 			}
 
-			// List tasks (workspace board)
+			// List tasks (workspace board). Mirrors the REAL server shape:
+			//  - layoutType=list (no sectionId) → { listSectionsWithTasks: [{ id, name, status, tasks }] }
+			//  - layoutType=list&sectionId=X    → { tasks, totalCount }  (one section, paginated)
 			if (path.match(/^\/api\/workspaces\/[^/]+\/board$/) && method === 'GET') {
 				const allTasks = [...tasks.values()];
+				const sectionId = url.searchParams.get('sectionId');
+				if (sectionId) {
+					// Single-section paginated path used by --page-all.
+					const offset = parseInt(url.searchParams.get('offset') || '0', 10) || 0;
+					const limit = parseInt(url.searchParams.get('limit') || '100', 10) || 100;
+					// All seeded tasks live in the single 'sec-todo' section here.
+					const sectionTasks = sectionId === 'sec-todo' ? allTasks : [];
+					return Response.json({
+						tasks: sectionTasks.slice(offset, offset + limit),
+						totalCount: sectionTasks.length,
+					});
+				}
 				return Response.json({
-					tasks: allTasks,
-					totalCount: allTasks.length,
-					limit: 20,
-					offset: 0,
+					listSectionsWithTasks: [
+						{ id: 'sec-todo', name: 'Todo', status: 'todo', tasks: allTasks },
+					],
 				});
 			}
 
@@ -369,6 +382,12 @@ describe('E2E: Mock Server', () => {
 			expect(result.json).toBeDefined();
 			expect(result.json.tasks).toBeArray();
 			expect(result.json.tasks.length).toBe(2);
+			// Confirm tasks were flattened out of listSectionsWithTasks[].tasks.
+			const ids = result.json.tasks.map(t => t.id);
+			expect(ids).toContain('task-1');
+			expect(ids).toContain('task-2');
+			const displayIds = result.json.tasks.map(t => t.displayId);
+			expect(displayIds).toContain('MOCK-1');
 		});
 
 		test('lists tasks in text mode', async () => {
