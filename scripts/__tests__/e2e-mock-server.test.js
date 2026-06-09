@@ -17,6 +17,7 @@ import { tmpdir } from 'os';
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { spawn } from 'child_process';
+import { writeConnection } from '../lib/connection.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -108,8 +109,8 @@ function createMockServer() {
 				});
 			}
 
-			// Resolve task ID (display ID → raw ID)
-			const resolveMatch = path.match(new RegExp(`^/api/repos/${repoId}/tasks/resolve$`));
+			// Resolve task ID (display ID → raw ID) — workspace-scoped
+			const resolveMatch = path.match(/^\/api\/workspaces\/[^/]+\/tasks\/resolve$/);
 			if (resolveMatch && method === 'GET') {
 				const ref = url.searchParams.get('ref');
 				// If ref is already a raw task ID, return it directly
@@ -122,33 +123,36 @@ function createMockServer() {
 				return Response.json({ error: 'Not found' }, { status: 404 });
 			}
 
-			// List tasks
-			if (path === `/api/repos/${repoId}/tasks` && method === 'GET') {
+			// List tasks (workspace board)
+			if (path.match(/^\/api\/workspaces\/[^/]+\/board$/) && method === 'GET') {
 				const allTasks = [...tasks.values()];
 				return Response.json({
 					tasks: allTasks,
-					total: allTasks.length,
+					totalCount: allTasks.length,
 					limit: 20,
 					offset: 0,
 				});
 			}
 
-			// Create task
-			if (path === `/api/repos/${repoId}/tasks` && method === 'POST') {
-				const newId = 'task-' + randomBytes(4).toString('hex');
-				const newTask = {
-					id: newId,
-					displayId: 'MOCK-' + (tasks.size + 1),
-					title: body?.title || 'Untitled',
-					status: body?.status || 'backlog',
-					complexity: body?.complexity || 'medium',
-					assignee: null,
-					description: body?.description || '',
-					creator: { name: 'test-user' },
-					dependencies: [],
-				};
-				tasks.set(newId, newTask);
-				return Response.json({ task: newTask }, { status: 201 });
+			// List stacks (workspace-scoped)
+			if (path.match(/^\/api\/workspaces\/[^/]+\/stacks$/) && method === 'GET') {
+				return Response.json({
+					stacks: [
+						{ id: 'stk_1', name: 'Eng', taskPrefix: 'ENG', repoIds: ['r1'] },
+					],
+				});
+			}
+
+			// Get a single stack + member repos (workspace-scoped)
+			const stackGetMatch = path.match(/^\/api\/workspaces\/[^/]+\/stacks\/([^/]+)$/);
+			if (stackGetMatch && method === 'GET') {
+				const stackId = stackGetMatch[1];
+				return Response.json({
+					stack: { id: stackId, name: 'Eng', taskPrefix: 'ENG', repoIds: ['r1'] },
+					repos: [
+						{ id: 'r1', name: 'core', fullName: 'SprintsAI/core' },
+					],
+				});
 			}
 
 			// Create default-stack task
@@ -233,8 +237,8 @@ function createMockServer() {
 				return Response.json({ task: null });
 			}
 
-			// Plans
-			if (path.match(/^\/api\/repos\/[^/]+\/plans$/) && method === 'POST') {
+			// Plans (workspace-scoped)
+			if (path.match(/^\/api\/workspaces\/[^/]+\/plans$/) && method === 'POST') {
 				return Response.json({ planId: 'plan-' + randomBytes(4).toString('hex') });
 			}
 
@@ -256,17 +260,15 @@ let mockServer;
 
 function setupMockRepos(baseUrl) {
 	mkdirSync(TEST_CONFIG_DIR, { recursive: true, mode: 0o700 });
-	const repos = {};
-	repos[REPO_KEY] = {
+	// Workspace-scoped connection model: the CLI reads connection.json (not repos.json).
+	writeConnection({
+		workspaceId: 'mock-workspace-id',
+		workspaceName: 'Mock Workspace',
 		accessToken: 'mock-access-token',
 		refreshToken: 'mock-refresh-token',
 		expiresAt: Date.now() + 3600000, // 1 hour from now
-		repoId: 'mock-repo-id',
-		workspaceId: 'mock-workspace-id',
-		repoName: 'Mock Repository',
 		baseUrl,
-	};
-	writeFileSync(REPOS_FILE, JSON.stringify(repos, null, 2), { mode: 0o600 });
+	});
 }
 
 function cleanupTestConfigDir() {
@@ -362,7 +364,7 @@ describe('E2E: Mock Server', () => {
 
 		test('API request hits correct endpoint', async () => {
 			await runCliJson(['tasks']);
-			const tasksReq = mockServer.requests.find(r => r.path.includes('/tasks') && r.method === 'GET');
+			const tasksReq = mockServer.requests.find(r => /\/api\/workspaces\/[^/]+\/board/.test(r.path) && r.method === 'GET');
 			expect(tasksReq).toBeDefined();
 		});
 	});
@@ -404,6 +406,35 @@ describe('E2E: Mock Server', () => {
 	});
 
 	// ─── CLI: get ────────────────────────────────────────────────────────
+
+	describe('CLI: stacks', () => {
+		test('lists stacks from mock server', async () => {
+			const result = await runCliJson(['stacks']);
+			if (result.exitCode !== 0) {
+				console.error('CLI stacks --output json failed:', { stderr: result.stderr, stdout: result.stdout });
+			}
+			expect(result.exitCode).toBe(0);
+			expect(result.json).toBeDefined();
+			expect(result.json.stacks).toBeArray();
+			expect(result.json.stacks.length).toBe(1);
+			expect(result.json.stacks[0].id).toBe('stk_1');
+			expect(result.json.stacks[0].taskPrefix).toBe('ENG');
+		});
+
+		test('stacks get resolves ENG prefix to stk_1 and returns detail', async () => {
+			const result = await runCliJson(['stacks', 'get', 'ENG']);
+			expect(result.exitCode).toBe(0);
+			expect(result.json).toBeDefined();
+			// resolveStackId matches the ENG prefix to stk_1, so the detail request
+			// targets /api/workspaces/:wsId/stacks/stk_1.
+			const detailReq = mockServer.requests.find(r => r.method === 'GET' && /\/stacks\/stk_1$/.test(r.path));
+			expect(detailReq).toBeDefined();
+			const stack = result.json.stack || result.json;
+			expect(stack.id).toBe('stk_1');
+			expect(result.json.repos).toBeArray();
+			expect(result.json.repos[0].fullName).toBe('SprintsAI/core');
+		});
+	});
 
 	describe('CLI: get', () => {
 		test('gets a task by ID', async () => {

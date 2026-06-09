@@ -61,7 +61,7 @@ const COMMAND_ALIASES = {
 
 // All valid command names for "did you mean?" suggestions
 const VALID_COMMANDS = [
-	'tasks', 'projects', 'create', 'update', 'get', 'claim', 'current-task',
+	'tasks', 'projects', 'stacks', 'create', 'update', 'get', 'claim', 'current-task',
 	'link-pr', 'unlink-pr', 'delete', 'comment', 'create-plan', 'whoami',
 	'open', 'status', 'connect', 'disconnect', 'upgrade', 'config', 'describe',
 	'agent', 'merge', 'review-hub'
@@ -165,6 +165,7 @@ export async function cliMain(command, args, context = {}) {
 		switch (resolvedCommand) {
 			case 'tasks': return await cmdTasks(remainingArgs, opts);
 			case 'projects': return await cmdProjects(remainingArgs, opts);
+			case 'stacks': return remainingArgs[0] === 'get' ? await cmdStackGet(remainingArgs.slice(1), opts) : await cmdStacks(remainingArgs, opts);
 			case 'create': return await cmdCreate(remainingArgs, opts);
 			case 'update': return await cmdUpdate(remainingArgs, opts);
 			case 'get': return await cmdGet(remainingArgs, opts);
@@ -230,6 +231,7 @@ Commands:
       --unassigned           Only show tasks with no assignee
       --deps <filter>       Filter by dependencies: has-dependencies, has-dependents, unblocked
       --project <filter>    Filter by project ID(s) or "none" for tasks without a project
+      --stack <ref>         Filter by stack (stack ID, task prefix, or name)
       --sort <field>        Sort tasks by: position (default), updated_at, created_at
       --limit <N>           Limit number of results (default: 20)
       --offset <N>          Skip first N results (for pagination)
@@ -247,6 +249,17 @@ Commands:
       lightsprint projects
       lightsprint projects --status active
 
+  stacks
+    List stacks in the active workspace
+    Example:
+      lightsprint stacks
+
+  stacks get <stackId|prefix|name>
+    Show a stack and its member repos. Accepts a stack ID, task prefix, or name.
+    Example:
+      lightsprint stacks get ENG
+      lightsprint stacks get stk_123
+
   create <title> [options]
     Create a new task. Title can be positional or via --title flag.
     Aliases: create-task, new, add
@@ -256,6 +269,7 @@ Commands:
       --complexity <level>        low, medium, or high
       --status <status>           backlog, todo, in_progress, in_review, or done (default: backlog)
       --project <projectId>       Assign to a project by ID
+      --stack <ref>               Create in a stack (stack ID, task prefix, or name)
       --depends-on <ids>          Comma-separated task IDs this task depends on
       --cc-pid <pid>              Claude Code PID for session linking
       --json-body <json>          Raw JSON request body (replaces individual flags)
@@ -636,6 +650,31 @@ async function cmdProjects(args, opts) {
 			const taskLabel = ` (${p.taskCount} tasks)`;
 			console.log(`  P-${p.projectNumber}  ${p.name}${statusLabel}${taskLabel}`);
 		}
+	});
+}
+
+// ─── stacks ──────────────────────────────────────────────────────────────
+
+async function cmdStacks(args, opts) {
+	const workspaceId = await getWorkspaceId();
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
+	const stacks = (data.stacks || []).map(s => ({ id: s.id, name: s.name, taskPrefix: s.taskPrefix, repoIds: s.repoIds || [] }));
+	outputResult({ stacks }, opts, () => {
+		if (stacks.length === 0) { console.log('No stacks found.'); return; }
+		console.log(`Found ${stacks.length} stack(s):\n`);
+		for (const s of stacks) console.log(`  ${s.taskPrefix}  ${s.name}  (${s.repoIds.length} repos)  ${s.id}`);
+	});
+}
+
+async function cmdStackGet(args, opts) {
+	const workspaceId = await getWorkspaceId();
+	const stackId = await resolveStackId(workspaceId, args[0]);
+	validateId(stackId, 'Stack ID');
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks/${stackId}`);
+	outputResult(data, opts, () => {
+		const s = data.stack || data;
+		console.log(`${s.taskPrefix}  ${s.name}  ${s.id}`);
+		for (const r of (data.repos || data.members || [])) console.log(`  - ${r.fullName || r.name || r.id}`);
 	});
 }
 
