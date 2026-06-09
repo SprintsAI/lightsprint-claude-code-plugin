@@ -43,9 +43,10 @@ frontend and backend repos.
    `repoId` nullable, `stackId`). **`cc_sessions`, `cc_session_events`, and
    `plans` did NOT** — they still have `repoId NOT NULL` and no `workspaceId`.
 
-5. **The workspace board endpoint is feature-flag-gated**:
-   `/api/workspaces/[id]/board` returns 404 unless
-   `PUBLIC_DEFAULT_STACK_TASKS === 'true'`. Workspace page routes
+5. **The workspace board endpoint is feature-flag-gated** on
+   `PUBLIC_DEFAULT_STACK_TASKS`, **which we assume is always `true`** (the
+   default-stack consolidation is treated as fully rolled out). The CLI targets
+   `/api/workspaces/[id]/board` unconditionally. Workspace page routes
    (`/workspaces/[workspaceId]/tasks|stacks|plans`), `repoDAO.listForWorkspace`,
    the workspace `projects`/`stacks` endpoints, and `/api/user/profile` all
    already exist.
@@ -61,7 +62,7 @@ frontend and backend repos.
 | 5 | Command scope | **All commands workspace-scoped.** The CLI has no repo concept. |
 | 6 | Per-repo ops (cc-sessions, plans) | **Make everything workspace-only.** Migrate `cc_sessions`/`cc_session_events`/`plans` to `workspaceId NOT NULL` + nullable `repoId` (tasks-table precedent). |
 | 7 | Storage / upgrade | **New `~/.lightsprint/connection.json`**; abandon `repos.json`; **no auto-migration** (commands prompt `lightsprint connect`). |
-| 8 | Flag dependency | **Assume `PUBLIC_DEFAULT_STACK_TASKS=true`** as a release gate; code targets workspace endpoints unconditionally; clear error on a flag-off 404. |
+| 8 | Flag dependency | **`PUBLIC_DEFAULT_STACK_TASKS` is assumed always `true`.** Not a gate or a risk; code targets workspace endpoints unconditionally and assumes they exist. |
 | 9 | Stacks | Add `stacks` (list) + `stacks get <id>` discovery commands and a `--stack <stackId>` flag on advanced commands. |
 
 ## Architecture
@@ -159,8 +160,6 @@ Single active context:
 ### Error handling
 
 - No `connection.json` ⇒ structured "not connected, run `lightsprint connect`".
-- Board/list/plans 404 (flag off) ⇒ clear "this Lightsprint instance isn't in
-  workspace mode yet (PUBLIC_DEFAULT_STACK_TASKS)" message, not a raw 404.
 - `--stack` value that resolves to no stack ⇒ error naming `lightsprint stacks`
   as the discovery command.
 
@@ -169,10 +168,11 @@ Single active context:
 - **Heaviest blast radius:** the `cc_sessions`/`plans` migrations + daemon
   rewrite touch live session tracking. Follow the tasks-table migration pattern;
   backfill must be non-destructive (add nullable, backfill, then enforce).
-- **Hard release gate:** ships only once `PUBLIC_DEFAULT_STACK_TASKS=true` in
-  production; CLI must fail clearly until then.
 - **Breaking for existing users:** everyone re-runs `lightsprint connect` once
   after upgrade (accepted — ~10s browser flow).
+
+`PUBLIC_DEFAULT_STACK_TASKS` is assumed always-on (fully rolled out), so it is
+neither a gate nor a risk for this work.
 
 ## Out of scope
 
