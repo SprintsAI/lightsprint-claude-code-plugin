@@ -309,6 +309,10 @@ export async function getRepoId() {
  * @returns {Promise<string>}
  */
 export async function getWorkspaceId() {
+	// Fast path: workspaceId persisted in config at connect time (no API call).
+	const cfg = await config();
+	if (cfg.workspaceId) return cfg.workspaceId;
+
 	const info = await getRepoInfo();
 	const workspaceId = info.workspaceId || info.repo?.workspaceId || info.project?.workspaceId;
 	if (!workspaceId) {

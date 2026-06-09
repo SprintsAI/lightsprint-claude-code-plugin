@@ -60,7 +60,10 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 					expiresIn: url.searchParams.get('expires_in'),
 					repoDisplayName: url.searchParams.get('repo'),
 					repoId: url.searchParams.get('repo_id'),
-					email: url.searchParams.get('email')
+					email: url.searchParams.get('email'),
+					workspaceId: url.searchParams.get('workspace_id'),
+					workspaceName: url.searchParams.get('workspace_name'),
+					repos: url.searchParams.get('repos')
 				};
 				res.writeHead(200, { 'Content-Type': 'text/html', 'Connection': 'close' });
 				res.end(`<!DOCTYPE html>
@@ -117,6 +120,25 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 }
 
 /**
+ * Decode the base64url-encoded `repos` callback param into an array of repo token
+ * bundles. Returns valid bundles (those with a fullName and accessToken), or null
+ * when the param is absent/malformed so callers fall back to single-repo connect.
+ * @param {string|null|undefined} encoded
+ * @returns {Array<{ repoId: string, repo: string, fullName: string, workspaceId?: string, accessToken: string, refreshToken: string, expiresIn: string|number }>|null}
+ */
+export function decodeWorkspaceRepos(encoded) {
+	if (!encoded) return null;
+	try {
+		const bundles = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf-8'));
+		if (!Array.isArray(bundles)) return null;
+		const valid = bundles.filter((b) => b && b.fullName && b.accessToken);
+		return valid.length > 0 ? valid : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Run the full OAuth flow: open browser, wait for callback, save tokens.
  * @param {string} [baseUrl='https://lightsprint.ai']
  * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, repoId: string, repoName: string, repo: string, baseUrl: string }>}
@@ -157,22 +179,57 @@ export async function authenticate(baseUrl = 'https://lightsprint.ai', options =
 	// Detect browser profile from email for correct profile targeting
 	const browserProfile = result.email ? findBrowserProfileForEmail(result.email) : null;
 
+	const commonFields = {
+		baseUrl,
+		...(result.workspaceId ? { workspaceId: result.workspaceId } : {}),
+		...(result.email ? { email: result.email } : {}),
+		...(browserProfile || {}),
+	};
+
+	// The connecting repo's entry (always written, keyed by the local git remote).
 	const entry = {
 		accessToken: result.accessToken,
 		refreshToken: result.refreshToken,
 		expiresAt: Date.now() + (parseInt(result.expiresIn, 10) * 1000),
 		repoId: result.repoId,
 		repoName: result.repoDisplayName,
-		baseUrl,
-		...(result.email ? { email: result.email } : {}),
-		...(browserProfile || {}),
+		...commonFields,
 	};
 
 	const repos = readReposFile();
 	repos[repoFullName] = entry;
+
+	// Workspace-wide connect: the server returns a token for every member repo of the
+	// workspace (base64url-encoded JSON). Persist one entry per repo so sibling repos
+	// (e.g. backend when connecting from frontend) resolve without a second connect.
+	let connectedRepoCount = 1;
+	const bundles = decodeWorkspaceRepos(result.repos);
+	if (bundles) {
+		for (const b of bundles) {
+			if (b.fullName === repoFullName) continue; // already written above
+			repos[b.fullName] = {
+				accessToken: b.accessToken,
+				refreshToken: b.refreshToken,
+				expiresAt: Date.now() + (parseInt(b.expiresIn, 10) * 1000),
+				repoId: b.repoId,
+				repoName: b.repo,
+				...commonFields,
+			};
+		}
+		connectedRepoCount = bundles.length;
+	}
+
 	writeReposFile(repos);
 
-	if (!quiet) console.log(`Connected to repo: ${result.repoDisplayName}`);
+	if (!quiet) {
+		if (result.workspaceName && connectedRepoCount > 1) {
+			console.log(`Connected to workspace: ${result.workspaceName} (${connectedRepoCount} repos)`);
+		} else if (result.workspaceName) {
+			console.log(`Connected to workspace: ${result.workspaceName} — repo ${result.repoDisplayName}`);
+		} else {
+			console.log(`Connected to repo: ${result.repoDisplayName}`);
+		}
+	}
 
 	return { ...entry, repo: repoFullName, baseUrl };
 }

@@ -424,7 +424,10 @@ Commands:
     Display current repo and authentication info
 
   connect [--base-url <url>]
-    Authenticate and connect to Lightsprint (run this first if not authenticated)
+    Authenticate and connect to Lightsprint (run this first if not authenticated).
+    Connects the whole workspace: every repo in the current repo's workspace is
+    linked in one step, so sibling repos (e.g. backend when you connect from the
+    frontend) resolve without a separate connect.
     Options:
       --base-url <url>        Connect to a custom Lightsprint instance
     Example:
@@ -1586,6 +1589,7 @@ function cmdStatus(opts) {
 		repoName: cfg.repoName || 'unknown',
 		repoId: cfg.repoId,
 		repo: cfg.repo,
+		workspaceId: cfg.workspaceId || null,
 		baseUrl: cfg.baseUrl,
 		token: { valid: tokenValid, remainingMs: remainingMs != null ? Math.max(0, remainingMs) : null }
 	};
@@ -1593,6 +1597,7 @@ function cmdStatus(opts) {
 	outputResult(result, opts, () => {
 		console.log(`Repo ID:    ${cfg.repoId}`);
 		console.log(`Repository: ${cfg.repo}`);
+		if (cfg.workspaceId) console.log(`Workspace:  ${cfg.workspaceId}`);
 		console.log(`Base URL:   ${cfg.baseUrl}`);
 		if (cfg.expiresAt) {
 			if (!tokenValid) {
@@ -1627,7 +1632,8 @@ async function cmdConnect(args, opts) {
 			connected: true,
 			repoName: cfg.repoName || null,
 			repoId: cfg.repoId,
-			repo: cfg.repo
+			repo: cfg.repo,
+			workspaceId: cfg.workspaceId || null
 		};
 		console.log(JSON.stringify(result));
 	}
