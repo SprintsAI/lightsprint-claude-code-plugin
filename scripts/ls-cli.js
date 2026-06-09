@@ -35,7 +35,7 @@ import { apiRequest, apiRequestSSE, getWorkspaceId } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readConnection, clearConnection, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider } from './lib/validate.js';
-import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByRepoId } from './lib/cc-utils.js';
+import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByWorkspaceId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
 import { getCommandSchema, getAllCommandNames } from './lib/schema.js';
@@ -199,7 +199,7 @@ export async function cliMain(command, args, context = {}) {
 		try {
 			const cfg = getConfig();
 			if (cfg?.workspaceId) {
-				const sessionId = findSessionByRepoId(cfg.workspaceId);
+				const sessionId = findSessionByWorkspaceId(cfg.workspaceId);
 				if (sessionId) {
 					reportError(sessionId, err, 'ls-cli').catch(() => {});
 				}

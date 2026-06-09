@@ -100,19 +100,19 @@ export function deleteSessionState(ccSessionId) {
 }
 
 /**
- * Find an active session ID by repo ID.
- * Scans session files for a matching repoId with a live daemon.
- * @param {string} repoId
+ * Find an active session ID by workspace ID.
+ * Scans session files for a matching workspaceId with a live daemon.
+ * @param {string} workspaceId
  * @returns {string|null} CC session ID, or null if none found
  */
-export function findSessionByRepoId(repoId) {
+export function findSessionByWorkspaceId(workspaceId) {
 	try {
 		const files = readdirSync(SESSIONS_DIR);
 		for (const file of files) {
 			if (!file.endsWith('.json')) continue;
 			try {
 				const state = JSON.parse(readFileSync(join(SESSIONS_DIR, file), 'utf-8'));
-				if (state.repoId === repoId && isPidAlive(state.daemonPid)) {
+				if (state.workspaceId === workspaceId && isPidAlive(state.daemonPid)) {
 					return file.replace('.json', '');
 				}
 			} catch { continue; }

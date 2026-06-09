@@ -51,13 +51,14 @@ export function initSentry({ baseUrl }) {
 
 /**
  * Set Sentry user and session context.
- * @param {{ email?: string, repoId?: string, sessionId?: string, machineId?: string }} ctx
+ * @param {{ email?: string, workspaceId?: string, repoId?: string, sessionId?: string, machineId?: string }} ctx
  */
-export function setSentryContext({ email, repoId, sessionId, machineId }) {
+export function setSentryContext({ email, workspaceId, repoId, sessionId, machineId }) {
 	if (email) {
 		const hashedId = createHash('sha256').update(email).digest('hex').slice(0, 16);
 		Sentry.setUser({ id: hashedId, email });
 	}
+	if (workspaceId) Sentry.setTag('workspaceId', workspaceId);
 	if (repoId) Sentry.setTag('repoId', repoId);
 	if (sessionId) Sentry.setTag('sessionId', sessionId);
 	if (machineId) Sentry.setTag('machineId', machineId);
