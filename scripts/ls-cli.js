@@ -428,7 +428,7 @@ Global Flags:
 // ─── tasks ───────────────────────────────────────────────────────────────
 
 async function cmdTasks(args, opts) {
-	const repoId = await getRepoId();
+	const workspaceId = await getWorkspaceId();
 	const params = new URLSearchParams();
 
 	// Parse args
@@ -439,6 +439,7 @@ async function cmdTasks(args, opts) {
 	let complexity = null;
 	let depsFilter = null;
 	let projectFilter = null;
+	let stackFilter = null;
 	let unassigned = false;
 	let mine = false;
 	let pageAll = false;
@@ -458,6 +459,8 @@ async function cmdTasks(args, opts) {
 			depsFilter = args[++i];
 		} else if (args[i] === '--project' && args[i + 1]) {
 			projectFilter = args[++i];
+		} else if (args[i] === '--stack' && args[i + 1]) {
+			stackFilter = args[++i];
 		} else if (args[i] === '--sort' && args[i + 1]) {
 			sort = args[++i];
 		} else if (args[i] === '--unassigned') {
@@ -503,66 +506,56 @@ async function cmdTasks(args, opts) {
 	if (mine) params.set('assignee', 'me');
 	else if (assigneeFilter) params.set('assignee', assigneeFilter);
 
-	validateId(repoId, 'Repo ID');
+	const stackId = stackFilter ? await resolveStackId(workspaceId, stackFilter) : null;
+	if (stackId) params.set('stack', stackId);
+
+	validateId(workspaceId, 'Workspace ID');
+
+	// Map a board task summary to our display shape. Board task objects may
+	// carry their own display fields; prefer task.displayId, fall back to id.
+	const mapTask = task => ({
+		displayId: task.displayId ?? task.id,
+		id: task.id,
+		title: task.title,
+		status: (task.status || 'unknown'),
+		assignee: task.assignedUser?.name || task.assignee || null,
+		complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
+		project: task.project ? { id: task.project.id, name: task.project.name, color: task.project.color || null, projectNumber: task.project.projectNumber } : null,
+		description: task.description || null
+	});
 
 	// --page-all: stream all pages as NDJSON (one task per line)
 	if (pageAll) {
 		let pageOffset = 0;
 		const pageLimit = 100; // max per page
-		let hasMore = true;
-		while (hasMore) {
+		let totalCount = Infinity;
+		while (pageOffset < totalCount) {
 			params.set('limit', String(pageLimit));
 			params.set('offset', String(pageOffset));
-			const pageData = await apiRequest(`/api/repos/${repoId}/tasks?${params}`);
+			const pageData = await apiRequest(`/api/workspaces/${workspaceId}/board?${params}`);
 			const pageTasks = pageData.tasks || [];
-			const prefix = pageData.taskPrefix || 'LS';
+			totalCount = pageData.totalCount ?? pageTasks.length;
 			for (const task of pageTasks) {
-				const displayId = task.taskNumber != null
-					? `${prefix}-${task.taskNumber < 100 ? task.taskNumber.toString().padStart(3, '0') : task.taskNumber}`
-					: task.id;
-				const line = {
-					displayId, id: task.id, title: task.title,
-					status: (task.status || 'unknown'),
-					assignee: task.assignedUser?.name || task.assignee || null,
-					complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
-					project: task.project ? { id: task.project.id, name: task.project.name, color: task.project.color || null, projectNumber: task.project.projectNumber } : null,
-					description: task.description || null
-				};
+				const line = mapTask(task);
 				const output = opts.fields ? filterFields(line, opts.fields) : line;
 				process.stdout.write(JSON.stringify(output) + '\n');
 			}
-			hasMore = pageData.pagination?.hasMore || false;
-			pageOffset += pageTasks.length || pageLimit;
 			if (pageTasks.length === 0) break;
+			pageOffset += pageLimit;
 		}
 		return;
 	}
 
-	const data = await apiRequest(`/api/repos/${repoId}/tasks?${params}`);
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/board?${params}`);
 	let tasks = data.tasks || [];
 
-	const prefix = data.taskPrefix || 'LS';
-	const resultTasks = tasks.map(task => {
-		const displayId = task.taskNumber != null
-			? `${prefix}-${task.taskNumber < 100 ? task.taskNumber.toString().padStart(3, '0') : task.taskNumber}`
-			: task.id;
-		return {
-			displayId,
-			id: task.id,
-			title: task.title,
-			status: (task.status || 'unknown'),
-			assignee: task.assignedUser?.name || task.assignee || null,
-			complexity: (task.complexity && task.complexity !== 'unknown') ? task.complexity : null,
-			project: task.project ? { id: task.project.id, name: task.project.name, color: task.project.color || null, projectNumber: task.project.projectNumber } : null,
-			description: task.description || null
-		};
-	});
+	const resultTasks = tasks.map(mapTask);
 
+	const totalCount = data.totalCount ?? tasks.length;
 	const result = {
 		tasks: resultTasks,
-		totalCount: data.totalCount || tasks.length,
-		hasMore: data.pagination?.hasMore || false,
-		taskPrefix: prefix
+		totalCount,
+		hasMore: offset + tasks.length < totalCount
 	};
 
 	outputResult(result, opts, () => {
@@ -571,7 +564,7 @@ async function cmdTasks(args, opts) {
 			return;
 		}
 
-		const totalLabel = data.totalCount > tasks.length ? ` of ${data.totalCount} total` : '';
+		const totalLabel = totalCount > tasks.length ? ` of ${totalCount} total` : '';
 		console.log(`Found ${resultTasks.length} task(s)${totalLabel}:\n`);
 
 		for (const task of resultTasks) {
@@ -586,7 +579,7 @@ async function cmdTasks(args, opts) {
 		}
 
 		if (result.hasMore) {
-			console.log(`\n  ... and ${data.totalCount - tasks.length} more. Use --limit/--offset to see more.`);
+			console.log(`\n  ... and ${totalCount - offset - tasks.length} more. Use --limit/--offset to see more.`);
 		}
 	});
 }
@@ -596,7 +589,7 @@ async function cmdTasks(args, opts) {
 const VALID_PROJECT_STATUSES = ['active', 'completed', 'archived'];
 
 async function cmdProjects(args, opts) {
-	const repoId = await getRepoId();
+	const workspaceId = await getWorkspaceId();
 
 	let statusFilter = null;
 	for (let i = 0; i < args.length; i++) {
@@ -609,13 +602,13 @@ async function cmdProjects(args, opts) {
 		validateEnum(statusFilter, VALID_PROJECT_STATUSES, 'project status');
 	}
 
-	validateId(repoId, 'Repo ID');
+	validateId(workspaceId, 'Workspace ID');
 
 	const params = new URLSearchParams();
 	if (statusFilter) params.set('status', statusFilter);
 
 	const queryStr = params.toString();
-	const url = `/api/repos/${repoId}/projects${queryStr ? '?' + queryStr : ''}`;
+	const url = `/api/workspaces/${workspaceId}/projects${queryStr ? '?' + queryStr : ''}`;
 	const data = await apiRequest(url);
 	const projects = data.projects || [];
 
@@ -625,8 +618,7 @@ async function cmdProjects(args, opts) {
 		color: p.color || null,
 		projectNumber: p.projectNumber,
 		status: p.status || 'active',
-		taskCount: p.taskCount ?? 0,
-		repoTaskCount: p.repoTaskCount ?? 0
+		taskCount: p.taskCount ?? 0
 	}));
 
 	const result = { projects: resultProjects };
@@ -641,9 +633,7 @@ async function cmdProjects(args, opts) {
 
 		for (const p of resultProjects) {
 			const statusLabel = p.status !== 'active' ? ` [${p.status}]` : '';
-			const taskLabel = p.repoTaskCount !== undefined
-				? ` (${p.repoTaskCount} tasks in repo, ${p.taskCount} total)`
-				: ` (${p.taskCount} tasks)`;
+			const taskLabel = ` (${p.taskCount} tasks)`;
 			console.log(`  P-${p.projectNumber}  ${p.name}${statusLabel}${taskLabel}`);
 		}
 	});
@@ -669,6 +659,7 @@ async function cmdCreate(args, opts) {
 	let dependsOn = null;
 	let parentId = null;
 	let projectId = null;
+	let stackFilter = null;
 	let ccPidArg;
 
 	for (let i = 0; i < args.length; i++) {
@@ -688,6 +679,8 @@ async function cmdCreate(args, opts) {
 			parentId = args[++i];
 		} else if (args[i] === '--project' && args[i + 1]) {
 			projectId = args[++i];
+		} else if (args[i] === '--stack' && args[i + 1]) {
+			stackFilter = args[++i];
 		} else if (args[i] === '--cc-pid' && args[i + 1]) {
 			ccPidArg = parseInt(args[++i], 10);
 			validatePid(ccPidArg);
@@ -738,6 +731,10 @@ async function cmdCreate(args, opts) {
 
 	body.scope = 'default';
 	body.workspaceId = workspaceId;
+
+	if (stackFilter) {
+		body.stackId = await resolveStackId(workspaceId, stackFilter);
+	}
 
 	// Resolve dependency IDs (supports display IDs like LIG-024)
 	let dependencyTaskIds = null;
@@ -1331,7 +1328,7 @@ async function cmdCreatePlan(args, opts) {
 		throw new Error('Usage: lightsprint create-plan --content <markdown> [--title <text>] [--task <taskId>] [--cc-pid <pid>]');
 	}
 
-	const repoId = await getRepoId();
+	const workspaceId = await getWorkspaceId();
 
 	let content = null;
 	let title = null;
@@ -1388,11 +1385,11 @@ async function cmdCreatePlan(args, opts) {
 
 	// Dry-run: validate only
 	if (opts.dryRun) {
-		return outputDryRun('create-plan', body, `POST /api/repos/${repoId}/plans`, opts);
+		return outputDryRun('create-plan', body, `POST /api/workspaces/${workspaceId}/plans`, opts);
 	}
 
-	validateId(repoId, 'Repo ID');
-	const data = await apiRequest(`/api/repos/${repoId}/plans`, {
+	validateId(workspaceId, 'Workspace ID');
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/plans`, {
 		method: 'POST',
 		body: JSON.stringify(body)
 	});
@@ -1454,7 +1451,7 @@ function cmdOpen(opts) {
 		throw new Error('Not connected to Lightsprint. Run "lightsprint connect" first.');
 	}
 
-	const url = `${cfg.baseUrl}/repos/${cfg.repoId}`;
+	const url = `${cfg.baseUrl}/workspaces/${cfg.workspaceId}/tasks`;
 
 	let opened = false;
 	const platform = process.platform;
@@ -2317,7 +2314,23 @@ async function resolveTaskId(input) {
 		return input;
 	}
 
-	const repoId = await getRepoId();
-	const data = await apiRequest(`/api/repos/${repoId}/tasks/resolve?ref=${encodeURIComponent(input)}`);
+	const workspaceId = await getWorkspaceId();
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/tasks/resolve?ref=${encodeURIComponent(input)}`);
 	return data.taskId;
+}
+
+/**
+ * Resolve a stack reference (id, taskPrefix, or name) to a stack ID.
+ * Returns null when no ref is given. Throws if no stack matches.
+ */
+async function resolveStackId(workspaceId, ref) {
+	if (!ref) return null;
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
+	const stacks = data.stacks || [];
+	const lc = String(ref).toLowerCase();
+	const hit = stacks.find(s => s.id === ref)
+		|| stacks.find(s => (s.taskPrefix || '').toLowerCase() === lc)
+		|| stacks.find(s => (s.name || '').toLowerCase() === lc);
+	if (!hit) throw new Error(`No stack matches "${ref}". Run "lightsprint stacks" to list stacks.`);
+	return hit.id;
 }
