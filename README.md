@@ -97,6 +97,17 @@ All skills operate on the connected workspace.
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:delete <id>` | Permanently delete a task |
+| `/lightsprint:current-task` | Show the Lightsprint task linked to the current Claude Code session |
+| `/lightsprint:create-plan` | Create a plan on Lightsprint from a markdown file |
+| `/lightsprint:agent <id>` | Launch, stop, or check a cloud agent for a task |
+| `/lightsprint:agent-settings` | Show the configured cloud agent provider for the workspace |
+| `/lightsprint:agent-create-pr <id>` | Create a GitHub PR from a cloud agent's working branch |
+| `/lightsprint:link-pr <id> <pr>` | Link a GitHub PR to a task |
+| `/lightsprint:unlink-pr <id>` | Remove a linked GitHub PR from a task |
+| `/lightsprint:merge <id>` | Merge the GitHub PR linked to a task |
+| `/lightsprint:review-hub-signals <id>` | Get PR signals (CI, reviews, comments) for a task's PR |
+| `/lightsprint:review-hub-scores <id>` | Get AI readiness analysis for a task's PR |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -117,38 +128,34 @@ lightsprint-claude-code-plugin/
 │   ├── plugin.json             # Plugin manifest
 │   └── marketplace.json        # Marketplace registry entry
 ├── hooks/
-│   └── hooks.json              # PermissionRequest hook for plan review
+│   └── hooks.json              # Lifecycle hooks: PermissionRequest (plan review),
+│                               #   SessionStart/End, UserPromptSubmit, Stop,
+│                               #   TaskCompleted, PostToolUse, SubagentStart/Stop
 ├── scripts/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
 │   ├── review-plan.js          # Plan review handler (exports reviewPlanMain)
 │   ├── ls-cli.js               # Task management commands (exports cliMain)
+│   ├── cc-*.js                 # Claude Code session lifecycle handlers
+│   │                           #   (cc-daemon, cc-start, cc-end, cc-event, cc-review, cc-pr-created)
 │   ├── compile.sh              # Build script for lightsprint binary
-│   └── lib/
-│       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
-│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
-│       ├── client.js           # HTTP client with automatic token refresh
-│       ├── task-map.js         # CC↔LS task ID mapping
-│       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   └── lib/                    # Shared modules: auth, config, client, connection, browser,
+│                               #   task-map, status-mapper, plan-tracker, schema, validate,
+│                               #   options, output, filelock, cc-utils, sentry
+├── skills/                     # One directory per /lightsprint:<command> (SKILL.md each)
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
 └── README.md
 ```
 
-Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
+Lean footprint — the only production dependency is `@sentry/node` for error reporting; everything else uses Node.js built-ins (`fetch`, `crypto`, `fs`).
 
 ### Local files
 
 | File | Purpose |
 |---|---|
 | `~/.lightsprint/connection.json` | Active workspace connection — OAuth tokens (access + refresh + expiry) and workspace ID/name |
+| `~/.lightsprint/config.json` | Plugin config (e.g. `baseUrl`), written at install time |
 | `~/.lightsprint/active-task.json` | Currently in-progress task |
 
 ---
