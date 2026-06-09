@@ -61,7 +61,7 @@ frontend and backend repos.
 | 4 | Local records | **Save only the workspace context.** No per-repo records. |
 | 5 | Command scope | **All commands workspace-scoped.** The CLI has no repo concept. |
 | 6 | Per-repo ops (cc-sessions, plans) | **Make everything workspace-only.** Migrate `cc_sessions`/`cc_session_events`/`plans` to `workspaceId NOT NULL` + nullable `repoId` (tasks-table precedent). |
-| 7 | Storage / upgrade | **New `~/.lightsprint/connection.json`**; abandon `repos.json`; **no auto-migration** (commands prompt `lightsprint connect`). |
+| 7 | Storage / upgrade | **Hard cutover, not backward-compatible.** Delete `repos.json` and all its read/write code; replace with a workspace-first `~/.lightsprint/connection.json`. No legacy fallback, no auto-migration — commands prompt `lightsprint connect`. |
 | 8 | Flag dependency | **`PUBLIC_DEFAULT_STACK_TASKS` is assumed always `true`.** Not a gate or a risk; code targets workspace endpoints unconditionally and assumes they exist. |
 | 9 | Stacks | Add `stacks` (list) + `stacks get <id>` discovery commands and a `--stack <stackId>` flag on advanced commands. |
 
@@ -84,11 +84,32 @@ Single active context:
 }
 ```
 
-- Replaces the `repos.json` keyed map.
-- Token refresh writeback (`client.js`) and `getConfig`/`requireConfig`
-  (`config.js`) move to this file.
+- **Replaces `repos.json` entirely — `repos.json` and its helpers are deleted,
+  not abandoned.** No code reads or writes `repos.json` after this change.
+- A new workspace-first storage module exposes
+  `readConnection()` / `writeConnection()` / `clearConnection()` (atomic temp +
+  rename, mode `0600`, file-locked writeback) in place of
+  `readReposFile` / `writeReposFile`.
+- Token refresh writeback (`client.js`, `cc-daemon.js`) and
+  `getConfig`/`requireConfig` (`config.js`) read/write this single object.
+  `findRepoConfig` (git-remote → repo entry) is removed.
 - On upgrade, absence of `connection.json` ⇒ commands print
-  "Not connected. Run `lightsprint connect`." No auto-migration.
+  "Not connected. Run `lightsprint connect`." No auto-migration, no fallback.
+
+#### `repos.json` removal surface
+
+Every reference below is deleted or rewritten against `connection.json`:
+
+- `lib/config.js` — `REPOS_FILE`, `readReposFile`, `writeReposFile`,
+  `findRepoConfig`; `getConfig`/`requireConfig` rewritten to the connection
+  object. Add `readConnection`/`writeConnection`/`clearConnection`.
+- `lib/auth.js` — stops keying by `repoFullName`; writes the single connection
+  object (workspace context) on successful auth.
+- `lib/client.js` — token-refresh writeback targets `connection.json`
+  (`connection.json.lock`).
+- `cc-daemon.js` — same writeback; drops the `repos.json` token-persist path.
+- `ls-cli.js` — `disconnect` clears `connection.json`; remove the
+  `readReposFile`/`writeReposFile` imports.
 
 ### `connect` flow
 
