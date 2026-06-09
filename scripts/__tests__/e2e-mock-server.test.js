@@ -138,7 +138,7 @@ function createMockServer() {
 			if (path.match(/^\/api\/workspaces\/[^/]+\/stacks$/) && method === 'GET') {
 				return Response.json({
 					stacks: [
-						{ id: 'stk_1', name: 'Eng', taskPrefix: 'ENG', repoIds: ['r1'] },
+						{ id: 'stk_1', name: 'Eng', taskPrefix: 'ENG', memberRepoIds: ['r1'] },
 					],
 				});
 			}
@@ -148,8 +148,11 @@ function createMockServer() {
 			if (stackGetMatch && method === 'GET') {
 				const stackId = stackGetMatch[1];
 				return Response.json({
-					stack: { id: stackId, name: 'Eng', taskPrefix: 'ENG', repoIds: ['r1'] },
-					repos: [
+					stack: { id: stackId, name: 'Eng', taskPrefix: 'ENG' },
+					members: [
+						{ stackId, repoId: 'r1' },
+					],
+					memberRepos: [
 						{ id: 'r1', name: 'core', fullName: 'SprintsAI/core' },
 					],
 				});
@@ -432,6 +435,9 @@ describe('E2E: Mock Server', () => {
 			expect(result.json.stacks.length).toBe(1);
 			expect(result.json.stacks[0].id).toBe('stk_1');
 			expect(result.json.stacks[0].taskPrefix).toBe('ENG');
+			// The CLI sources repoIds from the server's memberRepoIds field, so the
+			// member repo count must come through (1 repo).
+			expect(result.json.stacks[0].repoIds).toEqual(['r1']);
 		});
 
 		test('stacks get resolves ENG prefix to stk_1 and returns detail', async () => {
@@ -444,8 +450,11 @@ describe('E2E: Mock Server', () => {
 			expect(detailReq).toBeDefined();
 			const stack = result.json.stack || result.json;
 			expect(stack.id).toBe('stk_1');
-			expect(result.json.repos).toBeArray();
-			expect(result.json.repos[0].fullName).toBe('SprintsAI/core');
+			// The server returns resolved repos under memberRepos; the CLI renders
+			// these (fullName) for the human view.
+			expect(result.json.memberRepos).toBeArray();
+			expect(result.json.memberRepos.length).toBe(1);
+			expect(result.json.memberRepos[0].fullName).toBe('SprintsAI/core');
 		});
 	});
 

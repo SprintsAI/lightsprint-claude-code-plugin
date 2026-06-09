@@ -658,7 +658,7 @@ async function cmdProjects(args, opts) {
 async function cmdStacks(args, opts) {
 	const workspaceId = await getWorkspaceId();
 	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
-	const stacks = (data.stacks || []).map(s => ({ id: s.id, name: s.name, taskPrefix: s.taskPrefix, repoIds: s.repoIds || [] }));
+	const stacks = (data.stacks || []).map(s => ({ id: s.id, name: s.name, taskPrefix: s.taskPrefix, repoIds: s.memberRepoIds || [] }));
 	outputResult({ stacks }, opts, () => {
 		if (stacks.length === 0) { console.log('No stacks found.'); return; }
 		console.log(`Found ${stacks.length} stack(s):\n`);
@@ -674,7 +674,7 @@ async function cmdStackGet(args, opts) {
 	outputResult(data, opts, () => {
 		const s = data.stack || data;
 		console.log(`${s.taskPrefix}  ${s.name}  ${s.id}`);
-		for (const r of (data.repos || data.members || [])) console.log(`  - ${r.fullName || r.name || r.id}`);
+		for (const r of (data.memberRepos || data.repos || data.members || [])) console.log(`  - ${r.fullName || r.name || r.id}`);
 	});
 }
 
