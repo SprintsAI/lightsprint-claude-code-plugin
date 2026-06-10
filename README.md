@@ -88,17 +88,45 @@ Defaults to `https://lightsprint.ai`.
 
 All skills operate on the connected workspace.
 
+**Tasks & projects**
+
 | Command | Description |
 |---|---|
 | `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
 | `/lightsprint:projects` | List projects in the workspace |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
-| `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
+| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status <status>`, `--stack <ref>` |
+| `/lightsprint:update <id>` | Update a task — title, description, status, complexity, assignee, position, dependencies |
+| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, dependencies, complexity |
+| `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and links it to the current Claude Code session |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:delete <id>` | Permanently delete a task from the board |
+| `/lightsprint:current-task` | Show the Lightsprint task linked to the current Claude Code session |
 
-Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
+**Plans**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:create-plan` | Create a plan on Lightsprint from markdown content |
+
+**Pull requests & review**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:link-pr <id> <pr>` | Link a GitHub PR to a task and trigger auto-review |
+| `/lightsprint:unlink-pr <id>` | Remove the linked GitHub PR from a task |
+| `/lightsprint:merge <id>` | Merge the GitHub PR linked to a task (direct merge or merge queue) |
+| `/lightsprint:review-hub-signals` | Get PR signals (CI checks, reviews, comments, deployments) for a task's linked PR |
+| `/lightsprint:review-hub-scores` | Get AI readiness analysis (score, summaries, callouts) for a task's linked PR |
+
+**Cloud agents**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:agent <launch\|stop\|settings>` | Launch or stop a cloud agent, or check settings (anthropic / cursor / codex providers) |
+| `/lightsprint:agent-settings` | Show which cloud agent providers are configured and their default models |
+| `/lightsprint:agent-create-pr` | Create a GitHub PR from a cloud agent's working branch |
+
+Stacks group tasks within a workspace. Target a stack on `tasks`/`create` via `--stack <ref>` (a stack ID, prefix, or name).
 
 ### Claiming tasks
 
@@ -117,39 +145,45 @@ lightsprint-claude-code-plugin/
 │   ├── plugin.json             # Plugin manifest
 │   └── marketplace.json        # Marketplace registry entry
 ├── hooks/
-│   └── hooks.json              # PermissionRequest hook for plan review
+│   └── hooks.json              # Claude Code lifecycle hooks (see "Hooks" below)
 ├── scripts/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
+│   ├── ls-cli.js               # Task/PR/agent commands (exports cliMain)
 │   ├── review-plan.js          # Plan review handler (exports reviewPlanMain)
-│   ├── ls-cli.js               # Task management commands (exports cliMain)
-│   ├── compile.sh              # Build script for lightsprint binary
-│   └── lib/
-│       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
-│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
-│       ├── client.js           # HTTP client with automatic token refresh
-│       ├── task-map.js         # CC↔LS task ID mapping
-│       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
-├── install.sh                  # One-line plugin installer
+│   ├── cc-*.js                 # Hook handlers (cc-review, cc-start, cc-end, cc-event, cc-pr-created)
+│   ├── cc-daemon.js            # Background daemon (HTTP server + WebSocket client to Lightsprint)
+│   ├── compile.sh              # Build script for the lightsprint binary
+│   └── lib/                    # auth, config, client, task-map, status-mapper, …
+├── skills/                     # One SKILL.md per /lightsprint: command (18 total — see above)
+├── pi-extension/               # Integration for the pi framework (tools, commands, shortcuts)
+├── docs/                       # LOCAL_TESTING.md and design specs
+├── install.sh / install.ps1    # One-line plugin installers (bash / PowerShell)
 ├── uninstall.sh                # Clean removal
 ├── package.json
 └── README.md
 ```
 
-Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
+Zero runtime npm dependencies beyond `@sentry/node` — uses Node.js built-in `fetch`, `crypto`, and `fs`.
+
+### Hooks
+
+`hooks/hooks.json` registers the plugin against Claude Code lifecycle events. They run the `lightsprint` binary and silently no-op when no workspace is connected:
+
+| Event | Handler | Purpose |
+|---|---|---|
+| `PermissionRequest` (`ExitPlanMode`) | `cc-review` | Opens the plan review UI when you exit plan mode |
+| `SessionStart` / `SessionEnd` | `cc-start` / `cc-end` | Start/stop the background daemon and log the session |
+| `PostToolUse` (`Bash`) | `cc-pr-created` | Detects `gh pr create` and links the new PR to the active task |
+| `UserPromptSubmit`, `Stop`, `TaskCompleted`, `PostToolUse` (`TaskCreate`/`TaskUpdate`), `SubagentStart`/`SubagentStop` | `cc-event` | Records session activity and syncs task updates |
 
 ### Local files
 
 | File | Purpose |
 |---|---|
 | `~/.lightsprint/connection.json` | Active workspace connection — OAuth tokens (access + refresh + expiry) and workspace ID/name |
-| `~/.lightsprint/active-task.json` | Currently in-progress task |
+| `~/.lightsprint/config.json` | Base URL configuration |
+| `~/.lightsprint/active-plan.json` | Currently tracked plan |
+| `~/.lightsprint/task-map.json` | Claude Code ↔ Lightsprint task ID mapping |
 
 ---
 
@@ -177,4 +211,4 @@ Verify the plugin is loaded:
 claude --debug
 ```
 
-Check that `hooks/hooks.json` is being picked up and `PostToolUse` matchers are registered.
+Check that `hooks/hooks.json` is being picked up and its matchers (e.g. `PermissionRequest` for `ExitPlanMode`, `PostToolUse` for `Bash`) are registered.
