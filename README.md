@@ -1,6 +1,6 @@
 # Lightsprint Claude Code Plugin
 
-Claude Code plugin for Lightsprint — plan review, task management skills, and workspace board integration.
+Claude Code plugin for Lightsprint — task management, cloud-agent control, PR linking/review, plan upload & review, and workspace board integration. Claude Code sessions sync to your Lightsprint board for team visibility.
 
 ## Prerequisites
 
@@ -88,17 +88,45 @@ Defaults to `https://lightsprint.ai`.
 
 All skills operate on the connected workspace.
 
+**Tasks**
+
 | Command | Description |
 |---|---|
 | `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
-| `/lightsprint:projects` | List projects in the workspace |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
+| `/lightsprint:create <title>` | Create a new task in the workspace default stack. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status <status>`, `--stack <ref>` |
+| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
+| `/lightsprint:delete <id>` | Delete a task permanently from the workspace board |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:current-task` | Show the Lightsprint task linked to the current Claude Code session (auto-detected via session PID) |
+| `/lightsprint:projects` | List projects in the workspace |
 
-Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
+**Cloud agents**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:agent` | Launch, stop, or check settings for cloud agents on a task. Supports `anthropic`, `cursor`, and `codex` providers |
+| `/lightsprint:agent-settings` | Check which cloud agent providers are configured and their default models |
+| `/lightsprint:agent-create-pr` | Open a GitHub PR from a cloud agent's working branch after it finishes |
+
+**Pull requests & review**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:link-pr <id> <pr>` | Link a GitHub PR to a task |
+| `/lightsprint:unlink-pr <id>` | Remove a linked PR from a task |
+| `/lightsprint:merge <id>` | Merge the PR linked to a task (supports direct merge and GitHub merge queue) |
+| `/lightsprint:review-hub-signals <id>` | Get PR signals (CI checks, reviews, comments, deployments) for a task's linked PR |
+| `/lightsprint:review-hub-scores <id>` | Get AI readiness analysis (score, summaries, callouts, suggested actions) for a task's linked PR |
+
+**Plans**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:create-plan` | Upload an implementation plan / design doc to Lightsprint from markdown content |
+
+Stacks group 1–10 repos into a multi-repo sandbox within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
 ### Claiming tasks
 
@@ -117,32 +145,40 @@ lightsprint-claude-code-plugin/
 │   ├── plugin.json             # Plugin manifest
 │   └── marketplace.json        # Marketplace registry entry
 ├── hooks/
-│   └── hooks.json              # PermissionRequest hook for plan review
+│   └── hooks.json              # PermissionRequest + Claude Code lifecycle hooks
 ├── scripts/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
+│   ├── ls-cli.js               # Task / agent / PR / plan commands (exports cliMain)
 │   ├── review-plan.js          # Plan review handler (exports reviewPlanMain)
-│   ├── ls-cli.js               # Task management commands (exports cliMain)
-│   ├── compile.sh              # Build script for lightsprint binary
+│   ├── cc-daemon.js            # Background daemon that syncs CC sessions to Lightsprint
+│   ├── cc-start.js             # Lifecycle hooks: session start / end / event / PR-created / review
+│   ├── cc-end.js               #   (cc-end.js, cc-event.js, cc-pr-created.js, cc-review.js)
+│   ├── compile.sh              # Build script for the lightsprint binary
+│   ├── dev-local.sh            # Local dev install / dev-restore.sh to revert
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
+│       ├── connection.js       # Active-workspace connection file management
 │       ├── config.js           # Per-folder token resolution + on-demand auth trigger
 │       ├── client.js           # HTTP client with automatic token refresh
+│       ├── validate.js         # Input hardening (task IDs, enums, control chars)
+│       ├── output.js           # Structured (JSON) vs human output formatting
+│       ├── schema.js           # Command schema introspection (`lightsprint describe`)
 │       ├── task-map.js         # CC↔LS task ID mapping
-│       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│       ├── plan-tracker.js     # Plan review state tracking
+│       ├── status-mapper.js    # Status mapping logic
+│       ├── filelock.js         # Cross-process file locking
+│       ├── browser.js          # Cross-platform browser opener
+│       ├── cc-utils.js         # Claude Code session helpers (PID detection, etc.)
+│       └── sentry.js           # Error reporting
+├── skills/                     # 18 `/lightsprint:` slash commands (one dir per SKILL.md)
+├── npx-install.js              # `npx lightsprint` entry point
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
 └── README.md
 ```
 
-Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
+The CLI itself has a single runtime dependency (`@sentry/node` for error reporting) — everything else uses Node.js built-in `fetch`, `crypto`, and `fs`.
 
 ### Local files
 
