@@ -48,4 +48,21 @@ describe('CLI routing', () => {
 		expect(stdout).toContain('lightsprint review-plan');
 		expect(stdout).toContain('Review');
 	});
+
+	test('help lists the stacks command with the use picker', async () => {
+		const stdout = await runCli('help');
+		expect(stdout).toContain('stacks use');
+	});
+
+	test('tasks --help documents the --all-stacks override', async () => {
+		const stdout = await runCli('tasks', '--help');
+		expect(stdout).toContain('--all-stacks');
+	});
+
+	test('describe stacks use returns the stacks-use schema', async () => {
+		const stdout = await runCli('describe', 'stacks', 'use');
+		const schema = JSON.parse(stdout);
+		expect(schema.command).toBe('stacks-use');
+		expect(schema.params.clear.flag).toBe('--clear');
+	});
 });

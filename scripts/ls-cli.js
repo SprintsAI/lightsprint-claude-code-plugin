@@ -33,7 +33,8 @@ import { homedir, tmpdir } from 'os';
 import { join } from 'path';
 import { apiRequest, apiRequestSSE, getWorkspaceId } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
-import { getConfig, getDefaultBaseUrl, readConnection, clearConnection, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
+import { createInterface } from 'readline';
+import { getConfig, getDefaultBaseUrl, readConnection, clearConnection, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES, getActiveStack, setActiveStack, clearActiveStack } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByWorkspaceId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
@@ -165,7 +166,11 @@ export async function cliMain(command, args, context = {}) {
 		switch (resolvedCommand) {
 			case 'tasks': return await cmdTasks(remainingArgs, opts);
 			case 'projects': return await cmdProjects(remainingArgs, opts);
-			case 'stacks': return remainingArgs[0] === 'get' ? await cmdStackGet(remainingArgs.slice(1), opts) : await cmdStacks(remainingArgs, opts);
+			case 'stacks': {
+				if (remainingArgs[0] === 'get') return await cmdStackGet(remainingArgs.slice(1), opts);
+				if (remainingArgs[0] === 'use') return await cmdStackUse(remainingArgs.slice(1), opts);
+				return await cmdStacks(remainingArgs, opts);
+			}
 			case 'create': return await cmdCreate(remainingArgs, opts);
 			case 'update': return await cmdUpdate(remainingArgs, opts);
 			case 'get': return await cmdGet(remainingArgs, opts);
@@ -231,7 +236,8 @@ Commands:
       --unassigned           Only show tasks with no assignee
       --deps <filter>       Filter by dependencies: has-dependencies, has-dependents, unblocked
       --project <filter>    Filter by project ID(s) or "none" for tasks without a project
-      --stack <ref>         Filter by stack (stack ID, task prefix, or name)
+      --stack <ref>         Filter by stack (stack ID, task prefix, or name). Defaults to the active stack.
+      --all-stacks          Span all stacks, ignoring the active stack
       --sort <field>        Sort tasks by: position (default), updated_at, created_at
       --limit <N>           Limit number of results (default: 20)
       --offset <N>          Skip first N results (for pagination)
@@ -260,6 +266,15 @@ Commands:
       lightsprint stacks get ENG
       lightsprint stacks get stk_123
 
+  stacks use [<stackId|prefix|name>]
+    Choose the active stack. Once set, "tasks" and "create" default to it.
+    With no argument in an interactive terminal, shows a numbered picker.
+    Use --clear to reset (commands then span all stacks).
+    Example:
+      lightsprint stacks use ENG
+      lightsprint stacks use
+      lightsprint stacks use --clear
+
   create <title> [options]
     Create a new task. Title can be positional or via --title flag.
     Aliases: create-task, new, add
@@ -269,7 +284,7 @@ Commands:
       --complexity <level>        low, medium, or high
       --status <status>           backlog, todo, in_progress, in_review, or done (default: backlog)
       --project <projectId>       Assign to a project by ID
-      --stack <ref>               Create in a stack (stack ID, task prefix, or name)
+      --stack <ref>               Create in a stack (stack ID, task prefix, or name). Defaults to the active stack.
       --depends-on <ids>          Comma-separated task IDs this task depends on
       --cc-pid <pid>              Claude Code PID for session linking
       --json-body <json>          Raw JSON request body (replaces individual flags)
@@ -454,6 +469,7 @@ async function cmdTasks(args, opts) {
 	let depsFilter = null;
 	let projectFilter = null;
 	let stackFilter = null;
+	let allStacks = false;
 	let unassigned = false;
 	let mine = false;
 	let pageAll = false;
@@ -475,6 +491,8 @@ async function cmdTasks(args, opts) {
 			projectFilter = args[++i];
 		} else if (args[i] === '--stack' && args[i + 1]) {
 			stackFilter = args[++i];
+		} else if (args[i] === '--all-stacks') {
+			allStacks = true;
 		} else if (args[i] === '--sort' && args[i + 1]) {
 			sort = args[++i];
 		} else if (args[i] === '--unassigned') {
@@ -524,7 +542,13 @@ async function cmdTasks(args, opts) {
 	if (mine) params.set('assignee', 'me');
 	else if (assigneeFilter) params.set('assignee', assigneeFilter);
 
-	const stackId = stackFilter ? await resolveStackId(workspaceId, stackFilter) : null;
+	// Scope to a stack: explicit --stack wins, else the active stack (unless
+	// --all-stacks is given to span the whole workspace).
+	let stackId = null;
+	if (!allStacks) {
+		if (stackFilter) stackId = await resolveStackId(workspaceId, stackFilter);
+		else stackId = getActiveStack()?.id || null;
+	}
 	if (stackId) params.set('stack', stackId);
 
 	validateId(workspaceId, 'Workspace ID');
@@ -692,14 +716,107 @@ async function cmdProjects(args, opts) {
 
 // ─── stacks ──────────────────────────────────────────────────────────────
 
+/**
+ * Fetch and normalize the workspace's stacks.
+ * @returns {Promise<Array<{ id: string, name: string, taskPrefix: string, repoIds: string[] }>>}
+ */
+async function fetchStacks(workspaceId) {
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
+	return (data.stacks || []).map(s => ({ id: s.id, name: s.name, taskPrefix: s.taskPrefix, repoIds: s.memberRepoIds || [] }));
+}
+
+/**
+ * Match a stack from a list by id, task prefix, or name (case-insensitive).
+ * @returns {{ id: string, name: string, taskPrefix: string, repoIds: string[] } | null}
+ */
+function matchStack(stacks, ref) {
+	const lc = String(ref).toLowerCase();
+	return stacks.find(s => s.id === ref)
+		|| stacks.find(s => (s.taskPrefix || '').toLowerCase() === lc)
+		|| stacks.find(s => (s.name || '').toLowerCase() === lc)
+		|| null;
+}
+
 async function cmdStacks(args, opts) {
 	const workspaceId = await getWorkspaceId();
-	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
-	const stacks = (data.stacks || []).map(s => ({ id: s.id, name: s.name, taskPrefix: s.taskPrefix, repoIds: s.memberRepoIds || [] }));
-	outputResult({ stacks }, opts, () => {
-		if (stacks.length === 0) { console.log('No stacks found.'); return; }
-		console.log(`Found ${stacks.length} stack(s):\n`);
-		for (const s of stacks) console.log(`  ${s.taskPrefix}  ${s.name}  (${s.repoIds.length} repos)  ${s.id}`);
+	const stacks = await fetchStacks(workspaceId);
+	const active = getActiveStack();
+	const list = stacks.map(s => ({ ...s, active: active?.id === s.id }));
+	outputResult({ activeStackId: active?.id || null, stacks: list }, opts, () => {
+		if (list.length === 0) { console.log('No stacks found.'); return; }
+		console.log(`Found ${list.length} stack(s):\n`);
+		for (const s of list) console.log(`  ${s.active ? '*' : ' '} ${s.taskPrefix}  ${s.name}  (${s.repoIds.length} repos)  ${s.id}`);
+		if (active) console.log(`\n* active stack — tasks and create default to it. Change with "lightsprint stacks use <ref>".`);
+		else console.log(`\nNo active stack. Choose one with "lightsprint stacks use <ref>".`);
+	});
+}
+
+/**
+ * Interactive numbered stack picker. Resolves to the chosen stack id, or
+ * null if the user cancels / enters an invalid selection.
+ */
+function promptStackChoice(stacks) {
+	return new Promise((resolve) => {
+		console.log('Select a stack:\n');
+		stacks.forEach((s, i) => {
+			const prefix = s.taskPrefix ? `${s.taskPrefix}  ` : '';
+			console.log(`  ${i + 1}) ${prefix}${s.name}  (${s.repoIds.length} repos)`);
+		});
+		const rl = createInterface({ input: process.stdin, output: process.stdout });
+		rl.question('\nEnter number (or blank to cancel): ', (answer) => {
+			rl.close();
+			const trimmed = (answer || '').trim();
+			if (!trimmed) return resolve(null);
+			const idx = parseInt(trimmed, 10);
+			if (!Number.isInteger(idx) || idx < 1 || idx > stacks.length) {
+				console.log('Invalid selection.');
+				return resolve(null);
+			}
+			resolve(stacks[idx - 1].id);
+		});
+	});
+}
+
+/**
+ * `stacks use [<ref>]` — choose the active stack (the stack picker).
+ * With a ref, resolves and persists it. With no ref, shows an interactive
+ * picker in a TTY, or errors with guidance in non-interactive contexts.
+ * `--clear` / `none` clears the active stack.
+ */
+async function cmdStackUse(args, opts) {
+	const workspaceId = await getWorkspaceId();
+
+	if (args[0] === '--clear' || args[0] === '--none' || args[0] === 'none') {
+		const had = getActiveStack();
+		clearActiveStack();
+		return outputResult({ activeStack: null, cleared: !!had }, opts, () => {
+			console.log(had ? `Cleared active stack (was ${had.name || had.id}).` : 'No active stack was set.');
+		});
+	}
+
+	const stacks = await fetchStacks(workspaceId);
+	if (stacks.length === 0) throw new Error('No stacks found in this workspace.');
+
+	let ref = args.find(a => !a.startsWith('-')) || null;
+
+	if (!ref) {
+		const interactive = process.stdin.isTTY && process.stdout.isTTY && opts.outputFormat !== 'json';
+		if (interactive) {
+			ref = await promptStackChoice(stacks);
+			if (!ref) { console.log('No stack selected.'); return; }
+		} else {
+			throw new Error('Specify a stack: lightsprint stacks use <stackId|prefix|name>. Run "lightsprint stacks" to list available stacks.');
+		}
+	}
+
+	const hit = matchStack(stacks, ref);
+	if (!hit) throw new Error(`No stack matches "${ref}". Run "lightsprint stacks" to list stacks.`);
+
+	const saved = setActiveStack(hit);
+	outputResult({ activeStack: saved }, opts, () => {
+		const prefix = hit.taskPrefix ? ` (${hit.taskPrefix})` : '';
+		console.log(`Active stack set to ${hit.name || hit.id}${prefix}.`);
+		console.log('tasks and create now default to this stack. Reset with "lightsprint stacks use --clear".');
 	});
 }
 
@@ -810,6 +927,10 @@ async function cmdCreate(args, opts) {
 
 	if (stackFilter) {
 		body.stackId = await resolveStackId(workspaceId, stackFilter);
+	} else if (!('stackId' in body)) {
+		// Default to the active stack when one is chosen and none was specified.
+		const active = getActiveStack();
+		if (active) body.stackId = active.id;
 	}
 
 	// Resolve dependency IDs (supports display IDs like LIG-024)
@@ -1564,11 +1685,14 @@ function cmdStatus(opts) {
 		tokenValid = remainingMs > 0;
 	}
 
+	const activeStack = getActiveStack();
+
 	const result = {
 		connected: true,
 		workspaceId: cfg.workspaceId,
 		workspaceName: cfg.workspaceName || 'unknown',
 		baseUrl: cfg.baseUrl,
+		activeStack: activeStack || null,
 		token: { valid: tokenValid, remainingMs: remainingMs != null ? Math.max(0, remainingMs) : null }
 	};
 
@@ -1576,6 +1700,12 @@ function cmdStatus(opts) {
 		console.log(`Workspace:    ${cfg.workspaceName || 'unknown'}`);
 		console.log(`Workspace ID: ${cfg.workspaceId}`);
 		console.log(`Base URL:     ${cfg.baseUrl}`);
+		if (activeStack) {
+			const prefix = activeStack.taskPrefix ? ` (${activeStack.taskPrefix})` : '';
+			console.log(`Active stack: ${activeStack.name || activeStack.id}${prefix}`);
+		} else {
+			console.log(`Active stack: none (spans all stacks) — choose one with "lightsprint stacks use"`);
+		}
 		if (cfg.expiresAt) {
 			if (!tokenValid) {
 				console.log(`Token:        expired`);
@@ -2357,12 +2487,8 @@ async function resolveTaskId(input) {
  */
 async function resolveStackId(workspaceId, ref) {
 	if (!ref) return null;
-	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
-	const stacks = data.stacks || [];
-	const lc = String(ref).toLowerCase();
-	const hit = stacks.find(s => s.id === ref)
-		|| stacks.find(s => (s.taskPrefix || '').toLowerCase() === lc)
-		|| stacks.find(s => (s.name || '').toLowerCase() === lc);
+	const stacks = await fetchStacks(workspaceId);
+	const hit = matchStack(stacks, ref);
 	if (!hit) throw new Error(`No stack matches "${ref}". Run "lightsprint stacks" to list stacks.`);
 	return hit.id;
 }

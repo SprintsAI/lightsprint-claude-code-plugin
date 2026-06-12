@@ -9,7 +9,7 @@ Run this command to list tasks from Lightsprint. By default, only root tasks (no
 lightsprint tasks $ARGUMENTS
 ```
 
-Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--mine] [--unassigned] [--deps <filter>] [--project <filter>] [--stack <ref>] [--sort <field>] [--limit N] [--offset N]`
+Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--mine] [--unassigned] [--deps <filter>] [--project <filter>] [--stack <ref>] [--all-stacks] [--sort <field>] [--limit N] [--offset N]`
 
 ## Flags
 
@@ -22,7 +22,8 @@ Usage: `tasks [--status <status>] [--complexity <level>] [--assignee <name>] [--
 | `--unassigned` | — | Show only tasks with no assignee. |
 | `--deps <filter>` | all | Filter by dependencies: `has-dependencies`, `has-no-dependencies`, `has-dependents`, `unblocked`. |
 | `--project <filter>` | all | Filter by project. Comma-separated project IDs, or `none` for tasks without a project. Use `lightsprint projects` to list available project IDs. |
-| `--stack <ref>` | all | Filter by stack. Accepts a stack ID, task prefix, or name. Use `lightsprint stacks` to list available stacks. |
+| `--stack <ref>` | active stack | Filter by stack. Accepts a stack ID, task prefix, or name. Use `lightsprint stacks` to list available stacks. Defaults to the active stack chosen via `lightsprint stacks use`. |
+| `--all-stacks` | — | Span all stacks, ignoring the active stack. |
 | `--sort <field>` | `position` | Sort order: `position` (board order), `updated_at` (most recently updated first), `created_at` (newest first). |
 | `--limit N` | 20 | Maximum number of tasks to return (server max: 100). |
 | `--offset N` | 0 | Skip first N tasks (for pagination). |
@@ -54,6 +55,8 @@ lightsprint tasks --stack ENG --status todo
 ## Stacks
 
 Tasks live in stacks within the active workspace. List stacks with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and scope this command to a stack with `--stack <ref>` (stack ID, task prefix, or name).
+
+Choose an **active stack** with `lightsprint stacks use <ref>` to make it the default for `tasks` and `create` — no need to pass `--stack` each time. Pass `--all-stacks` to span every stack regardless of the active choice, or `lightsprint stacks use --clear` to reset. The current active stack is shown by `lightsprint stacks` (marked `*`) and `lightsprint status`.
 
 ## Invariants
 

@@ -14,7 +14,8 @@ const COMMAND_SCHEMAS = {
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'Filter by status' },
 			assignee: { type: 'string', flag: '--assignee', description: 'Filter by assignee name/email (case-insensitive substring)' },
 			project: { type: 'string', flag: '--project', description: 'Filter by project. Comma-separated project IDs or "none" for unassigned. Max 10.' },
-			stack: { type: 'string', flag: '--stack', description: 'Filter by stack (stack ID, task prefix, or name)' },
+			stack: { type: 'string', flag: '--stack', description: 'Filter by stack (stack ID, task prefix, or name). Defaults to the active stack chosen via "stacks use".' },
+			allStacks: { type: 'boolean', flag: '--all-stacks', description: 'Span all stacks, ignoring the active stack' },
 			limit: { type: 'integer', flag: '--limit', default: 20, description: 'Max results (server max: 100)' },
 			offset: { type: 'integer', flag: '--offset', default: 0, description: 'Skip first N results' },
 			sort: { type: 'enum', flag: '--sort', values: ['position', 'updated_at', 'created_at'], default: 'position', description: 'Sort order: position (board order), updated_at, created_at' }
@@ -44,6 +45,15 @@ const COMMAND_SCHEMAS = {
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
+	'stacks-use': {
+		description: 'Choose the active stack. Once set, tasks and create default to it. Shows an interactive picker in a TTY when no ref is given.',
+		params: {
+			ref: { type: 'string', description: 'Stack ID, task prefix, or name. Omit for an interactive picker (TTY only).' },
+			clear: { type: 'boolean', flag: '--clear', description: 'Clear the active stack (commands then span all stacks)' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
 	create: {
 		description: 'Create a new task in the active workspace (default stack unless --stack given)',
 		params: {
@@ -53,7 +63,7 @@ const COMMAND_SCHEMAS = {
 			complexity: { type: 'enum', flag: '--complexity', values: VALID_COMPLEXITIES, description: 'Complexity estimate' },
 			dependsOn: { type: 'string[]', flag: '--depends-on', description: 'Comma-separated task IDs this task depends on' },
 			projectId: { type: 'string', flag: '--project', description: 'Assign to a project by ID' },
-			stack: { type: 'string', flag: '--stack', description: 'Create in a stack (stack ID, task prefix, or name)' },
+			stack: { type: 'string', flag: '--stack', description: 'Create in a stack (stack ID, task prefix, or name). Defaults to the active stack chosen via "stacks use", else the workspace default stack.' },
 			ccPid: { type: 'integer', flag: '--cc-pid', description: 'Claude Code PID for session linking' }
 		},
 		supportsDryRun: true,
