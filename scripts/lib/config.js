@@ -19,7 +19,7 @@ const PREFERENCES_FILE = join(CONFIG_DIR, 'preferences.json');
 
 // Known preference keys and their valid values
 const KNOWN_PREFERENCES = {
-	'link-pr.no-task-behavior': ['prompt', 'always-skip', 'always-create'],
+	'link-pr.no-task-behavior': ['prompt', 'always-skip'],
 };
 
 export function ensureConfigDir() {

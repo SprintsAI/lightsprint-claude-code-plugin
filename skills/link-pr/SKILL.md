@@ -28,44 +28,21 @@ When `lightsprint current-task` returns no linked task after PR creation:
 
 **Step 1 — Check user preference**: Run `lightsprint config get link-pr.no-task-behavior`.
 - If the value is `always-skip`, skip linking silently and inform the user: "Skipping PR linking (preference: always-skip). Run `lightsprint config set link-pr.no-task-behavior prompt` to re-enable."
-- If the value is `always-create`, skip the prompt and go directly to **Option 1** (create new task from PR context, link it). Inform the user: "Auto-creating task from PR (preference: always-create). Run `lightsprint config set link-pr.no-task-behavior prompt` to re-enable prompting."
 - If the value is `(not set)` or `prompt`, continue to Step 2.
 
-**Step 2 — Ask the user** with five options:
+**Step 2 — Ask the user** with three options:
 
    > No Lightsprint task is linked to this session. How would you like to proceed?
-   > 1. **Create new task** — I'll create one from this PR's context
-   > 2. **Link existing task** — Pick from your backlog/todo tasks
-   > 3. **Skip** — Continue without tracking this time
-   > 4. **Always skip** — Never ask again (you can re-enable later)
-   > 5. **Always create** — Auto-create a task for every PR (you can re-enable prompting later)
+   > 1. **Link existing task** — Pick from your backlog/todo tasks
+   > 2. **Skip** — Continue without tracking this time
+   > 3. **Always skip** — Never ask again (you can re-enable later)
 
-**Option 1 — Create new task**:
-
-   **YOU MUST FOLLOW ALL THREE STEPS. DO NOT SKIP STEP 1.**
-
-   **Step 1 — Gather context** (MANDATORY — do this BEFORE calling `lightsprint create`):
-   - The PR title, body, and commit messages are likely already in this conversation from the `gh pr create` command. Use them directly.
-   - If not available, run `gh pr view <prUrl> --json title,body` and `git log main..HEAD --oneline`.
-
-   **Step 2 — Create the task with a description**:
-   - Compose a description from the PR body and commit summaries. Include what the PR does and why.
-   - Run: `lightsprint create --title "<title from PR>" --description "<composed description>" --status in_review --cc-pid $PPID`
-   - **The `--description` flag is REQUIRED here. DO NOT OMIT IT.** A task without a description is useless for tracking.
-
-   **Step 3 — Link the PR**:
-   - Use the returned task ID to run `lightsprint link-pr --task <taskId> --pr-url <prUrl>`
-
-**Option 2 — Link existing task**:
+**Option 1 — Link existing task**:
    - Run `lightsprint tasks --mine --status backlog,todo,in_progress --limit 10` to fetch the user's tasks.
    - Present the list to the user in a numbered format (e.g., `1. LS-024 — Fix login bug`).
-   - After the list, remind the user: "Or say **create new** to create a fresh task for this PR."
    - Let the user pick a task by number or ID. Do NOT just ask for a task ID without showing the list first.
-   - If the user says "none" or asks to create a new task instead, follow the **Option 1** flow to create one with a description.
    - Run `lightsprint link-pr --task <selectedTaskId> --pr-url <prUrl>`
 
-**Option 3 — Skip**: Inform the user the PR is not tracked in Lightsprint and move on.
+**Option 2 — Skip**: Inform the user the PR is not tracked in Lightsprint and move on.
 
-**Option 4 — Always skip**: Run `lightsprint config set link-pr.no-task-behavior always-skip`, then inform the user: "PR linking will be skipped from now on. Run `lightsprint config set link-pr.no-task-behavior prompt` to re-enable."
-
-**Option 5 — Always create**: Run `lightsprint config set link-pr.no-task-behavior always-create`, then immediately follow the **Option 1** flow to create and link a task for this PR. Inform the user: "From now on, a task will be auto-created for every PR. This is reversible — run `lightsprint config set link-pr.no-task-behavior prompt` to go back to being asked."
+**Option 3 — Always skip**: Run `lightsprint config set link-pr.no-task-behavior always-skip`, then inform the user: "PR linking will be skipped from now on. Run `lightsprint config set link-pr.no-task-behavior prompt` to re-enable."
