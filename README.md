@@ -78,7 +78,7 @@ For self-hosted Lightsprint instances:
 export LIGHTSPRINT_BASE_URL=https://your-instance.example.com
 ```
 
-Defaults to `https://lightsprint.ai`.
+Defaults to `https://app.lightsprint.ai`.
 
 ---
 
