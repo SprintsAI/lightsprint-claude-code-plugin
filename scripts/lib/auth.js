@@ -118,10 +118,10 @@ const iv=setInterval(()=>{s--;el.textContent=s;if(s<=0){clearInterval(iv);card.c
 
 /**
  * Run the full OAuth flow: open browser, wait for callback, save tokens.
- * @param {string} [baseUrl='https://lightsprint.ai']
+ * @param {string} [baseUrl='https://app.lightsprint.ai']
  * @returns {Promise<{ workspaceId: string, workspaceName: string|null, accessToken: string, refreshToken: string, expiresAt: number, baseUrl: string }>}
  */
-export async function authenticate(baseUrl = 'https://lightsprint.ai', options = {}) {
+export async function authenticate(baseUrl = 'https://app.lightsprint.ai', options = {}) {
 	const { cwd, quiet } = options;
 	ensureConfigDir();
 

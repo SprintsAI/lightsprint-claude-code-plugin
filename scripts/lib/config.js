@@ -47,7 +47,7 @@ export function readPluginConfig() {
  * Get the default base URL from env, plugin config, or hardcoded fallback.
  */
 export function getDefaultBaseUrl() {
-	const url = process.env.LIGHTSPRINT_BASE_URL || readPluginConfig().baseUrl || 'https://lightsprint.ai';
+	const url = process.env.LIGHTSPRINT_BASE_URL || readPluginConfig().baseUrl || 'https://app.lightsprint.ai';
 	// Validate URL scheme to prevent token leakage over cleartext or non-HTTP protocols
 	if (url && !url.startsWith('https://')) {
 		try {
@@ -57,15 +57,15 @@ export function getDefaultBaseUrl() {
 				// Localhost allows http: or https: only (reject ftp:, file:, etc.)
 				if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
 					console.error(`Warning: Base URL "${url}" uses unsupported protocol. Using default instead.`);
-					return 'https://lightsprint.ai';
+					return 'https://app.lightsprint.ai';
 				}
 			} else {
 				console.error(`Warning: Base URL "${url}" does not use HTTPS. Using default instead.`);
-				return 'https://lightsprint.ai';
+				return 'https://app.lightsprint.ai';
 			}
 		} catch {
 			console.error(`Warning: Invalid base URL "${url}". Using default instead.`);
-			return 'https://lightsprint.ai';
+			return 'https://app.lightsprint.ai';
 		}
 	}
 	return url;
