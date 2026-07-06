@@ -115,6 +115,56 @@ export async function requireConfig() {
 	return result;
 }
 
+// ─── Active stack ─────────────────────────────────────────────────────
+// The active (chosen) stack is stored on the connection object so it lives
+// and dies with the workspace context: connecting resets it, disconnecting
+// drops it. Selecting a stack scopes stack-aware commands (tasks, create)
+// to it by default. Without an active stack, those commands span the whole
+// workspace, preserving the original workspace-scoped behavior.
+
+/**
+ * Get the active stack for the connected workspace, or null if none chosen.
+ * @returns {{ id: string, name: string|null, taskPrefix: string|null } | null}
+ */
+export function getActiveStack() {
+	const conn = readConnection();
+	const s = conn?.activeStack;
+	if (!s || !s.id) return null;
+	return { id: s.id, name: s.name ?? null, taskPrefix: s.taskPrefix ?? null };
+}
+
+/**
+ * Persist the active stack onto the connection.
+ * @param {{ id: string, name?: string|null, taskPrefix?: string|null }} stack
+ * @returns {{ id: string, name: string|null, taskPrefix: string|null }}
+ */
+export function setActiveStack(stack) {
+	if (!stack || !stack.id) throw new Error('setActiveStack requires a stack with an id.');
+	const conn = readConnection();
+	if (!conn || !conn.workspaceId) {
+		throw new Error('Not connected to a workspace. Run "lightsprint connect" first.');
+	}
+	conn.activeStack = {
+		id: stack.id,
+		name: stack.name ?? null,
+		taskPrefix: stack.taskPrefix ?? null,
+	};
+	writeConnection(conn);
+	return conn.activeStack;
+}
+
+/**
+ * Clear the active stack. Returns true if one was set.
+ * @returns {boolean}
+ */
+export function clearActiveStack() {
+	const conn = readConnection();
+	if (!conn || !conn.activeStack) return false;
+	delete conn.activeStack;
+	writeConnection(conn);
+	return true;
+}
+
 // ─── User preferences ────────────────────────────────────────────────
 
 export function readPreferences() {

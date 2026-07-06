@@ -11,6 +11,7 @@
  *   claim <taskId>          Claim a task (also: --task <id>)
  *   comment <taskId> <body> Add a comment to a task (also: --task/--body)
  *   create-plan [opts]      Create a plan from markdown content
+ *   stacks [use|get] [opts] List stacks; "stacks use" picks the active stack
  *   agent launch [opts]     Launch a cloud agent for a task
  *   agent stop [opts]       Stop the active agent for a task
  *   agent settings [opts]   Show cloud agent provider configuration
@@ -84,6 +85,7 @@ Commands:
   claim <taskId>          Claim a task (set to in_progress) (also: --task <id>)
   comment <taskId> <body> Add a comment to a task (also: --task/--body)
   create-plan [opts]      Create a plan from markdown content
+  stacks [use|get] [opts] List stacks; "stacks use" picks the active stack
   agent launch [opts]     Launch a cloud agent for a task
   agent stop [opts]       Stop the active agent for a task
   agent settings [opts]   Show cloud agent provider configuration
