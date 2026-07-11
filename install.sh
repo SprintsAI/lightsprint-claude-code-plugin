@@ -34,7 +34,7 @@ fi
 claude plugin uninstall "$PLUGIN_NAME" 2>/dev/null || true
 claude plugin marketplace remove "$MARKETPLACE_NAME" 2>/dev/null || true
 
-# ─── Install plan review binary ──────────────────────────────────────────
+# ─── Install CLI binary ──────────────────────────────────────────────────
 install_binary() {
   if [[ -n "${LIGHTSPRINT_LOCAL_PATH:-}" ]]; then
     # Local dev mode: compile from source with Bun into plugin's bin/ dir
@@ -43,9 +43,9 @@ install_binary() {
     PLUGIN_BIN_DIR="$SRC_DIR/bin"
     mkdir -p "$PLUGIN_BIN_DIR"
     if command -v bun &>/dev/null; then
-      echo "Compiling plan review binary from local source..."
+      echo "Compiling CLI binary from local source..."
       (cd "$SRC_DIR" && HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "nobuild") && bun build scripts/lightsprint.js --compile --outfile "$PLUGIN_BIN_DIR/$BINARY_NAME" --define "__BUILD_HASH__=\"$HASH\"") || {
-        echo "Warning: Failed to compile binary. Plan review hook will not be available." >&2
+        echo "Warning: Failed to compile binary. Lightsprint hooks will not be available." >&2
         return 1
       }
     else
@@ -72,7 +72,7 @@ install_binary() {
   else
     # Production mode: download pre-compiled binary from GitHub releases
     # Binary goes into the plugin cache bin/ directory
-    echo "Downloading plan review binary..."
+    echo "Downloading CLI binary..."
 
     # Detect platform
     local OS ARCH PLATFORM
@@ -93,7 +93,7 @@ install_binary() {
     local TAG
     local RELEASE_JSON
     RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest") || {
-      echo "Warning: Could not fetch latest release. Plan review hook will not be available." >&2
+      echo "Warning: Could not fetch latest release. Lightsprint hooks will not be available." >&2
       return 1
     }
     if command -v jq &>/dev/null; then
@@ -102,7 +102,7 @@ install_binary() {
       TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | cut -d'"' -f4)
     fi
     if [[ -z "$TAG" || "$TAG" == "null" ]]; then
-      echo "Warning: Could not parse release tag. Plan review hook will not be available." >&2
+      echo "Warning: Could not parse release tag. Lightsprint hooks will not be available." >&2
       return 1
     fi
 
@@ -116,7 +116,7 @@ install_binary() {
     local CHECKSUM_URL="https://github.com/$REPO/releases/download/$TAG/$BINARY_NAME-$PLATFORM.sha256"
 
     curl -fsSL -o "$PLUGIN_BIN_DIR/$BINARY_NAME" "$DOWNLOAD_URL" || {
-      echo "Warning: Failed to download binary. Plan review hook will not be available." >&2
+      echo "Warning: Failed to download binary. Lightsprint hooks will not be available." >&2
       return 1
     }
 
@@ -201,96 +201,6 @@ if [[ "$LIGHTSPRINT_BASE_URL" != "https://lightsprint.ai" ]]; then
   echo "Base URL: $LIGHTSPRINT_BASE_URL"
 fi
 
-# ─── Check for conflicting ExitPlanMode hooks ────────────────────────────
-CONFLICTING_PLUGINS=()
-MARKETPLACES_DIR="$HOME/.claude/plugins/marketplaces"
-
-# Build list of already-disabled plugins from settings.json (marketplace names)
-DISABLED_MARKETPLACES=""
-SETTINGS_FILE="$HOME/.claude/settings.json"
-if [[ -f "$SETTINGS_FILE" ]] && command -v node &>/dev/null; then
-  DISABLED_MARKETPLACES=$(node -e "
-    const s = require('$SETTINGS_FILE');
-    const ep = s.enabledPlugins || {};
-    const disabled = Object.entries(ep)
-      .filter(([, v]) => v === false)
-      .map(([k]) => k.split('@').pop());
-    console.log(disabled.join('\n'));
-  " 2>/dev/null || true)
-fi
-
-if [[ -d "$MARKETPLACES_DIR" ]]; then
-  while IFS= read -r hooks_file; do
-    # Skip our own plugin
-    if [[ "$hooks_file" == *"/lightsprint/"* ]]; then
-      continue
-    fi
-    # Extract plugin name from marketplace path (first directory after marketplaces/)
-    plugin_name="${hooks_file#"$MARKETPLACES_DIR/"}"
-    plugin_name="${plugin_name%%/*}"
-    # Skip plugins that are already disabled
-    if echo "$DISABLED_MARKETPLACES" | grep -qx "$plugin_name" 2>/dev/null; then
-      continue
-    fi
-    CONFLICTING_PLUGINS+=("$plugin_name")
-  done < <(find "$MARKETPLACES_DIR" -name "hooks.json" -exec grep -l "ExitPlanMode" {} + 2>/dev/null || true)
-fi
-
-# Also check user-level settings.json for ExitPlanMode hooks
-if [[ -f "$SETTINGS_FILE" ]] && grep -q "ExitPlanMode" "$SETTINGS_FILE" 2>/dev/null; then
-  # Check if it's in the hooks section (not enabledPlugins)
-  if command -v node &>/dev/null; then
-    HAS_USER_HOOK=$(node -e "
-      const s = require('$SETTINGS_FILE');
-      const hooks = s.hooks || {};
-      const pr = hooks.PermissionRequest || [];
-      const match = pr.some(h => h.matcher === 'ExitPlanMode');
-      console.log(match ? 'yes' : 'no');
-    " 2>/dev/null || echo "no")
-    if [[ "$HAS_USER_HOOK" == "yes" ]]; then
-      CONFLICTING_PLUGINS+=("settings.json (user hook)")
-    fi
-  fi
-fi
-
-# Deduplicate
-UNIQUE_CONFLICTS=()
-for p in "${CONFLICTING_PLUGINS[@]+"${CONFLICTING_PLUGINS[@]}"}"; do
-  dup=false
-  for u in "${UNIQUE_CONFLICTS[@]+"${UNIQUE_CONFLICTS[@]}"}"; do
-    if [[ "$p" == "$u" ]]; then dup=true; break; fi
-  done
-  if ! $dup; then UNIQUE_CONFLICTS+=("$p"); fi
-done
-
-if [[ ${#UNIQUE_CONFLICTS[@]} -gt 0 ]]; then
-  echo ""
-  echo "─────────────────────────────────────────"
-  echo "  Other ExitPlanMode hooks detected:"
-  echo "─────────────────────────────────────────"
-  for p in "${UNIQUE_CONFLICTS[@]}"; do
-    echo "   - $p"
-  done
-  echo ""
-  echo "  Having multiple ExitPlanMode hooks means multiple review UIs"
-  echo "  will open each time you exit plan mode."
-  echo ""
-
-  read -rp "Disable them? (Y/n) " DISABLE_CONFIRM </dev/tty
-  DISABLE_CONFIRM="${DISABLE_CONFIRM:-Y}"
-
-  if [[ "$DISABLE_CONFIRM" =~ ^[Yy]$ ]]; then
-    for p in "${UNIQUE_CONFLICTS[@]}"; do
-      if [[ "$p" == "settings.json (user hook)" ]]; then
-        echo "  Note: Remove the ExitPlanMode hook from ~/.claude/settings.json manually."
-      else
-        echo "  Disabling $p..."
-        claude plugin disable "$p" 2>/dev/null || echo "  Warning: Could not disable $p"
-      fi
-    done
-    echo ""
-  fi
-fi
 
 # Check if INSTALL_DIR is in PATH
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then

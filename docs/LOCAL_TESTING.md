@@ -150,11 +150,11 @@ cd lightsprint-claude-code-plugin
 # Run all tests
 bun test
 
-# Run only E2E tests (mock server, session lifecycle, plan review)
+# Run only E2E tests (mock server, session lifecycle)
 bun test scripts/__tests__/e2e-mock-server.test.js
 
 # Run a specific test by name
-bun test --test-name-pattern "plan review"
+bun test --test-name-pattern "session lifecycle"
 
 # Run unit tests only
 bun test scripts/__tests__/validate-id.test.js
@@ -187,12 +187,6 @@ tail -f ~/.lightsprint/daemon.log
 #   [cc-daemon] Session started { lsSessionId: ... }
 ```
 
-**Plan review** — verify the ExitPlanMode hook:
-1. In Claude Code, enter plan mode (the agent writes a plan)
-2. When the agent exits plan mode, the hook fires
-3. Browser should open to the plan review page on your local server
-4. Approve or reject — decision flows back to Claude Code
-
 ### 5c. CLI testing (without Claude Code)
 
 Test CLI commands directly:
@@ -216,7 +210,7 @@ lightsprint tasks --output json
 
 ```bash
 tail -f ~/.lightsprint/daemon.log    # daemon + WS connection
-tail -f ~/.lightsprint/sync.log      # plan review hook
+tail -f ~/.lightsprint/sync.log      # hook CLI subcommands
 ```
 
 ### Isolated config dir (for testing without affecting real config)
@@ -272,7 +266,6 @@ Claude Code
   │                                              ├── HTTP server (localhost:PORT)
   │                                              │     /health
   │                                              │     /event
-  │                                              │     /review-plan
   │                                              │     /session-end
   │                                              │
   │                                              └── WebSocket ──→ Lightsprint /cc-ws
@@ -281,13 +274,6 @@ Claude Code
   │                                                    session:end
   │
   ├── UserPromptSubmit hook ──→ cc-event.js ──→ POST /event to daemon
-  │
-  ├── ExitPlanMode hook ──→ cc-review.js ──→ POST /review-plan to daemon
-  │                                              │
-  │                                              ├── Upload plan to API
-  │                                              ├── Open browser for review
-  │                                              ├── Wait for callback (blocks)
-  │                                              └── Return allow/deny
   │
   ├── SessionEnd hook ──→ cc-end.js ──→ POST /session-end to daemon
   │

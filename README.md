@@ -1,6 +1,6 @@
 # Lightsprint Claude Code Plugin
 
-Claude Code plugin for Lightsprint — plan review, task management skills, and workspace board integration.
+Claude Code plugin for Lightsprint — task management skills and workspace board integration.
 
 ## Prerequisites
 
@@ -117,10 +117,9 @@ lightsprint-claude-code-plugin/
 │   ├── plugin.json             # Plugin manifest
 │   └── marketplace.json        # Marketplace registry entry
 ├── hooks/
-│   └── hooks.json              # PermissionRequest hook for plan review
+│   └── hooks.json              # Session lifecycle + task sync hooks
 ├── scripts/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
-│   ├── review-plan.js          # Plan review handler (exports reviewPlanMain)
 │   ├── ls-cli.js               # Task management commands (exports cliMain)
 │   ├── compile.sh              # Build script for lightsprint binary
 │   └── lib/

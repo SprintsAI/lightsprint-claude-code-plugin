@@ -22,21 +22,18 @@
 
 import { createServer } from 'http';
 import { readSessionState, writeSessionState, deleteSessionState, isPidAlive, createLogger, findFreePort, cleanupStaleSessions } from './lib/cc-utils.js';
-import { outputAllow, outputDeny, extractPlanFromTranscript, readPlanFromFile, waitForCallback } from './review-plan.js';
 import { apiRequest, setConfig, setErrorReporter } from './lib/client.js';
 import { setMapping, getMapping, removeSessionMappings } from './lib/task-map.js';
 import { ccToLsStatus } from './lib/status-mapper.js';
-import { getActivePlan, setActivePlan, clearActivePlan } from './lib/plan-tracker.js';
-import { openBrowser } from './lib/browser.js';
 import { withFileLock } from './lib/filelock.js';
 import { getConfig, readConnection, writeConnection } from './lib/config.js';
 import { createHash, randomBytes } from 'crypto';
 import { hostname, homedir } from 'os';
-import { resolve, normalize, join } from 'path';
+import { join } from 'path';
 import { validateId, setValidationBreadcrumbReporter } from './lib/validate.js';
 import { initSentry, setSentryContext, addBreadcrumb, captureException, shutdownSentry, wireCrashHandlers } from './lib/sentry.js';
 
-import { readFileSync, unlinkSync, realpathSync } from 'fs';
+import { readFileSync, unlinkSync } from 'fs';
 
 // Resolve config: credentials file (secure) > env vars (legacy) > connection.json
 const CWD = process.env.LS_CWD || process.cwd();
@@ -447,21 +444,6 @@ async function _tryListenOnPort(port) {
 			return;
 		}
 
-		if (url.pathname === '/review-plan' && req.method === 'POST') {
-			try {
-				const body = await readBody(req);
-				const data = JSON.parse(body);
-				const decision = await handlePlanReview(data);
-				res.writeHead(200, { 'Content-Type': 'application/json' });
-				res.end(JSON.stringify(decision));
-			} catch (err) {
-				log('Plan review error', { error: err.message });
-				res.writeHead(200, { 'Content-Type': 'application/json' });
-				res.end(JSON.stringify({ decision: 'allow' }));
-			}
-			return;
-		}
-
 		if (url.pathname === '/error' && req.method === 'POST') {
 			try {
 				const body = await readBody(req);
@@ -514,89 +496,6 @@ function readBody(req) {
 		req.on('end', () => resolve(body));
 		req.on('error', reject);
 	});
-}
-
-// -- Plan Review Handler --
-
-async function handlePlanReview(data) {
-	const { plan, allowedPrompts, transcriptPath, sessionId: hookSessionId } = data;
-
-	let planContent = plan;
-	if (!planContent && transcriptPath) {
-		// Validate transcriptPath is within ~/.claude/ — use realpathSync to resolve symlinks
-		try {
-			const resolvedPath = realpathSync(resolve(normalize(transcriptPath)));
-			const claudeDir = realpathSync(resolve(homedir(), '.claude'));
-			if (resolvedPath.startsWith(claudeDir + '/') || resolvedPath.startsWith(claudeDir + '\\')) {
-				planContent = extractPlanFromTranscript(resolvedPath, CWD);
-			} else {
-				log('Rejected transcriptPath outside ~/.claude/', { transcriptPath: resolvedPath });
-			}
-		} catch (err) {
-			log('Failed to resolve transcriptPath', { transcriptPath, error: err.message });
-		}
-	}
-	if (!planContent) {
-		planContent = readPlanFromFile(CWD);
-	}
-
-	if (!planContent) {
-		return { decision: 'allow' };
-	}
-
-	// Upload plan
-	let planId;
-	const activePlan = getActivePlan();
-
-	if (activePlan && activePlan.repoId === WORKSPACE_ID && activePlan.sessionId === hookSessionId) {
-		try {
-			validateId(activePlan.planId, 'Plan ID');
-			await apiRequest(`/api/plans/${activePlan.planId}/versions`, {
-				method: 'PUT',
-				body: JSON.stringify({ content: planContent })
-			});
-			planId = activePlan.planId;
-		} catch {
-			planId = null;
-		}
-	}
-
-	if (!planId) {
-		validateId(WORKSPACE_ID, 'Workspace ID');
-		const createResult = await apiRequest(`/api/workspaces/${WORKSPACE_ID}/plans`, {
-			method: 'POST',
-			body: JSON.stringify({ content: planContent, allowedPrompts, ccSessionId: lsSessionId || undefined })
-		});
-		planId = createResult?.planId || createResult?.id;
-		if (!planId) return { decision: 'allow' };
-	}
-
-	setActivePlan(planId, WORKSPACE_ID, hookSessionId);
-
-	// Start callback server and open browser
-	const callbackPort = await findFreePort();
-	const callbackUrl = `http://localhost:${callbackPort}/callback`;
-	const reviewUrl = `${BASE_URL}/plans/${planId}?callback=${encodeURIComponent(callbackUrl)}`;
-
-	openBrowser(reviewUrl);
-	log('Plan review opened', { reviewUrl });
-
-	const { decision, feedback, chatContext } = await waitForCallback(callbackPort);
-
-	if (decision === 'deny' || decision === 'denied' || decision === 'reject') {
-		function formatChatContext(ctx) {
-			if (!ctx || ctx.length === 0) return '';
-			const chatLines = ctx.filter(m => m.messageType === 'chat').map(m => `${m.senderName}: ${m.content}`).join('\n');
-			return chatLines ? '\n\n--- Reviewer Discussion ---\n' + chatLines : '';
-		}
-		return {
-			decision: 'deny',
-			feedback: (feedback || 'Plan rejected by reviewer.') + formatChatContext(chatContext)
-		};
-	}
-
-	clearActivePlan();
-	return { decision: 'allow' };
 }
 
 // -- Task Sync Handlers --

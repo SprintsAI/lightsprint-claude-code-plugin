@@ -3,7 +3,6 @@
  * lightsprint.js — Unified CLI for Lightsprint.
  *
  * Subcommands (all accept positional args OR explicit flags):
- *   review-plan [input]    Plan review hook handler (invoked by Claude Code hooks)
  *   tasks [options]         List tasks from the repo board
  *   create <title> [opts]   Create a new task (also: --title <text>)
  *   update <taskId> [opts]  Update an existing task (also: --task <id>)
@@ -24,12 +23,10 @@
  *   help                    Show this help message
  */
 
-import { reviewPlanMain } from './review-plan.js';
 import { cliMain } from './ls-cli.js';
 import { main as ccStartMain } from './cc-start.js';
 import { main as ccEndMain } from './cc-end.js';
 import { main as ccEventMain } from './cc-event.js';
-import { main as ccReviewMain } from './cc-review.js';
 import { main as ccPrCreatedMain } from './cc-pr-created.js';
 
 // Injected at build time via --define
@@ -40,9 +37,7 @@ const BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'unk
 const subcommand = process.argv[2];
 const args = process.argv.slice(3);
 
-if (subcommand === 'review-plan') {
-	reviewPlanMain(args);
-} else if (subcommand === 'cc-start') {
+if (subcommand === 'cc-start') {
 	await ccStartMain(args);
 } else if (subcommand === 'cc-daemon') {
 	const { main: ccDaemonMain } = await import('./cc-daemon.js');
@@ -51,8 +46,6 @@ if (subcommand === 'review-plan') {
 	await ccEndMain(args);
 } else if (subcommand === 'cc-event') {
 	await ccEventMain(args);
-} else if (subcommand === 'cc-review') {
-	await ccReviewMain(args);
 } else if (subcommand === 'cc-pr-created') {
 	await ccPrCreatedMain(args);
 } else if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
@@ -70,13 +63,12 @@ if (subcommand === 'review-plan') {
 function showHelp() {
 	console.log(`lightsprint v${BUILD_VERSION} (${BUILD_HASH}) — built ${BUILD_TIME}
 
-Lightsprint CLI — Plan review and task management
+Lightsprint CLI — Task management
 
 Usage:
   lightsprint <command> [options]
 
 Commands:
-  review-plan [input]     Review an implementation plan (Claude Code hook)
   tasks [options]         List tasks from the repo board
   create <title> [opts]   Create a new task (also: --title <text>)
   update <taskId> [opts]  Update an existing task (also: --task <id>)

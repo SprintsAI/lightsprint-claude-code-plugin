@@ -93,7 +93,6 @@ The extension wraps the `lightsprint` CLI, calling it with `--output json` for a
 | Task management | Skills (`.md` instructions) | Custom tools (native) |
 | Session hooks | `hooks.json` (SessionStart, etc.) | `pi.on()` events |
 | PR detection | PostToolUse hook + script | `tool_result` event handler |
-| Plan review | PermissionRequest hook | *(coming soon)* |
 | Status display | N/A | Footer status bar |
 | Commands | N/A | `/lightsprint-*` commands |
 | Keyboard shortcuts | N/A | `Ctrl+Shift+L` |
