@@ -24,7 +24,6 @@ describe('CLI routing', () => {
 		const stdout = await runCli('help');
 		expect(stdout).toContain('Usage:');
 		expect(stdout).toContain('lightsprint <command>');
-		expect(stdout).toContain('review-plan');
 		expect(stdout).toContain('tasks');
 	});
 
@@ -43,9 +42,4 @@ describe('CLI routing', () => {
 		expect(stdout).toContain('Usage:');
 	});
 
-	test('review-plan help shows review-plan usage', async () => {
-		const stdout = await runCli('review-plan', 'help');
-		expect(stdout).toContain('lightsprint review-plan');
-		expect(stdout).toContain('Review');
-	});
 });

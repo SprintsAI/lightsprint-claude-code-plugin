@@ -8,7 +8,6 @@
  * - Custom tools for all lightsprint CLI commands (tasks, create, update, get, claim, etc.)
  * - Session lifecycle hooks (daemon start/stop)
  * - Activity event forwarding to the daemon
- * - Plan review integration
  *
  * Requires: `lightsprint` CLI binary on PATH.
  *

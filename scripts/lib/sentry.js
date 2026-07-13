@@ -9,7 +9,7 @@
 import * as Sentry from '@sentry/node';
 import { createHash } from 'crypto';
 
-// Build-time defines (same pattern as review-plan.js)
+// Build-time defines (injected via --define in compile.sh)
 const BUILD_HASH = typeof __BUILD_HASH__ !== 'undefined' ? __BUILD_HASH__ : 'dev';
 const BUILD_VERSION = typeof __BUILD_VERSION__ !== 'undefined' ? __BUILD_VERSION__ : 'dev';
 

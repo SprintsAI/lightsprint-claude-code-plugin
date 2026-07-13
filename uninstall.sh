@@ -26,7 +26,7 @@ if [ -d "$CACHE_DIR" ]; then
   echo "Removed plugin cache: $CACHE_DIR"
 fi
 
-# Remove plan review binary
+# Remove CLI binary
 if [ -f "$INSTALL_DIR/$BINARY_NAME" ]; then
   rm -f "$INSTALL_DIR/$BINARY_NAME"
   echo "Removed binary: $INSTALL_DIR/$BINARY_NAME"

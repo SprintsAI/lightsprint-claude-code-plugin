@@ -1,10 +1,8 @@
 # Lightsprint Claude Code Plugin
 
 ## Key Learnings
-- **PermissionRequest vs PreToolUse**: Both work for ExitPlanMode. PermissionRequest is the canonical approach (same as plannotator).
-- **PostToolUse does NOT fire for ExitPlanMode** — it's a special internal tool
 - **Plugin cache**: Source files must be synced to `~/.claude/plugins/cache/lightsprint/lightsprint/<version>/` after changes during development
-- **Plugin auto-discovery**: PermissionRequest hooks load from plugin hooks.json — no manual `~/.claude/settings.json` entry needed
+- **Plugin auto-discovery**: Hooks load from plugin hooks.json — no manual `~/.claude/settings.json` entry needed
 
 ## Debugging Workflow
 - tail -f ~/.lightsprint/daemon.log ~/.lightsprint/sync.log

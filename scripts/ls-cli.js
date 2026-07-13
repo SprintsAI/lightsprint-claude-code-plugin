@@ -424,9 +424,6 @@ Commands:
   disconnect
     Remove the active workspace's Lightsprint credentials
 
-  review-plan [input]
-    Review an implementation plan (typically invoked by Claude Code hooks)
-
   upgrade
     Download and install the latest version from GitHub releases
 

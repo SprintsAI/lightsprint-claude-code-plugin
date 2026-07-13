@@ -39,9 +39,9 @@ if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
 & claude plugin uninstall $pluginName 2>$null
 & claude plugin marketplace remove $marketplaceName 2>$null
 
-# ── Install plan review binary ────────────────────────────────────────────
+# ── Install CLI binary ────────────────────────────────────────────────────
 function Install-Binary {
-    Write-Host "Downloading plan review binary..."
+    Write-Host "Downloading CLI binary..."
 
     # Detect architecture
     $arch = if ([Environment]::Is64BitOperatingSystem) {
@@ -59,12 +59,12 @@ function Install-Binary {
         $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest"
         $tag = $release.tag_name
     } catch {
-        Write-Warning "Could not fetch latest release. Plan review hook will not be available."
+        Write-Warning "Could not fetch latest release. Lightsprint hooks will not be available."
         return $false
     }
 
     if (-not $tag) {
-        Write-Warning "Could not parse release tag. Plan review hook will not be available."
+        Write-Warning "Could not parse release tag. Lightsprint hooks will not be available."
         return $false
     }
 
@@ -81,7 +81,7 @@ function Install-Binary {
     try {
         Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -UseBasicParsing
     } catch {
-        Write-Warning "Failed to download binary. Plan review hook will not be available."
+        Write-Warning "Failed to download binary. Lightsprint hooks will not be available."
         Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue
         return $false
     }
@@ -139,98 +139,6 @@ Write-Host ""
 Write-Host "Plugin installed successfully."
 if ($BaseUrl -ne "https://lightsprint.ai") {
     Write-Host "Base URL: $BaseUrl"
-}
-
-# ── Check for conflicting ExitPlanMode hooks ─────────────────────────────
-$conflictingPlugins = @()
-$marketplacesDir = "$env:USERPROFILE\.claude\plugins\marketplaces"
-
-# Build list of already-disabled plugins from settings.json (marketplace names)
-$disabledMarketplaces = @()
-$settingsFile = "$env:USERPROFILE\.claude\settings.json"
-if ((Test-Path $settingsFile) -and (Get-Command node -ErrorAction SilentlyContinue)) {
-    try {
-        $disabledOutput = & node -e "
-            const s = require('$($settingsFile -replace '\\', '/')');
-            const ep = s.enabledPlugins || {};
-            const disabled = Object.entries(ep)
-                .filter(([, v]) => v === false)
-                .map(([k]) => k.split('@').pop());
-            console.log(disabled.join('\n'));
-        " 2>$null
-        if ($disabledOutput) {
-            $disabledMarketplaces = $disabledOutput -split "`n" | Where-Object { $_ }
-        }
-    } catch {}
-}
-
-if (Test-Path $marketplacesDir) {
-    $hooksFiles = Get-ChildItem -Path $marketplacesDir -Recurse -Filter "hooks.json" -ErrorAction SilentlyContinue
-    foreach ($file in $hooksFiles) {
-        # Skip our own plugin
-        if ($file.FullName -like "*\lightsprint\*") { continue }
-
-        $content = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
-        if ($content -match "ExitPlanMode") {
-            # Extract plugin name from path
-            $relativePath = $file.FullName.Substring($marketplacesDir.Length + 1)
-            $pluginNameConflict = $relativePath.Split('\')[0]
-            # Skip plugins that are already disabled
-            if ($disabledMarketplaces -contains $pluginNameConflict) { continue }
-            $conflictingPlugins += $pluginNameConflict
-        }
-    }
-}
-
-# Also check user-level settings.json for ExitPlanMode hooks
-if (Test-Path $settingsFile) {
-    $settingsContent = Get-Content $settingsFile -Raw -ErrorAction SilentlyContinue
-    if ($settingsContent -match "ExitPlanMode") {
-        if (Get-Command node -ErrorAction SilentlyContinue) {
-            $hasUserHook = & node -e "
-                const s = require('$($settingsFile -replace '\\', '/')');
-                const hooks = s.hooks || {};
-                const pr = hooks.PermissionRequest || [];
-                const match = pr.some(h => h.matcher === 'ExitPlanMode');
-                console.log(match ? 'yes' : 'no');
-            " 2>$null
-            if ($hasUserHook -eq "yes") {
-                $conflictingPlugins += "settings.json (user hook)"
-            }
-        }
-    }
-}
-
-# Deduplicate
-$uniqueConflicts = $conflictingPlugins | Select-Object -Unique
-
-if ($uniqueConflicts.Count -gt 0) {
-    Write-Host ""
-    Write-Host ([char]0x2500 * 41)
-    Write-Host "  Other ExitPlanMode hooks detected:"
-    Write-Host ([char]0x2500 * 41)
-    foreach ($p in $uniqueConflicts) {
-        Write-Host "   - $p"
-    }
-    Write-Host ""
-    Write-Host "  Having multiple ExitPlanMode hooks means multiple review UIs"
-    Write-Host "  will open each time you exit plan mode."
-    Write-Host ""
-
-    $disableConfirm = Read-Host "Disable them? (Y/n)"
-    if (-not $disableConfirm) { $disableConfirm = "Y" }
-
-    if ($disableConfirm -match '^[Yy]$') {
-        foreach ($p in $uniqueConflicts) {
-            if ($p -eq "settings.json (user hook)") {
-                Write-Host "  Note: Remove the ExitPlanMode hook from ~\.claude\settings.json manually."
-            } else {
-                Write-Host "  Disabling $p..."
-                & claude plugin disable $p 2>$null
-            }
-        }
-        Write-Host ""
-    }
 }
 
 # ── Check if installDir is in PATH ───────────────────────────────────────

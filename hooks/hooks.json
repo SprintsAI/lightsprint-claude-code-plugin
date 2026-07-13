@@ -1,15 +1,5 @@
 {
   "hooks": {
-    "PermissionRequest": [
-      {
-        "matcher": "ExitPlanMode",
-        "hooks": [{
-          "type": "command",
-          "command": "lightsprint cc-review",
-          "timeout": 345600
-        }]
-      }
-    ],
     "SessionStart": [
       {
         "hooks": [{
