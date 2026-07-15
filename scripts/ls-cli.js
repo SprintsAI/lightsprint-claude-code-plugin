@@ -1232,18 +1232,21 @@ async function cmdClaim(args, opts) {
 async function cmdLinkPr(args, opts) {
 	let taskIdInput = null;
 	let prUrl = null;
+	let force = false;
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--task' && args[i + 1]) {
 			taskIdInput = args[++i];
 		} else if ((args[i] === '--pr-url' || args[i] === '--pr') && args[i + 1]) {
 			prUrl = args[++i];
+		} else if (args[i] === '--force') {
+			force = true;
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> --pr-url <url>.`);
+			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> --pr-url <url> [--force].`);
 		}
 	}
 
 	if (!taskIdInput || !prUrl) {
-		throw new Error('Usage: lightsprint link-pr --task <taskId> --pr-url <prUrl>');
+		throw new Error('Usage: lightsprint link-pr --task <taskId> --pr-url <prUrl> [--force]');
 	}
 
 	validateId(taskIdInput, 'Task ID');
@@ -1256,7 +1259,7 @@ async function cmdLinkPr(args, opts) {
 	const taskId = await resolveTaskId(taskIdInput);
 	const data = await apiRequest(`/api/tasks/${taskId}/link-pr`, {
 		method: 'POST',
-		body: JSON.stringify({ prUrl })
+		body: JSON.stringify(force ? { prUrl, force: true } : { prUrl })
 	});
 
 	const pr = data.pr;

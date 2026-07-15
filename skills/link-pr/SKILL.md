@@ -9,10 +9,13 @@ Link a GitHub pull request to a Lightsprint task. This sets the task status to `
 lightsprint link-pr $ARGUMENTS
 ```
 
-Usage: `link-pr --task <taskId> --pr-url <prUrl>`
+Usage: `link-pr --task <taskId> --pr-url <prUrl> [--force]`
 
 - `--task <taskId>`: The Lightsprint task ID
 - `--pr-url <prUrl>` (or `--pr <prUrl>`): The full GitHub pull request URL (e.g., `https://github.com/owner/repo/pull/123`)
+- `--force`: Move the PR link to this task when the PR is already linked to another task in the same workspace. Only pass this after a plain `link-pr` fails with "already linked to another task".
+
+Linking works for ANY head branch — use it when a PR's branch does not follow the `ls/...` naming convention and the automatic linker missed it. If the PR was already auto-linked to another task (e.g. a task auto-created for the untracked branch), retry with `--force` to move the link.
 
 **CRITICAL — MANDATORY AUTO-LINK STEP**: Every single time you create a GitHub PR (e.g., via `gh pr create`), you MUST IMMEDIATELY and AUTOMATICALLY link it. Do NOT wait for the user to ask — this is a required post-PR-creation step. Follow this exact flow:
 
