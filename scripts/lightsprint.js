@@ -13,6 +13,8 @@
  *   agent launch [opts]     Launch a cloud agent for a task
  *   agent stop [opts]       Stop the active agent for a task
  *   agent settings [opts]   Show cloud agent provider configuration
+ *   handoff create [opts]   Hand work to a Lightsprint managed cloud agent
+ *   handoff poll [opts]     Poll a handed-off Lightsprint session
  *   open                    Open repo board in the browser
  *   status                  Show connection status
  *   whoami                  Show repo/auth info
@@ -80,6 +82,8 @@ Commands:
   agent stop [opts]       Stop the active agent for a task
   agent settings [opts]   Show cloud agent provider configuration
   agent create-pr [opts]  Create a GitHub PR from a cloud agent working branch
+  handoff create [opts]   Hand work to a Lightsprint managed cloud agent
+  handoff poll [opts]     Poll a handed-off Lightsprint session
   merge [opts]            Merge the GitHub PR linked to a task
   review-hub signals [opts] Get PR signals (CI, reviews, comments) for a task
   review-hub scores [opts]  Get AI readiness analysis for a task linked PR
@@ -94,7 +98,7 @@ Commands:
 Global Flags:
   --output json|text      Output format (default: text)
   --json                  Shorthand for --output json
-  --dry-run               Validate without making API calls
+  --dry-run               Validate without making mutations
   --fields f1,f2          Return only specified fields (implies --output json)
   --help, -h              Show this help message
 

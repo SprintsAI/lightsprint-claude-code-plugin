@@ -190,7 +190,33 @@ function createMockServer() {
 					dependencies: [],
 				};
 				tasks.set(newId, newTask);
-				return Response.json({ task: newTask, taskPrefix: 'MOCK' }, { status: 201 });
+				return Response.json({ task: newTask, taskPrefix: body?.scope === 'stack' ? 'ENG' : 'MOCK' }, { status: 201 });
+			}
+
+			// Launch the native Lightsprint managed agent
+			const launchMatch = path.match(/^\/api\/tasks\/([^/]+)\/cloud-agents\/lightsprint$/);
+			if (launchMatch && method === 'POST') {
+				return Response.json({
+					id: 'session-handoff-1',
+					externalId: 'session-handoff-1',
+					status: 'RUNNING',
+					branchName: 'ls/mock-handoff',
+					agentUrl: '/agent-sessions/session-handoff-1',
+				});
+			}
+
+			// Managed session status
+			if (path === '/api/agent-sessions/session-handoff-1/status' && method === 'GET') {
+				return Response.json({
+					status: {
+						sessionId: 'session-handoff-1',
+						sessionStatus: 'idle',
+						phase: 'idle',
+						branchName: 'ls/mock-handoff',
+						prUrl: 'https://github.com/SprintsAI/lightsprint-claude-code-plugin/pull/123',
+						errorMessage: null,
+					},
+				});
 			}
 
 			// Get task
@@ -257,7 +283,12 @@ function createMockServer() {
 			const wsGetMatch = path.match(/^\/api\/workspaces\/([^/]+)$/);
 			if (wsGetMatch && method === 'GET') {
 				return Response.json({
-					workspace: { id: wsGetMatch[1], name: 'Mock Workspace' },
+					workspace: {
+						id: wsGetMatch[1],
+						name: 'Mock Workspace',
+						defaultStackId: 'stk_1',
+						repos: [{ id: 'r1', fullName: REPO_KEY }],
+					},
 				});
 			}
 
@@ -427,6 +458,53 @@ describe('E2E: Mock Server', () => {
 		test('create rejects missing title', async () => {
 			const result = await runCli(['create']);
 			expect(result.exitCode).not.toBe(0);
+		});
+	});
+
+	describe('CLI: handoff', () => {
+		test('creates a stack task and launches a Lightsprint managed session', async () => {
+			const result = await runCliJson([
+				'handoff',
+				'create',
+				'--task',
+				'Fix the flaky authentication test',
+				'--context',
+				'Failure is isolated to session.test.ts',
+				'--no-diff',
+			]);
+
+			expect(result.exitCode).toBe(0);
+			expect(result.json.task.title).toBe('Fix the flaky authentication test');
+			expect(result.json.context.repo).toBe(REPO_KEY);
+			expect(result.json.context.stack.id).toBe('stk_1');
+			expect(result.json.context.stack.selection).toBe('repository-match');
+			expect(result.json.taskUrl).toContain('/workspaces/mock-workspace-id/tasks/ENG-');
+			expect(result.json.agent.id).toBe('session-handoff-1');
+			expect(result.json.agent.sessionUrl).toContain('/agent-sessions/session-handoff-1');
+
+			const createReq = mockServer.requests.find(r => r.path === '/api/tasks' && r.method === 'POST');
+			expect(createReq.body.scope).toBe('stack');
+			expect(createReq.body.stackId).toBe('stk_1');
+			expect(createReq.body.description).toContain(`Repository: ${REPO_KEY}`);
+			expect(createReq.body.description).toContain('Failure is isolated to session.test.ts');
+			expect(createReq.body.idempotencyKey).toMatch(/^handoff:[a-f0-9]{32}$/);
+
+			const launchReq = mockServer.requests.find(r => /\/cloud-agents\/lightsprint$/.test(r.path) && r.method === 'POST');
+			expect(launchReq).toBeDefined();
+		});
+
+		test('poll accepts a session URL and returns the PR when idle', async () => {
+			const result = await runCliJson([
+				'handoff',
+				'poll',
+				`http://localhost:${mockServer.port}/agent-sessions/session-handoff-1`,
+				'--once',
+			]);
+
+			expect(result.exitCode).toBe(0);
+			expect(result.json.terminal).toBe(true);
+			expect(result.json.status.sessionStatus).toBe('idle');
+			expect(result.json.status.prUrl).toContain('/pull/123');
 		});
 	});
 

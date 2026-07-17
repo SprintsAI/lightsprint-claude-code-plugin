@@ -24,6 +24,8 @@
  *   agent stop --task <taskId> --provider <provider>
  *   agent settings [--provider <provider>]
  *   agent create-pr --task <taskId> --provider <provider> --agent-id <id>
+ *   handoff create --task <work> [--context <context>] [--stack <ref>] [--model <model>] [--no-diff]
+ *   handoff poll <sessionId> [--interval <seconds>] [--once]
  */
 
 import { createHash } from 'crypto';
@@ -39,6 +41,18 @@ import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionBy
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
 import { getCommandSchema, getAllCommandNames } from './lib/schema.js';
+import {
+	absoluteLightsprintUrl,
+	buildHandoffDescription,
+	buildHandoffTaskUrl,
+	createHandoffIdempotencyKey,
+	DEFAULT_HANDOFF_POLL_INTERVAL_SECONDS,
+	gatherHandoffGitContext,
+	isFailedHandoffSession,
+	isTerminalHandoffSession,
+	parseHandoffSessionId,
+	selectHandoffStack,
+} from './lib/handoff.js';
 
 // Command aliases: maps common hallucinated/alternative names to real commands
 const COMMAND_ALIASES = {
@@ -64,7 +78,7 @@ const VALID_COMMANDS = [
 	'tasks', 'projects', 'stacks', 'create', 'update', 'get', 'claim', 'current-task',
 	'link-pr', 'unlink-pr', 'delete', 'comment', 'create-plan', 'whoami',
 	'open', 'status', 'connect', 'disconnect', 'upgrade', 'config', 'describe',
-	'agent', 'merge', 'review-hub'
+	'agent', 'handoff', 'merge', 'review-hub'
 ];
 
 function suggestCommand(input) {
@@ -104,8 +118,8 @@ function levenshtein(a, b) {
 function showSubcommandHelp(commandName) {
 	const schema = getCommandSchema(commandName);
 	if (schema) {
-		// For compound schemas like "review-hub-signals", display as "review-hub signals"
-		const displayName = commandName.replace(/^(review-hub|agent)-/, '$1 ');
+		// For compound schemas like "handoff-create", display as "handoff create"
+		const displayName = commandName.replace(/^(review-hub|agent|handoff)-/, '$1 ');
 		console.log(`lightsprint ${displayName}\n`);
 		console.log(`  ${schema.description}\n`);
 		const params = Object.entries(schema.params || {});
@@ -119,7 +133,7 @@ function showSubcommandHelp(commandName) {
 				console.log(`  ${flag.padEnd(24)} ${param.description || ''}${req}${vals}${def}`);
 			}
 		}
-		if (schema.supportsDryRun) console.log(`  ${'--dry-run'.padEnd(24)} Validate without making API calls`);
+		if (schema.supportsDryRun) console.log(`  ${'--dry-run'.padEnd(24)} Validate without making mutations`);
 		console.log(`\nGlobal flags: --output json|text, --json, --fields f1,f2`);
 		return true;
 	}
@@ -185,6 +199,7 @@ export async function cliMain(command, args, context = {}) {
 			case 'config': return cmdConfig(remainingArgs, opts);
 			case 'describe': return cmdDescribe(remainingArgs);
 			case 'agent': return await cmdAgent(remainingArgs, opts);
+			case 'handoff': return await cmdHandoff(remainingArgs, opts);
 			case 'merge': return await cmdMerge(remainingArgs, opts);
 			case 'review-hub': return await cmdReviewHub(remainingArgs, opts);
 			default: {
@@ -334,11 +349,32 @@ Commands:
       lightsprint create-plan --content "## My Plan\n\n1. Do X\n2. Do Y"
       lightsprint create-plan --content "..." --task LIG-024 --title "Auth refactor plan"
 
+  handoff create [options]
+    Create a task from the current repo context and launch a Lightsprint managed cloud agent
+    Options:
+      --task <text>          Work to hand off (required; positional text also accepted)
+      --title <text>         Task title (defaults to the first line of --task)
+      --context <text>       Findings, files examined, or partial-fix context
+      --stack <ref>          Stack ID, task prefix, or name (auto-detected from the current repo)
+      --model <model>        Override the Lightsprint agent model
+      --no-diff              Do not include the uncommitted git diff
+    Example:
+      lightsprint handoff create --task "Fix the flaky auth test" --context "Failure is in session.test.ts"
+
+  handoff poll <sessionId> [options]
+    Poll a Lightsprint managed session until it is idle or terminal
+    Options:
+      --session <id>         Session ID (alternative to positional)
+      --interval <seconds>   Poll interval (default: 30)
+      --once                 Fetch one status without waiting
+    Example:
+      lightsprint handoff poll session_123 --interval 15
+
   agent launch [options]
     Launch a cloud agent for a task
     Options:
       --task <taskId>         Task ID (required)
-      --provider <provider>   Provider: anthropic, cursor, codex (required)
+      --provider <provider>   Provider: lightsprint, anthropic, cursor, codex (required)
       --model <model>         Override default model
       --base-ref <ref>        Base branch
       --environment-id <id>   Environment for codex/anthropic
@@ -347,7 +383,7 @@ Commands:
     Stop the active cloud agent for a task
     Options:
       --task <taskId>         Task ID (required)
-      --provider <provider>   Provider: anthropic, cursor, codex (required)
+      --provider <provider>   Provider: lightsprint, anthropic, cursor, codex (required)
 
   agent settings [options]
     Show cloud agent provider configuration
@@ -358,7 +394,7 @@ Commands:
     Create a GitHub PR from a cloud agent's working branch
     Options:
       --task <taskId>         Task ID (required)
-      --provider <provider>   Provider: anthropic, cursor, codex (required)
+      --provider <provider>   Provider: lightsprint, anthropic, cursor, codex (required)
       --agent-id <id>         Agent ID (required)
     Example:
       lightsprint agent create-pr --task LIG-024 --provider anthropic --agent-id abc123
@@ -430,7 +466,7 @@ Commands:
 Global Flags:
   --output json|text      Output format (default: text). JSON is machine-readable.
   --json                  Shorthand for --output json
-  --dry-run               Validate inputs without making API calls (create, update, claim, comment)
+  --dry-run               Validate inputs without making mutations
   --fields f1,f2          Return only specified fields (implies --output json)
   --help, -h              Show this help message
 `);
@@ -1875,6 +1911,237 @@ function cmdDescribe(args) {
 	process.exit(1);
 }
 
+// ─── handoff ────────────────────────────────────────────────────────────
+
+async function cmdHandoff(args, opts) {
+	const subcommand = args[0];
+	if (subcommand === 'poll') return cmdHandoffPoll(args.slice(1), opts);
+	if (subcommand === 'create') return cmdHandoffCreate(args.slice(1), opts);
+	if (!subcommand || subcommand.startsWith('-')) return cmdHandoffCreate(args, opts);
+	throw new Error(`Unknown handoff subcommand: "${subcommand}". Use: create, poll`);
+}
+
+function deriveHandoffTitle(task) {
+	const firstLine = task
+		.split('\n')
+		.map((line) => line.trim())
+		.find(Boolean)
+		?.replace(/^#+\s*/, '')
+		.trim();
+	return (firstLine || 'Lightsprint handoff').slice(0, 100);
+}
+
+function resolveStackRef(stacks, ref) {
+	const normalized = ref.toLowerCase();
+	const stack = stacks.find((candidate) => candidate.id === ref)
+		?? stacks.find((candidate) => candidate.taskPrefix?.toLowerCase() === normalized)
+		?? stacks.find((candidate) => candidate.name?.toLowerCase() === normalized);
+	if (!stack) throw new Error(`No stack matches "${ref}". Run "lightsprint stacks" to list stacks.`);
+	return stack.id;
+}
+
+async function cmdHandoffCreate(args, opts) {
+	let taskText = null;
+	let title = null;
+	let context = null;
+	let stackRef = null;
+	let model = null;
+	let includeDiff = true;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--task' && args[i + 1]) {
+			taskText = args[++i];
+		} else if (args[i] === '--title' && args[i + 1]) {
+			title = args[++i];
+		} else if (args[i] === '--context' && args[i + 1]) {
+			context = args[++i];
+		} else if (args[i] === '--stack' && args[i + 1]) {
+			stackRef = args[++i];
+		} else if (args[i] === '--model' && args[i + 1]) {
+			model = args[++i];
+		} else if (args[i] === '--no-diff') {
+			includeDiff = false;
+		} else if (!args[i].startsWith('-') && !taskText) {
+			taskText = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --task, --title, --context, --stack, --model, --no-diff.`);
+		}
+	}
+
+	if (!taskText?.trim()) {
+		throw new Error('Usage: lightsprint handoff create --task <work> [--context <context>] [--stack <ref>]');
+	}
+	validateDescription(taskText);
+	if (context) validateDescription(context);
+	title = title?.trim() || deriveHandoffTitle(taskText);
+	validateTitle(title);
+
+	const workspaceId = await getWorkspaceId();
+	validateId(workspaceId, 'Workspace ID');
+	const git = gatherHandoffGitContext(process.cwd(), includeDiff);
+	const [workspaceData, stacksData] = await Promise.all([
+		apiRequest(`/api/workspaces/${workspaceId}`),
+		apiRequest(`/api/workspaces/${workspaceId}/stacks`),
+	]);
+	const workspace = workspaceData.workspace ?? workspaceData;
+	const stacks = stacksData.stacks ?? [];
+	const explicitStackId = stackRef ? resolveStackRef(stacks, stackRef) : null;
+	const stack = selectHandoffStack({
+		workspace,
+		stacks,
+		repoFullName: git.repo,
+		explicitStackId,
+	});
+	const description = buildHandoffDescription({ task: taskText, context, git });
+	const createBody = {
+		scope: 'stack',
+		stackId: stack.id,
+		title,
+		description,
+		status: 'todo',
+		idempotencyKey: createHandoffIdempotencyKey({ task: taskText, repo: git.repo, branch: git.branch }),
+	};
+	const launchBody = model ? { model } : {};
+
+	if (opts.dryRun) {
+		return outputDryRun(
+			'handoff create',
+			{ createTask: createBody, launchAgent: launchBody },
+			`POST /api/tasks, then POST /api/tasks/{createdTaskId}/cloud-agents/lightsprint`,
+			opts,
+		);
+	}
+
+	const created = await apiRequest('/api/tasks', {
+		method: 'POST',
+		body: JSON.stringify(createBody),
+	});
+	const task = created.task;
+	if (!task?.id) throw new Error('Lightsprint created the task but returned no task ID.');
+
+	const baseUrl = getConfig()?.baseUrl || getDefaultBaseUrl();
+	const taskPrefix = created.taskPrefix ?? stack.taskPrefix ?? null;
+	const taskUrl = buildHandoffTaskUrl(baseUrl, workspaceId, taskPrefix, task.taskNumber);
+	const taskSummary = {
+		id: task.id,
+		taskNumber: task.taskNumber ?? null,
+		title: task.title,
+		status: task.status ?? 'todo',
+		workspaceId,
+		stackId: stack.id,
+	};
+	const contextSummary = {
+		repo: git.repo,
+		branch: git.branch,
+		diffIncluded: includeDiff,
+		diffBytes: git.diffBytes,
+		diffTruncated: git.diffTruncated,
+		stack: {
+			id: stack.id,
+			name: stack.name ?? null,
+			taskPrefix: stack.taskPrefix ?? null,
+			selection: stack.selection,
+		},
+	};
+
+	let launch;
+	try {
+		launch = await apiRequest(`/api/tasks/${task.id}/cloud-agents/lightsprint`, {
+			method: 'POST',
+			body: JSON.stringify(launchBody),
+		});
+	} catch (error) {
+		const result = {
+			task: taskSummary,
+			taskUrl,
+			agent: null,
+			context: contextSummary,
+			launchError: error instanceof Error ? error.message : String(error),
+		};
+		outputResult(result, opts, () => {
+			console.log(`Task created, but the Lightsprint agent did not launch: ${result.launchError}`);
+			console.log(`Task: ${taskUrl}`);
+		});
+		process.exitCode = 1;
+		return;
+	}
+
+	const sessionUrl = absoluteLightsprintUrl(baseUrl, launch.agentUrl);
+	const result = {
+		task: taskSummary,
+		taskUrl,
+		agent: {
+			id: launch.id,
+			externalId: launch.externalId ?? launch.id,
+			status: launch.status,
+			branchName: launch.branchName ?? null,
+			sessionUrl,
+		},
+		context: contextSummary,
+	};
+	outputResult(result, opts, () => {
+		console.log('Handed off to a Lightsprint cloud agent.');
+		console.log(`Task: ${taskUrl}`);
+		console.log(`Session: ${sessionUrl}`);
+		if (launch.branchName) console.log(`Branch: ${launch.branchName}`);
+		console.log(`\nTo wait for this run:\n  lightsprint handoff poll ${launch.id}`);
+	});
+}
+
+async function cmdHandoffPoll(args, opts) {
+	let sessionInput = null;
+	let interval = DEFAULT_HANDOFF_POLL_INTERVAL_SECONDS;
+	let once = false;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--session' && args[i + 1]) {
+			sessionInput = args[++i];
+		} else if (args[i] === '--interval' && args[i + 1]) {
+			interval = Number(args[++i]);
+		} else if (args[i] === '--once') {
+			once = true;
+		} else if (!args[i].startsWith('-') && !sessionInput) {
+			sessionInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use --session, --interval, --once.`);
+		}
+	}
+
+	const sessionId = parseHandoffSessionId(sessionInput);
+	if (!sessionId) throw new Error('Usage: lightsprint handoff poll <sessionId|sessionUrl> [--interval <seconds>] [--once]');
+	validateId(sessionId, 'Session ID');
+	validatePositiveInt(interval, 'interval');
+	if (interval === 0) throw new Error('interval must be greater than zero.');
+
+	const baseUrl = getConfig()?.baseUrl || getDefaultBaseUrl();
+	const sessionUrl = absoluteLightsprintUrl(baseUrl, `/agent-sessions/${sessionId}`);
+	let sessionStatus;
+
+	do {
+		const response = await apiRequest(`/api/agent-sessions/${sessionId}/status`);
+		sessionStatus = response.status ?? response;
+		const statusName = sessionStatus?.sessionStatus ?? sessionStatus?.phase ?? 'unknown';
+		const terminal = isTerminalHandoffSession(statusName);
+
+		if (once || terminal) {
+			const result = { sessionId, sessionUrl, terminal, status: sessionStatus };
+			outputResult(result, opts, () => {
+				console.log(`${terminal ? 'Session finished' : 'Session status'}: ${statusName}`);
+				if (sessionStatus?.phase && sessionStatus.phase !== statusName) console.log(`Phase: ${sessionStatus.phase}`);
+				if (sessionStatus?.branchName) console.log(`Branch: ${sessionStatus.branchName}`);
+				if (sessionStatus?.prUrl) console.log(`PR: ${sessionStatus.prUrl}`);
+				if (sessionStatus?.errorMessage) console.log(`Error: ${sessionStatus.errorMessage}`);
+				console.log(`URL: ${sessionUrl}`);
+			});
+			if (isFailedHandoffSession(statusName)) process.exitCode = 1;
+			return;
+		}
+
+		console.error(`[${new Date().toISOString()}] session=${sessionId} status=${statusName}`);
+		await new Promise((resolve) => setTimeout(resolve, interval * 1000));
+	} while (true);
+}
+
 // ─── agent ──────────────────────────────────────────────────────────────
 
 async function cmdAgent(args, opts) {
@@ -1918,7 +2185,7 @@ async function cmdAgentLaunch(args, opts) {
 	}
 
 	if (taskIdInputs.length === 0) throw new Error('Usage: lightsprint agent launch --task <taskId> [--task <taskId> ...] --provider <provider>');
-	if (!provider) throw new Error('--provider is required. Allowed values: anthropic, cursor, codex');
+	if (!provider) throw new Error('--provider is required. Allowed values: lightsprint, anthropic, cursor, codex');
 
 	for (const id of taskIdInputs) validateId(id, 'Task ID');
 	validateProvider(provider);

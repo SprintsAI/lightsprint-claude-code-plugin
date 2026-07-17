@@ -1,0 +1,36 @@
+{
+  "name": "lightsprint",
+  "version": "0.6.4",
+  "description": "Manage Lightsprint work and hand coding tasks to Lightsprint managed cloud agents.",
+  "author": {
+    "name": "Lightsprint",
+    "url": "https://lightsprint.ai"
+  },
+  "homepage": "https://lightsprint.ai",
+  "repository": "https://github.com/SprintsAI/lightsprint-claude-code-plugin",
+  "keywords": [
+    "lightsprint",
+    "handoff",
+    "coding-agent",
+    "tasks",
+    "cloud-agent"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Lightsprint",
+    "shortDescription": "Tasks and managed coding-agent handoffs.",
+    "longDescription": "Create and manage Lightsprint tasks, then hand implementation work to a Lightsprint managed cloud agent with local repository context.",
+    "developerName": "Lightsprint",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://lightsprint.ai",
+    "defaultPrompt": [
+      "Hand this coding task to Lightsprint.",
+      "Check my Lightsprint handoff session.",
+      "Create and launch a Lightsprint task."
+    ]
+  }
+}

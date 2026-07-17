@@ -188,6 +188,29 @@ const COMMAND_SCHEMAS = {
 		supportsDryRun: true,
 		supportsJsonBody: false
 	},
+	'handoff-create': {
+		description: 'Create a task from local git context and launch a Lightsprint managed cloud agent',
+		params: {
+			task: { type: 'string', required: true, flag: '--task', maxLength: MAX_DESCRIPTION_LENGTH, description: 'Work to hand off' },
+			title: { type: 'string', flag: '--title', maxLength: MAX_TITLE_LENGTH, description: 'Task title (defaults to first line of task)' },
+			context: { type: 'string', flag: '--context', maxLength: MAX_DESCRIPTION_LENGTH, description: 'Files examined, findings, or partial-fix context' },
+			stack: { type: 'string', flag: '--stack', description: 'Stack ID, task prefix, or name (auto-detected from current repo)' },
+			model: { type: 'string', flag: '--model', description: 'Override the Lightsprint managed-agent model' },
+			noDiff: { type: 'boolean', flag: '--no-diff', description: 'Exclude uncommitted git changes from the task context' }
+		},
+		supportsDryRun: true,
+		supportsJsonBody: false
+	},
+	'handoff-poll': {
+		description: 'Poll a Lightsprint managed session until it is idle or terminal',
+		params: {
+			sessionId: { type: 'string', required: true, flag: '--session', description: 'Session ID or Lightsprint session URL' },
+			interval: { type: 'integer', flag: '--interval', default: 30, description: 'Polling interval in seconds' },
+			once: { type: 'boolean', flag: '--once', description: 'Fetch one status without waiting' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
 	'agent-stop': {
 		description: 'Stop the active cloud agent for a task',
 		params: {
