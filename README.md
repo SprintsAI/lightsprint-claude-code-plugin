@@ -1,12 +1,12 @@
-# Lightsprint Claude Code Plugin
+# Lightsprint Agent Plugin
 
-Claude Code plugin for Lightsprint — task management skills and workspace board integration.
+Agent-friendly Lightsprint CLI and skills for task management, workspace integration, and managed coding-agent handoffs. The repo includes Claude Code and Codex plugin manifests; the CLI can also be used directly by other coding agents.
 
 ## Prerequisites
 
-- **Claude Code** CLI installed
 - **Node.js >= 18** (for built-in `fetch`)
 - A **Lightsprint workspace** at [lightsprint.ai](https://lightsprint.ai)
+- **Claude Code** for slash commands and lifecycle hooks (optional for CLI-only use)
 
 ## Quick Start
 
@@ -23,6 +23,31 @@ Then use any `/lightsprint:` command — the plugin opens your browser to connec
 ```
 
 That's it. The first command auto-prompts for authorization and connects you to a Lightsprint workspace.
+
+### Hand work to Lightsprint
+
+From a connected Git repository, create a Lightsprint task and launch the native managed cloud agent in one command:
+
+```bash
+lightsprint handoff create \
+  --task "Fix the flaky authentication test" \
+  --context "The failure is isolated to session.test.ts" \
+  --output json
+```
+
+The command detects the GitHub repository and branch, includes the uncommitted diff (capped at 100 KiB), selects the matching Lightsprint stack, creates the task, launches the managed session, and returns both URLs. Use `--no-diff` when local changes should not be uploaded.
+
+Poll the returned session until its initial turn finishes:
+
+```bash
+lightsprint handoff poll <session-id-or-url> --interval 15 --output json
+```
+
+An `idle` session has finished the initial handoff turn and is ready for a follow-up message.
+
+### Other coding agents
+
+The Codex manifest is at `.codex-plugin/plugin.json`. Agents that consume standalone skills can load `skills/handoff/`; the skill delegates execution to the same `lightsprint` CLI and OAuth connection used by Claude Code.
 
 ---
 
@@ -97,6 +122,7 @@ All skills operate on the connected workspace.
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:handoff` | Create a task with local repo context and launch a Lightsprint managed cloud agent |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -113,6 +139,8 @@ When you use `/lightsprint:claim`, the plugin:
 
 ```
 lightsprint-claude-code-plugin/
+├── .codex-plugin/
+│   └── plugin.json             # Codex plugin manifest
 ├── .claude-plugin/
 │   ├── plugin.json             # Plugin manifest
 │   └── marketplace.json        # Marketplace registry entry
@@ -134,7 +162,8 @@ lightsprint-claude-code-plugin/
 │   ├── update/SKILL.md         # /lightsprint:update
 │   ├── get/SKILL.md            # /lightsprint:get
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   ├── comment/SKILL.md        # /lightsprint:comment
+│   └── handoff/SKILL.md        # /lightsprint:handoff + Codex skill
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json

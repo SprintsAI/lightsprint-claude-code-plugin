@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lightsprint Handoff"
+  short_description: "Hand work to a Lightsprint cloud agent"
+  default_prompt: "Use $handoff to hand this coding task to a Lightsprint cloud agent."

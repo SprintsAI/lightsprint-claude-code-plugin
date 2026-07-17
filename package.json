@@ -1,7 +1,7 @@
 {
   "name": "lightsprint",
   "version": "0.6.4",
-  "description": "Sync Claude Code tasks to Lightsprint repo board",
+  "description": "Manage Lightsprint tasks and hand work to managed cloud agents",
   "type": "module",
   "bin": {
     "lightsprint": "npx-install.js"

@@ -1,13 +1,17 @@
 {
   "name": "lightsprint",
   "version": "0.6.4",
-  "description": "Sync Claude Code tasks to Lightsprint repo board for team visibility",
+  "description": "Manage Lightsprint work and hand coding tasks to Lightsprint managed cloud agents.",
   "author": {
     "name": "Lightsprint",
-    "url": "https://lightsprint.com"
+    "url": "https://lightsprint.ai"
   },
   "repository": "https://github.com/SprintsAI/lightsprint-claude-code-plugin",
+  "skills": "./skills/",
   "keywords": [
+    "lightsprint",
+    "handoff",
+    "coding-agent",
     "tasks",
     "repo-management",
     "team"
