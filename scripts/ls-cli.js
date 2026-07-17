@@ -15,7 +15,6 @@
  *   current-task [--cc-pid <pid>]
  *   comment <taskId> <body>
  *   delete <taskId>
- *   create-plan --content <markdown> [--title <text>] [--task <taskId>]
  *   whoami
  *   merge <taskId>
  *   review-hub signals <taskId> [--refresh]
@@ -62,7 +61,7 @@ const COMMAND_ALIASES = {
 // All valid command names for "did you mean?" suggestions
 const VALID_COMMANDS = [
 	'tasks', 'projects', 'stacks', 'create', 'update', 'get', 'claim', 'current-task',
-	'link-pr', 'unlink-pr', 'delete', 'comment', 'create-plan', 'whoami',
+	'link-pr', 'unlink-pr', 'delete', 'comment', 'whoami',
 	'open', 'status', 'connect', 'disconnect', 'upgrade', 'config', 'describe',
 	'agent', 'merge', 'review-hub'
 ];
@@ -175,7 +174,6 @@ export async function cliMain(command, args, context = {}) {
 			case 'unlink-pr': return await cmdUnlinkPr(remainingArgs, opts);
 			case 'delete': return await cmdDelete(remainingArgs, opts);
 			case 'comment': return await cmdComment(remainingArgs, opts);
-			case 'create-plan': return await cmdCreatePlan(remainingArgs, opts);
 			case 'whoami': return await cmdWhoami(opts);
 			case 'open': return cmdOpen(opts);
 			case 'status': return cmdStatus(opts);
@@ -322,17 +320,6 @@ Commands:
     Example:
       lightsprint comment abc123 "This is now complete"
       lightsprint comment --task abc123 --body "This is now complete"
-
-  create-plan [options]
-    Create a plan on Lightsprint from markdown content
-    Options:
-      --content <markdown>        Plan content in markdown format (required)
-      --title <text>              Explicit plan title (default: extracted from content)
-      --task <taskId>             Link plan to an existing task
-      --cc-pid <pid>              Claude Code PID for session linking
-    Example:
-      lightsprint create-plan --content "## My Plan\n\n1. Do X\n2. Do Y"
-      lightsprint create-plan --content "..." --task LIG-024 --title "Auth refactor plan"
 
   agent launch [options]
     Launch a cloud agent for a task
@@ -1392,95 +1379,6 @@ async function cmdComment(args, opts) {
 
 	const result = { success: true, taskId, message: `Comment added to task ${taskIdInput}.` };
 	outputResult(result, opts, () => console.log(result.message));
-}
-
-// ─── create-plan ────────────────────────────────────────────────────────
-
-async function cmdCreatePlan(args, opts) {
-	if (args.length === 0) {
-		throw new Error('Usage: lightsprint create-plan --content <markdown> [--title <text>] [--task <taskId>] [--cc-pid <pid>]');
-	}
-
-	const workspaceId = await getWorkspaceId();
-
-	let content = null;
-	let title = null;
-	let taskIdInput = null;
-	let ccPidArg;
-
-	for (let i = 0; i < args.length; i++) {
-		if (args[i] === '--content' && args[i + 1]) {
-			content = args[++i];
-		} else if (args[i] === '--title' && args[i + 1]) {
-			title = args[++i];
-		} else if (args[i] === '--task' && args[i + 1]) {
-			taskIdInput = args[++i];
-		} else if (args[i] === '--cc-pid' && args[i + 1]) {
-			ccPidArg = parseInt(args[++i], 10);
-			validatePid(ccPidArg);
-		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --content <markdown> to set the plan content.`);
-		}
-	}
-
-	if (!content) {
-		throw new Error('Error: --content is required. Provide the plan as a markdown string.');
-	}
-
-	if (title) validateTitle(title);
-	if (content.length > 200000) {
-		throw new Error('Plan content exceeds maximum length of 200,000 characters.');
-	}
-
-	// Resolve task ID if provided
-	let resolvedTaskId = null;
-	if (taskIdInput) {
-		validateId(taskIdInput, 'Task ID');
-		resolvedTaskId = await resolveTaskId(taskIdInput);
-	}
-
-	// Best-effort: discover CC session ID
-	let ccSessionId;
-	try {
-		const ccPid = ccPidArg || getClaudeCodePid();
-		const daemonState = findRunningDaemonForCcPid(ccPid);
-		if (daemonState?.lsSessionId) {
-			ccSessionId = daemonState.lsSessionId;
-		}
-	} catch {
-		// Session discovery failed — continue without linking
-	}
-
-	const body = { content };
-	if (title) body.title = title;
-	if (resolvedTaskId) body.taskId = resolvedTaskId;
-	if (ccSessionId) body.ccSessionId = ccSessionId;
-
-	// Dry-run: validate only
-	if (opts.dryRun) {
-		return outputDryRun('create-plan', body, `POST /api/workspaces/${workspaceId}/plans`, opts);
-	}
-
-	validateId(workspaceId, 'Workspace ID');
-	const data = await apiRequest(`/api/workspaces/${workspaceId}/plans`, {
-		method: 'POST',
-		body: JSON.stringify(body)
-	});
-
-	const planId = data?.planId || data?.id;
-	const result = {
-		planId,
-		version: data?.version || 1,
-		deduplicated: data?.deduplicated || false,
-		...(resolvedTaskId ? { taskId: resolvedTaskId } : {})
-	};
-
-	outputResult(result, opts, () => {
-		console.log(`Created plan: ${planId}`);
-		if (title) console.log(`Title: ${title}`);
-		if (resolvedTaskId) console.log(`Linked to task: ${taskIdInput}`);
-		if (data?.deduplicated) console.log(`(Returned existing plan for this session)`);
-	});
 }
 
 // ─── whoami ──────────────────────────────────────────────────────────────
