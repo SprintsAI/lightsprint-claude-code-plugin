@@ -414,23 +414,30 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     name: "lightsprint_link_pr",
     label: "Lightsprint Link PR",
     description:
-      "Link a GitHub pull request to a Lightsprint task. Sets the task to in_review and triggers automated PR review.",
+      "Link a GitHub pull request to a Lightsprint task. Sets the task to in_review and triggers automated PR review. Works for any head branch, including ones that don't follow the ls/... naming convention.",
     promptSnippet: "Link a GitHub PR to a Lightsprint task",
     promptGuidelines: [
       "CRITICAL: Every time you create a GitHub PR, you MUST immediately link it.",
       "First run lightsprint_current_task to find the linked task, then link the PR.",
       "If no task is found, ask the user how to proceed (create new, link existing, or skip).",
+      "If linking fails because the PR is already linked to another task (e.g. auto-created for an untracked branch), retry with force: true to move the link.",
     ],
     parameters: Type.Object({
       task: Type.String({ description: "Task ID to link the PR to" }),
       pr_url: Type.String({
         description: "Full GitHub PR URL (e.g. https://github.com/owner/repo/pull/123)",
       }),
+      force: Type.Optional(
+        Type.Boolean({
+          description:
+            "Move the PR link here when it is already linked to another task in the same workspace. Only set after a plain link fails with 'already linked to another task'.",
+        })
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      return toolResult(
-        runLsCli(["link-pr", "--task", params.task, "--pr-url", params.pr_url], { cwd: ctx.cwd })
-      );
+      const args = ["link-pr", "--task", params.task, "--pr-url", params.pr_url];
+      if (params.force) args.push("--force");
+      return toolResult(runLsCli(args, { cwd: ctx.cwd }));
     },
   });
 
