@@ -98,6 +98,22 @@ export function validateProvider(provider) {
 }
 
 /**
+ * Parse and validate a boolean flag value. Accepts the string forms an agent is
+ * most likely to emit; anything else is rejected with the valid options named.
+ * @param {string|boolean} value
+ * @param {string} fieldName - Field name for error messages
+ * @returns {boolean} The parsed boolean
+ */
+export function validateBoolean(value, fieldName = 'value') {
+	if (typeof value === 'boolean') return value;
+	const normalized = String(value).trim().toLowerCase();
+	if (['true', '1', 'yes'].includes(normalized)) return true;
+	if (['false', '0', 'no'].includes(normalized)) return false;
+	emitBreadcrumb(`Invalid ${fieldName}: "${value}"`, { fieldName, value });
+	throw new Error(`Invalid ${fieldName}: "${value}". Allowed values: true, false`);
+}
+
+/**
  * Validate a task position (0-based non-negative integer).
  * @param {number} position
  * @returns {number}

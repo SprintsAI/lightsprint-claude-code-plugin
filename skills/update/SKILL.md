@@ -1,6 +1,6 @@
 ---
 name: update
-description: Update an existing Lightsprint (ls) task. Change its title, description, status, complexity, assignee, position, or dependencies.
+description: Update an existing Lightsprint (ls) task. Change its title, description, status, complexity, schema-change flag, assignee, position, or dependencies.
 ---
 
 Run this command to update a Lightsprint task:
@@ -22,6 +22,7 @@ Both positional and flag syntax work: `lightsprint update LIG-024 --status done`
 | `--description <text>` | No | New task description. Supports multiline. Max 50000 chars. |
 | `--status <status>` | No | New status: `backlog`, `todo`, `in_progress`, `in_review`, or `done`. |
 | `--complexity <level>` | No | Complexity: `low`, `medium`, or `high`. |
+| `--requires-schema-change <bool>` | No | `true` or `false` — whether the task involves a database schema change. Drives the schema-change badge/icon on the task card. |
 | `--assignee <name>` | No | Assign to a team member by name. |
 | `--project <projectId>` | No | Move task to a project by ID. Use `lightsprint projects` to find project IDs. |
 | `--position <num>` | No | New position within section (0-based). Position 0 = top of section. |

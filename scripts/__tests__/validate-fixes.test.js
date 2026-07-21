@@ -5,6 +5,7 @@ import {
 	validatePid,
 	validatePositiveInt,
 	validateAssignee,
+	validateBoolean,
 	VALID_STATUSES,
 } from '../lib/validate.js';
 
@@ -94,5 +95,30 @@ describe('validateAssignee', () => {
 
 	test('rejects control characters', () => {
 		expect(() => validateAssignee('john\x00doe')).toThrow(/control characters/);
+	});
+});
+
+describe('validateBoolean', () => {
+	test('passes through actual booleans', () => {
+		expect(validateBoolean(true, 'requires-schema-change')).toBe(true);
+		expect(validateBoolean(false, 'requires-schema-change')).toBe(false);
+	});
+
+	test('parses truthy string forms', () => {
+		for (const v of ['true', 'TRUE', '1', 'yes', ' True ']) {
+			expect(validateBoolean(v, 'requires-schema-change')).toBe(true);
+		}
+	});
+
+	test('parses falsy string forms', () => {
+		for (const v of ['false', 'FALSE', '0', 'no', ' False ']) {
+			expect(validateBoolean(v, 'requires-schema-change')).toBe(false);
+		}
+	});
+
+	test('rejects unrecognized values with the field name and options', () => {
+		expect(() => validateBoolean('maybe', 'requires-schema-change')).toThrow(
+			/Invalid requires-schema-change: "maybe"\. Allowed values: true, false/
+		);
 	});
 });

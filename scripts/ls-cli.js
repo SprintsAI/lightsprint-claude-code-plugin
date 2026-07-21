@@ -33,7 +33,7 @@ import { join } from 'path';
 import { apiRequest, apiRequestSSE, getWorkspaceId } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readConnection, clearConnection, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
-import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider } from './lib/validate.js';
+import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider, validateBoolean } from './lib/validate.js';
 import { findRunningDaemonForCcPid, getClaudeCodePid, reportError, findSessionByWorkspaceId } from './lib/cc-utils.js';
 import { parseGlobalOptions } from './lib/options.js';
 import { outputResult, outputError, outputDryRun, classifyError, formatTaskText, buildTaskData, filterFields } from './lib/output.js';
@@ -283,6 +283,7 @@ Commands:
       --description <text>        New description
       --status <status>           New status: backlog, todo, in_progress, in_review, done
       --complexity <level>        New complexity: low, medium, high
+      --requires-schema-change <bool>  Whether the task involves a DB schema change (true/false)
       --assignee <name>           Assign task to a team member
       --project <projectId>       Move task to a project by ID
       --add-dep <taskId>          Add a dependency (repeatable)
@@ -904,6 +905,8 @@ async function cmdUpdate(args, opts) {
 			patch.status = args[++i];
 		} else if (args[i] === '--complexity' && args[i + 1]) {
 			patch.complexity = args[++i];
+		} else if (args[i] === '--requires-schema-change' && args[i + 1]) {
+			patch.requiresSchemaChange = validateBoolean(args[++i], 'requires-schema-change');
 		} else if (args[i] === '--assignee' && args[i + 1]) {
 			patch.assignee = args[++i];
 		} else if (args[i] === '--position' && args[i + 1]) {
@@ -922,7 +925,7 @@ async function cmdUpdate(args, opts) {
 	}
 
 	if (!taskIdInput) {
-		throw new Error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--assignee <name>] [--position <num>] [--add-dep <taskId>] [--remove-dep <taskId>]');
+		throw new Error('Usage: lightsprint update <taskId> [--title <text>] [--description <text>] [--status backlog|todo|in_progress|in_review|done] [--complexity low|medium|high] [--requires-schema-change true|false] [--assignee <name>] [--position <num>] [--add-dep <taskId>] [--remove-dep <taskId>]');
 	}
 
 	if (jsonBody) {
@@ -939,6 +942,7 @@ async function cmdUpdate(args, opts) {
 		if ('status' in patch) validateStatus(patch.status);
 		if ('complexity' in patch) validateComplexity(patch.complexity);
 		if ('position' in patch) validatePosition(patch.position);
+		if ('requiresSchemaChange' in patch) patch.requiresSchemaChange = validateBoolean(patch.requiresSchemaChange, 'requires-schema-change');
 	}
 
 	const hasPatch = Object.keys(patch).length > 0;

@@ -67,6 +67,7 @@ const COMMAND_SCHEMAS = {
 			description: { type: 'string', flag: '--description', maxLength: MAX_DESCRIPTION_LENGTH, description: 'New description' },
 			status: { type: 'enum', flag: '--status', values: VALID_STATUSES, description: 'New status' },
 			complexity: { type: 'enum', flag: '--complexity', values: VALID_COMPLEXITIES, description: 'New complexity' },
+			requiresSchemaChange: { type: 'boolean', flag: '--requires-schema-change', description: 'Whether the task involves a DB schema change (drives the schema-change badge)' },
 			assignee: { type: 'string', flag: '--assignee', description: 'Assign to team member' },
 			position: { type: 'integer', flag: '--position', description: 'New position within section (0-based)' },
 			addDep: { type: 'string', flag: '--add-dep', repeatable: true, description: 'Add dependency (repeatable)' },
