@@ -330,6 +330,9 @@ Commands:
       --model <model>         Override default model
       --base-ref <ref>        Base branch
       --environment-id <id>   Environment for codex/anthropic
+      --auto-merge            Arm auto-merge: the Review Hub autopilot merges the
+                              PR once it reaches 100/100 readiness. Requires
+                              workspace owner/admin (merge permission)
 
   agent stop [options]
     Stop the active cloud agent for a task
@@ -1802,6 +1805,7 @@ async function cmdAgentLaunch(args, opts) {
 	let model = null;
 	let baseRef = null;
 	let environmentId = null;
+	let autoMerge = false;
 
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--task' && args[i + 1]) {
@@ -1814,11 +1818,14 @@ async function cmdAgentLaunch(args, opts) {
 			baseRef = args[++i];
 		} else if (args[i] === '--environment-id' && args[i + 1]) {
 			environmentId = args[++i];
+		} else if (args[i] === '--auto-merge') {
+			// Bare flag — a value would be swallowed from the positional task IDs.
+			autoMerge = true;
 		} else if (!args[i].startsWith('-')) {
 			// Positional: treat as task ID
 			taskIdInputs.push(args[i]);
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --task, --provider, --model, --base-ref, --environment-id.`);
+			throw new Error(`Unknown argument: ${args[i]}. Use --task, --provider, --model, --base-ref, --environment-id, --auto-merge.`);
 		}
 	}
 
@@ -1832,6 +1839,7 @@ async function cmdAgentLaunch(args, opts) {
 	if (model) body.model = model;
 	if (baseRef) body.baseRef = baseRef;
 	if (environmentId) body.environmentId = environmentId;
+	if (autoMerge) body.autoMerge = true;
 
 	if (opts.dryRun) {
 		return outputDryRun('agent launch', body, taskIdInputs.map(id => `POST /api/tasks/${id}/cloud-agents/${provider}`).join(', '), opts);

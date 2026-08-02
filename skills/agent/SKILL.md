@@ -43,6 +43,27 @@ Optional flags:
 - `--model <model>` — override the provider's default model
 - `--base-ref <branch>` — base branch (defaults to repo's default branch)
 - `--environment-id <id>` — environment for codex (required) or anthropic (optional)
+- `--auto-merge` — arm auto-merge on the launch (bare flag, takes no value)
+
+## Auto-merge launches ("auto-merge" / "automerge" / "yolo")
+
+When the user asks for an **auto-merge**, **automerge**, or **yolo** launch — "yolo this
+one", "start an automerge task", "launch it with auto-merge" — they mean: launch the agent
+with auto-merge armed. Pass `--auto-merge`:
+
+```bash
+lightsprint agent launch --task LS-100 --provider anthropic --auto-merge --output json
+```
+
+This arms the Review Hub autopilot, which merges the task's PR on its own once the PR
+reaches 100/100 readiness. Nobody clicks merge.
+
+- **Requires workspace owner/admin** (merge permission). A `member_no_merge` role gets a
+  403 — `Auto-merge requires merge permission` — and the launch does not start.
+- **It is unattended and hard to undo** — once the autopilot merges, the merge is on the
+  base branch. Only pass `--auto-merge` when the user actually asked for it; never add it
+  on your own initiative to a plain launch request.
+- Omit the flag for a normal launch: the agent opens the PR and a human merges it.
 
 **Important:**
 - `--provider` is always required
