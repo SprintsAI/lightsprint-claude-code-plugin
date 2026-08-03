@@ -64,6 +64,11 @@ reaches 100/100 readiness. Nobody clicks merge.
   base branch. Only pass `--auto-merge` when the user actually asked for it; never add it
   on your own initiative to a plain launch request.
 - Omit the flag for a normal launch: the agent opens the PR and a human merges it.
+- **The flag only applies at launch, but auto-merge itself is not launch-only.** It is a
+  flag on the task and can be armed or disarmed mid-run from the task's Review Hub tab —
+  being launched with it is not a precondition. If the user asks to yolo a task whose
+  agent is already running, point them there. Never stop and relaunch a running task just
+  to add auto-merge.
 
 **Important:**
 - `--provider` is always required
