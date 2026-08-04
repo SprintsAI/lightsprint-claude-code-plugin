@@ -174,7 +174,9 @@ const COMMAND_SCHEMAS = {
 			model: { type: 'string', flag: '--model', description: 'Override default model for the provider' },
 			baseRef: { type: 'string', flag: '--base-ref', description: 'Base branch (defaults to repo default branch)' },
 			environmentId: { type: 'string', flag: '--environment-id', description: 'Environment ID (for codex/anthropic)' },
-			autoMerge: { type: 'boolean', flag: '--auto-merge', default: false, description: 'Arm auto-merge (the Review Hub autopilot merges the PR at 100/100 readiness). Bare flag — takes no value. Requires workspace owner/admin. Use when the user asks for an "auto-merge", "automerge", or "yolo" launch.' }
+			autoMerge: { type: 'boolean', flag: '--auto-merge', description: 'Arm auto-merge: the autopilot merges the PR at 100/100 readiness with green CI. Bare flag — takes no value. Needs merge permission (any role but member_no_merge). Use when the user asks for an "auto-merge", "automerge", or "yolo" launch. Omitting this and --no-auto-merge inherits the task\'s current setting — it does NOT mean off.' },
+			noAutoMerge: { type: 'boolean', flag: '--no-auto-merge', description: 'Launch with auto-merge explicitly off, overriding a setting already armed on the task.' },
+			yes: { type: 'boolean', flag: '--yes', description: 'Confirm arming auto-merge across more than one --task. Without it, --auto-merge with multiple tasks is refused.' }
 		},
 		supportsDryRun: true,
 		supportsJsonBody: false

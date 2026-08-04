@@ -330,9 +330,12 @@ Commands:
       --model <model>         Override default model
       --base-ref <ref>        Base branch
       --environment-id <id>   Environment for codex/anthropic
-      --auto-merge            Arm auto-merge: the Review Hub autopilot merges the
-                              PR once it reaches 100/100 readiness. Requires
-                              workspace owner/admin (merge permission)
+      --auto-merge            Arm auto-merge: the autopilot merges the PR once it
+                              reaches 100/100 readiness with green CI. Needs merge
+                              permission (any role but member_no_merge)
+      --no-auto-merge         Launch with auto-merge off. Omitting both flags
+                              INHERITS the task's current auto-merge setting
+      --yes                   Confirm arming auto-merge on more than one task
 
   agent stop [options]
     Stop the active cloud agent for a task
@@ -1805,7 +1808,10 @@ async function cmdAgentLaunch(args, opts) {
 	let model = null;
 	let baseRef = null;
 	let environmentId = null;
-	let autoMerge = false;
+	// Tri-state, matching the server: true arms, false disarms, null (omitted)
+	// inherits the task's current auto-merge setting.
+	let autoMerge = null;
+	let confirmFanOut = false;
 
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--task' && args[i + 1]) {
@@ -1818,14 +1824,27 @@ async function cmdAgentLaunch(args, opts) {
 			baseRef = args[++i];
 		} else if (args[i] === '--environment-id' && args[i + 1]) {
 			environmentId = args[++i];
-		} else if (args[i] === '--auto-merge') {
-			// Bare flag — a value would be swallowed from the positional task IDs.
-			autoMerge = true;
+		} else if (args[i] === '--auto-merge' || args[i] === '--no-auto-merge') {
+			// Bare flags. A following positional is a task ID, so we cannot reject
+			// every value — but `--auto-merge true` would otherwise launch a phantom
+			// task named "true" (validateId accepts it) with exit 0, while the real
+			// task launched armed. Reject only boolean-looking values, which are
+			// never plausible task IDs.
+			const next = (args[i + 1] || '').toLowerCase();
+			if (['true', 'false', 'yes', 'no', '1', '0'].includes(next)) {
+				throw new Error(
+					`${args[i]} is a bare flag and takes no value (got "${args[i + 1]}"). ` +
+						'Drop the value, or use --no-auto-merge to turn auto-merge off.'
+				);
+			}
+			autoMerge = args[i] === '--auto-merge';
+		} else if (args[i] === '--yes') {
+			confirmFanOut = true;
 		} else if (!args[i].startsWith('-')) {
 			// Positional: treat as task ID
 			taskIdInputs.push(args[i]);
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --task, --provider, --model, --base-ref, --environment-id, --auto-merge.`);
+			throw new Error(`Unknown argument: ${args[i]}. Use --task, --provider, --model, --base-ref, --environment-id, --auto-merge, --no-auto-merge, --yes.`);
 		}
 	}
 
@@ -1839,7 +1858,15 @@ async function cmdAgentLaunch(args, opts) {
 	if (model) body.model = model;
 	if (baseRef) body.baseRef = baseRef;
 	if (environmentId) body.environmentId = environmentId;
-	if (autoMerge) body.autoMerge = true;
+	if (autoMerge !== null) body.autoMerge = autoMerge;
+
+	// One flag arming N unattended merges is almost never what "yolo this one" meant.
+	if (autoMerge === true && taskIdInputs.length > 1 && !confirmFanOut) {
+		throw new Error(
+			`--auto-merge with ${taskIdInputs.length} tasks would arm an unattended merge on every one. ` +
+				'Launch them separately, or pass --yes to confirm you mean all of them.'
+		);
+	}
 
 	if (opts.dryRun) {
 		return outputDryRun('agent launch', body, taskIdInputs.map(id => `POST /api/tasks/${id}/cloud-agents/${provider}`).join(', '), opts);
