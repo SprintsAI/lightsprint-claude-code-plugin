@@ -1,0 +1,40 @@
+# Gemini Code Assist on GitHub — repo configuration
+# Schema: https://developers.google.com/gemini-code-assist/docs/customize-repo-review
+# Review behavior/rules live in .gemini/styleguide.md
+# Mirrors SprintsAI/lightsprint's .gemini/config.yaml, adapted for this repo.
+
+have_fun: false
+
+memory_config:
+  disabled: false
+
+code_review:
+  disable: false
+  # Post comments at MEDIUM severity and above. Lower to LOW for nitpicks,
+  # raise to HIGH to only surface significant issues.
+  comment_severity_threshold: MEDIUM
+  max_review_comments: -1
+  pull_request_opened:
+    help: false
+    # Unlike the main lightsprint repo, no other bot posts summaries here.
+    summary: true
+    code_review: true
+    # Don't auto-review drafts; authors can invoke `/gemini review` manually.
+    include_drafts: false
+
+# Files Gemini should not review or comment on (generated/vendored/noise).
+ignore_patterns:
+  # Dependencies & lockfiles
+  - "**/node_modules/**"
+  - "**/bun.lock"
+  - "**/bun.lockb"
+  - "**/package-lock.json"
+  # Build output
+  - "**/dist/**"
+  - "**/build/**"
+  # Env / secrets / local
+  - "**/.env"
+  - "**/.env.*"
+  - "!**/.env.example"
+  # Historical planning docs (point-in-time records, not living docs)
+  - "docs/superpowers/**"
