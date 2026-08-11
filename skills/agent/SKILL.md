@@ -43,6 +43,41 @@ Optional flags:
 - `--model <model>` — override the provider's default model
 - `--base-ref <branch>` — base branch (defaults to repo's default branch)
 - `--environment-id <id>` — environment for codex (required) or anthropic (optional)
+- `--auto-merge` / `--no-auto-merge` — arm or explicitly disable auto-merge (bare flags,
+  take no value)
+- `--yes` — confirm arming auto-merge across more than one `--task`
+
+## Auto-merge launches ("auto-merge" / "automerge" / "yolo")
+
+When the user asks for an **auto-merge**, **automerge**, or **yolo** launch — "yolo this
+one", "start an automerge task", "launch it with auto-merge" — they mean: launch the agent
+with auto-merge armed. Pass `--auto-merge`:
+
+```bash
+lightsprint agent launch --task LS-100 --provider anthropic --auto-merge --output json
+```
+
+The autopilot then merges the task's PR on its own once it reaches 100/100 readiness **with
+green CI** (zero checks does not count as green). Nobody clicks merge.
+
+- **Needs merge permission** — every role except `member_no_merge`. Without it the launch
+  is rejected and nothing starts; relay the error rather than retrying without the flag.
+- **It is unattended and lands on a real branch.** The merge goes to the PR's base — the
+  repo default unless you passed `--base-ref`. Say which branch when you tell the user what
+  you are about to run. Only pass `--auto-merge` when they actually asked for it; never add
+  it on your own initiative to a plain launch request.
+- **Omitting the flag does NOT mean off — it inherits** whatever the task's auto-merge
+  setting already is. If the task was armed earlier (in the UI, or by a previous launch), a
+  plain `agent launch` stays armed. Pass `--no-auto-merge` when you need to guarantee a
+  human merges this one.
+- **Multiple tasks:** `--auto-merge` with more than one `--task` is refused, because one
+  flag would arm N unattended merges. Launch them separately, or pass `--yes` if the user
+  really meant all of them.
+- **The flag only applies at launch, but auto-merge itself is not launch-only.** It is a
+  flag on the task and can be armed or disarmed mid-run from the auto-merge control on the
+  task header — being launched with it is not a precondition. If the user asks to yolo a
+  task whose agent is already running, point them there. Never stop and relaunch a running
+  task just to add auto-merge.
 
 **Important:**
 - `--provider` is always required
