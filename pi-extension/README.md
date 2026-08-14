@@ -1,6 +1,6 @@
 # Lightsprint Pi Extension
 
-A [pi](https://github.com/badlogic/pi-mono) extension that integrates [Lightsprint](https://lightsprint.com) task management directly into your coding workflow.
+A [pi](https://github.com/badlogic/pi-mono) extension that integrates [Lightsprint](https://lightsprint.ai) task management directly into your coding workflow.
 
 This is the pi equivalent of the Lightsprint Claude Code plugin — same functionality, native pi integration.
 
@@ -32,7 +32,7 @@ The `lightsprint` CLI must be installed and on your PATH. Install it via:
 npx lightsprint@latest upgrade
 ```
 
-Then connect to your repo:
+Then connect to a Lightsprint workspace:
 
 ```bash
 lightsprint connect
@@ -53,7 +53,7 @@ The extension registers these tools that the LLM can call:
 | `lightsprint_current_task` | Get task linked to current session |
 | `lightsprint_link_pr` | Link a GitHub PR to a task |
 | `lightsprint_unlink_pr` | Remove a linked PR from a task |
-| `lightsprint_whoami` | Show current user and repo info |
+| `lightsprint_whoami` | Show the current user and connected workspace |
 | `lightsprint_config` | Manage user preferences |
 
 ## Commands
@@ -62,14 +62,14 @@ The extension registers these tools that the LLM can call:
 |---------|-------------|
 | `/lightsprint-status` | Show connection status |
 | `/lightsprint-connect` | Authenticate with Lightsprint |
-| `/lightsprint-open` | Open repo board in browser |
+| `/lightsprint-open` | Open the connected workspace's task board in your browser |
 | `/lightsprint-upgrade` | Upgrade CLI to latest version |
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Shift+L` | Open Lightsprint board in browser |
+| `Ctrl+Shift+L` | Open the workspace task board in your browser |
 
 ## Features
 
