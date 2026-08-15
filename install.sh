@@ -10,8 +10,8 @@ INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local}/bin"
 
 echo "Installing Lightsprint for Claude Code..."
 
-# Accept base URL from env or CLI arg (default: https://lightsprint.ai)
-LIGHTSPRINT_BASE_URL="${LIGHTSPRINT_BASE_URL:-https://lightsprint.ai}"
+# Accept base URL from env or CLI arg (default: https://app.lightsprint.ai)
+LIGHTSPRINT_BASE_URL="${LIGHTSPRINT_BASE_URL:-https://app.lightsprint.ai}"
 for arg in "$@"; do
   case "$arg" in
     --base-url=*) LIGHTSPRINT_BASE_URL="${arg#*=}" ;;
@@ -197,7 +197,7 @@ claude plugin install "$PLUGIN_NAME" || {
 
 echo ""
 echo "Plugin installed successfully."
-if [[ "$LIGHTSPRINT_BASE_URL" != "https://lightsprint.ai" ]]; then
+if [[ "$LIGHTSPRINT_BASE_URL" != "https://app.lightsprint.ai" ]]; then
   echo "Base URL: $LIGHTSPRINT_BASE_URL"
 fi
 

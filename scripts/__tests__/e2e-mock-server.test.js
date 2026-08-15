@@ -782,6 +782,47 @@ describe('E2E: Session Lifecycle', () => {
 		return null;
 	}
 
+	/**
+	 * Start a daemon and wait for both its session-specific WS handshake and
+	 * state file. Process startup can occasionally stall on shared CI runners,
+	 * so clean up the failed attempt and retry once before failing the test.
+	 */
+	async function startReadyDaemon(sessionId, ccPid, opts = {}) {
+		for (let attempt = 0; attempt < 2; attempt++) {
+			const { daemonProc, credsPath } = spawnDaemon(sessionId, ccPid, opts);
+			const [sessionStart, state] = await Promise.all([
+				waitForWsMessage(
+					m => m.type === 'session:start' && m.data?.ccSessionId === sessionId,
+					4000
+				),
+				waitForSessionState(sessionId, 4000),
+			]);
+
+			if (sessionStart && state) {
+				return { daemonProc, credsPath, sessionStart, state };
+			}
+
+			try { process.kill(daemonProc.pid, 'SIGTERM'); } catch {}
+			const exitDeadline = Date.now() + 1000;
+			let daemonAlive = true;
+			while (daemonAlive && Date.now() < exitDeadline) {
+				try { process.kill(daemonProc.pid, 0); } catch { daemonAlive = false; }
+				if (daemonAlive) await new Promise(resolve => setTimeout(resolve, 50));
+			}
+			if (daemonAlive) {
+				try { process.kill(daemonProc.pid, 'SIGKILL'); } catch {}
+			}
+			cleanupTestSessions(sessionId);
+			for (let i = mockWsMessages.length - 1; i >= 0; i--) {
+				if (mockWsMessages[i]?.data?.ccSessionId === sessionId) {
+					mockWsMessages.splice(i, 1);
+				}
+			}
+		}
+
+		throw new Error(`Daemon did not become ready for session ${sessionId} after 2 attempts`);
+	}
+
 	// ─── Session Start ───────────────────────────────────────────────────
 
 	describe('Session Start', () => {
@@ -791,28 +832,12 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				// Spawn daemon — if it doesn't connect within 10s, kill and retry once.
-				// CI runners occasionally have slow process starts on the first spawn.
-				let sessionStart = null;
-				for (let attempt = 0; attempt < 2 && !sessionStart; attempt++) {
-					if (attempt > 0) {
-						mockWsMessages.length = 0;
-						cleanupTestSessions('e2e-start-');
-					}
-					const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
-					daemonPid = daemonProc.pid;
-					sessionStart = await waitForWsMessage(m => m.type === 'session:start', 10000);
-					if (!sessionStart) {
-						try { process.kill(daemonPid, 'SIGTERM'); } catch {}
-					}
-				}
+				const { daemonProc, sessionStart, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
+				daemonPid = daemonProc.pid;
 
-				expect(sessionStart).not.toBeNull();
 				expect(sessionStart.data.ccSessionId).toBe(testSessionId);
 
 				// Verify session state file was created
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 				expect(state.port).toBeGreaterThan(0);
 				expect(state.daemonPid).toBeGreaterThan(0);
 				expect(state.ccSessionId).toBe(testSessionId);
@@ -830,11 +855,13 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid, { gitBranch: 'feature/test-branch' });
+				const { daemonProc, sessionStart } = await startReadyDaemon(
+					testSessionId,
+					dummyProc.pid,
+					{ gitBranch: 'feature/test-branch' }
+				);
 				daemonPid = daemonProc.pid;
 
-				const sessionStart = await waitForWsMessage(m => m.type === 'session:start');
-				expect(sessionStart).not.toBeNull();
 				expect(sessionStart.data.gitBranch).toBe('feature/test-branch');
 				expect(sessionStart.data.machineId).toBeDefined();
 				expect(typeof sessionStart.data.machineId).toBe('string');
@@ -853,13 +880,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				// Wait for session:start and ack
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				// lsSessionId is initially null in state file, then updated after ack.
 				// Poll until lsSessionId appears (daemon writes it after receiving ack).
@@ -891,12 +913,9 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
 
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 				expect(state.daemonToken).toBeDefined();
 				expect(typeof state.daemonToken).toBe('string');
 				expect(state.daemonToken.length).toBe(64); // 32 random bytes → 64 hex chars
@@ -927,14 +946,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				// Wait for daemon to connect
-				await waitForWsMessage(m => m.type === 'session:start');
-
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				// Send session end via HTTP (same as cc-end.js does)
 				mockWsMessages.length = 0;
@@ -975,12 +988,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				mockWsMessages.length = 0;
 				await fetch(`http://127.0.0.1:${state.port}/session-end`, {
@@ -1012,12 +1021,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				mockWsMessages.length = 0;
 
@@ -1055,12 +1060,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				// /event without auth → 401
 				const eventRes = await fetch(`http://127.0.0.1:${state.port}/event`, {
@@ -1093,12 +1094,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				const res = await fetch(`http://127.0.0.1:${state.port}/event`, {
 					method: 'POST',
@@ -1126,12 +1123,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				// No Authorization header
 				const resp = await fetch(`http://127.0.0.1:${state.port}/health`, {
@@ -1155,12 +1148,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				const resp = await fetch(`http://127.0.0.1:${state.port}/nonexistent`, {
 					headers: {
@@ -1183,12 +1172,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				const resp = await fetch(`http://127.0.0.1:${state.port}/event`, {
 					method: 'POST',
@@ -1218,13 +1203,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				// Wait for daemon to connect
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				// Clear messages after session:start
 				mockWsMessages.length = 0;
@@ -1263,12 +1243,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				mockWsMessages.length = 0;
 
@@ -1314,12 +1290,8 @@ describe('E2E: Session Lifecycle', () => {
 			let daemonPid;
 
 			try {
-				const { daemonProc } = spawnDaemon(testSessionId, dummyProc.pid);
+				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
-
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
 
 				const resp = await fetch(`http://127.0.0.1:${state.port}/event`, {
 					method: 'POST',
@@ -1356,14 +1328,7 @@ describe('E2E: Session Lifecycle', () => {
 			const dummyPid = dummyProc.pid;
 
 			try {
-				spawnDaemon(testSessionId, dummyPid);
-
-				// Wait for daemon to connect
-				const sessionStart = await waitForWsMessage(m => m.type === 'session:start');
-				expect(sessionStart).toBeDefined();
-
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
+				const { state } = await startReadyDaemon(testSessionId, dummyPid);
 
 				// Kill the "CC process"
 				mockWsMessages.length = 0;
@@ -1413,18 +1378,8 @@ describe('E2E: Session Lifecycle', () => {
 					{ mode: 0o600 }
 				);
 
-				// Start a fresh daemon
-				spawnDaemon(freshSessionId, dummyProc.pid);
-
-				// Wait for connection
-				const freshStart = await waitForWsMessage(
-					m => m.type === 'session:start' && m.data.ccSessionId === freshSessionId
-				);
-				expect(freshStart).toBeDefined();
-
-				// Fresh session state should be valid
-				const freshState = await waitForSessionState(freshSessionId);
-				expect(freshState).not.toBeNull();
+				// Start a fresh daemon and verify its state despite the stale file.
+				const { state: freshState } = await startReadyDaemon(freshSessionId, dummyProc.pid);
 				expect(freshState.port).toBeGreaterThan(0);
 
 				// Clean up
@@ -1446,12 +1401,7 @@ describe('E2E: Session Lifecycle', () => {
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
 
 			try {
-				spawnDaemon(testSessionId, dummyProc.pid);
-
-				// Wait for daemon to be ready
-				await waitForWsMessage(m => m.type === 'session:start');
-				const state = await waitForSessionState(testSessionId);
-				expect(state).not.toBeNull();
+				const { state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 
 				// Hit health endpoint
 				const resp = await fetch(`http://127.0.0.1:${state.port}/health`, {

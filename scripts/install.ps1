@@ -21,7 +21,7 @@ if (-not $BaseUrl) {
     $BaseUrl = $env:LIGHTSPRINT_BASE_URL
 }
 if (-not $BaseUrl) {
-    $BaseUrl = "https://lightsprint.ai"
+    $BaseUrl = "https://app.lightsprint.ai"
 }
 
 # Persist base URL so hooks can read it later
@@ -137,7 +137,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 Write-Host "Plugin installed successfully."
-if ($BaseUrl -ne "https://lightsprint.ai") {
+if ($BaseUrl -ne "https://app.lightsprint.ai") {
     Write-Host "Base URL: $BaseUrl"
 }
 
