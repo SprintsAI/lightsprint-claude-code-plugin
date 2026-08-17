@@ -86,17 +86,27 @@ Defaults to `https://app.lightsprint.ai`.
 
 ### Skills (slash commands)
 
-All skills operate on the connected workspace.
+All skills operate on the connected workspace. The full set of `/lightsprint:` commands is:
 
 | Command | Description |
 |---|---|
 | `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
-| `/lightsprint:projects` | List projects in the workspace |
 | `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
+| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, dependencies, complexity |
+| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--requires-schema-change <bool>`, `--assignee <name>`, `--position <n>`, `--dependencies <ids>` |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
+| `/lightsprint:current-task` | Get the task linked to the current Claude Code session (auto-discovers via session PID) |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:projects` | List projects in the workspace |
+| `/lightsprint:delete <id>` | Permanently delete a task from the workspace board |
+| `/lightsprint:link-pr` | Link a GitHub PR to a task. Options: `--task <taskId>`, `--pr-url <prUrl>`, `--force` |
+| `/lightsprint:unlink-pr <id> [prId]` | Remove a linked GitHub pull request from a task |
+| `/lightsprint:merge <id>` | Merge the GitHub PR linked to a task (supports direct merge and merge queue) |
+| `/lightsprint:agent <id> [launch\|stop\|settings]` | Launch, stop, or inspect settings for cloud agents (anthropic, cursor, codex) |
+| `/lightsprint:agent-create-pr <id>` | Create a GitHub PR from a cloud agent's working branch |
+| `/lightsprint:agent-settings` | Check which cloud agent providers are configured and their default models |
+| `/lightsprint:review-hub-scores <id>` | Get AI readiness analysis (score, summaries, callouts, suggested actions) for a task's linked PR |
+| `/lightsprint:review-hub-signals <id>` | Get PR signals (CI checks, reviews, comments, deployments) for a task's linked PR |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -122,19 +132,46 @@ lightsprint-claude-code-plugin/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
 │   ├── ls-cli.js               # Task management commands (exports cliMain)
 │   ├── compile.sh              # Build script for lightsprint binary
+│   ├── cc-daemon.js            # Background sync daemon (task ↔ board)
+│   ├── cc-start.js             # SessionStart hook
+│   ├── cc-end.js               # SessionEnd hook
+│   ├── cc-event.js             # UserPromptSubmit / Stop hook
+│   ├── cc-pr-created.js        # TaskCompleted / PR created hook
+│   ├── install.sh / install.ps1# Cross-platform installers
+│   ├── uninstall.sh            # Clean removal
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
-│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
+│       ├── browser.js          # Browser open/launch helpers
+│       ├── cc-utils.js         # Claude Code session helpers
 │       ├── client.js           # HTTP client with automatic token refresh
+│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
+│       ├── connection.js       # Connection file + workspace resolution
+│       ├── filelock.js         # Cross-process file locking
+│       ├── options.js          # CLI flag parsing
+│       ├── output.js           # Human / JSON output formatting
+│       ├── schema.js           # Enums & validation rules
+│       ├── sentry.js           # Error reporting
+│       ├── status-mapper.js    # Status mapping logic
 │       ├── task-map.js         # CC↔LS task ID mapping
-│       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│       └── validate.js         # Input validation helpers
+├── skills/                     # One directory per /lightsprint: skill
+│   ├── agent/                  # /lightsprint:agent (launch/stop/settings)
+│   ├── agent-create-pr/        # /lightsprint:agent-create-pr
+│   ├── agent-settings/         # /lightsprint:agent-settings
+│   ├── claim/                  # /lightsprint:claim
+│   ├── comment/                # /lightsprint:comment
+│   ├── create/                 # /lightsprint:create
+│   ├── current-task/           # /lightsprint:current-task
+│   ├── delete/                 # /lightsprint:delete
+│   ├── get/                    # /lightsprint:get
+│   ├── link-pr/                # /lightsprint:link-pr
+│   ├── merge/                  # /lightsprint:merge
+│   ├── projects/               # /lightsprint:projects
+│   ├── review-hub-scores/      # /lightsprint:review-hub-scores
+│   ├── review-hub-signals/     # /lightsprint:review-hub-signals
+│   ├── tasks/                  # /lightsprint:tasks
+│   ├── unlink-pr/              # /lightsprint:unlink-pr
+│   └── update/                 # /lightsprint:update
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
