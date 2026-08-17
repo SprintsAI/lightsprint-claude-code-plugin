@@ -97,6 +97,16 @@ All skills operate on the connected workspace.
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:delete <id>` | Delete a task |
+| `/lightsprint:merge <id>` | Merge a task's PR |
+| `/lightsprint:link-pr <id> <prUrl>` | Link a GitHub PR to a task |
+| `/lightsprint:unlink-pr <id> <prId>` | Unlink a PR from a task |
+| `/lightsprint:agent <id>` | Start a Lightsprint agent on a task |
+| `/lightsprint:agent-create-pr <id>` | Have the agent create a PR for the task |
+| `/lightsprint:agent-settings` | Configure agent settings |
+| `/lightsprint:current-task` | Show the currently active Lightsprint task |
+| `/lightsprint:review-hub-scores` | Show review hub scores for a PR |
+| `/lightsprint:review-hub-signals` | Show review hub signals for a PR |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -120,8 +130,16 @@ lightsprint-claude-code-plugin/
 │   └── hooks.json              # Session lifecycle + task sync hooks
 ├── scripts/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
-│   ├── ls-cli.js               # Task management commands (exports cliMain)
+│   ├── ls-cli.js               # Task management commands
+│   ├── cc-daemon.js            # Claude Code daemon integration
+│   ├── cc-start.js             # Session start hook
+│   ├── cc-end.js               # Session end hook
+│   ├── cc-event.js             # Event processing
 │   ├── compile.sh              # Build script for lightsprint binary
+│   ├── dev-local.sh            # Local development setup
+│   ├── dev-restore.sh          # Restore from development state
+│   ├── deploy-tag.sh           # Release tag and deploy
+│   ├── install.ps1             # Windows installer
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
 │       ├── config.js           # Per-folder token resolution + on-demand auth trigger
@@ -130,12 +148,23 @@ lightsprint-claude-code-plugin/
 │       └── status-mapper.js    # Status mapping logic
 ├── skills/
 │   ├── tasks/SKILL.md          # /lightsprint:tasks
+│   ├── projects/SKILL.md       # /lightsprint:projects
 │   ├── create/SKILL.md         # /lightsprint:create
 │   ├── update/SKILL.md         # /lightsprint:update
 │   ├── get/SKILL.md            # /lightsprint:get
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
-├── install.sh                  # One-line plugin installer
+│   ├── comment/SKILL.md        # /lightsprint:comment
+│   ├── delete/SKILL.md         # /lightsprint:delete
+│   ├── merge/SKILL.md          # /lightsprint:merge
+│   ├── link-pr/SKILL.md        # /lightsprint:link-pr
+│   ├── unlink-pr/SKILL.md      # /lightsprint:unlink-pr
+│   ├── agent/SKILL.md          # /lightsprint:agent
+│   ├── agent-create-pr/SKILL.md  # /lightsprint:agent-create-pr
+│   ├── agent-settings/SKILL.md   # /lightsprint:agent-settings
+│   ├── current-task/SKILL.md   # /lightsprint:current-task
+│   ├── review-hub-scores/SKILL.md  # /lightsprint:review-hub-scores
+│   └── review-hub-signals/SKILL.md # /lightsprint:review-hub-signals
+├── install.sh                  # One-line plugin installer (Linux/macOS)
 ├── uninstall.sh                # Clean removal
 ├── package.json
 └── README.md
