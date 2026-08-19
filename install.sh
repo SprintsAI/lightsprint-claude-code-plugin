@@ -214,16 +214,15 @@ echo ""
 
 CURRENT_DIR="$(pwd)"
 
+# Repo detection lives in scripts/lib/git-remote.js — the same code the CLI uses —
+# so bash, PowerShell and the CLI can never disagree about which repo this is.
+DETECT_SCRIPT="$PLUGIN_DIR/scripts/detect-repo.js"
 REPO_FULL_NAME=""
-if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-  REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
-  if [[ -n "$REMOTE_URL" ]]; then
-    CLEANED="${REMOTE_URL%.git}"
-    CLEANED="${CLEANED##*github.com/}"
-    CLEANED="${CLEANED##*github.com:}"
-    if [[ "$CLEANED" == *"/"* && "$CLEANED" != "$REMOTE_URL" ]]; then
-      REPO_FULL_NAME="$CLEANED"
-    fi
+DETECT_REASON=""
+if command -v node &>/dev/null && [[ -f "$DETECT_SCRIPT" ]]; then
+  REPO_FULL_NAME=$(node "$DETECT_SCRIPT" 2>/dev/null || true)
+  if [[ -z "$REPO_FULL_NAME" ]]; then
+    DETECT_REASON=$(node "$DETECT_SCRIPT" --explain 2>/dev/null || true)
   fi
 fi
 
@@ -237,9 +236,13 @@ if [[ -n "$REPO_FULL_NAME" ]]; then
   node "$PLUGIN_DIR/scripts/lightsprint.js" connect </dev/tty
 else
   echo "─────────────────────────────────────────"
-  echo "  No git repository detected"
+  echo "  No GitHub repository detected"
   echo "─────────────────────────────────────────"
   echo ""
+  if [[ -n "$DETECT_REASON" ]]; then
+    echo "$DETECT_REASON" | sed 's/^/  /'
+    echo ""
+  fi
   echo "  To connect a repo to Lightsprint, open Claude Code"
   echo "  inside a git repository and run:"
   echo ""

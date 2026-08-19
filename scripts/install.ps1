@@ -155,17 +155,17 @@ Write-Host ""
 $currentDir = Get-Location
 $repoFullName = ""
 
-if (Get-Command git -ErrorAction SilentlyContinue) {
-    $isGitRepo = & git rev-parse --is-inside-work-tree 2>$null
-    if ($isGitRepo -eq "true") {
-        $remoteUrl = & git remote get-url origin 2>$null
-        if ($remoteUrl) {
-            $cleaned = $remoteUrl -replace '\.git$', ''
-            $cleaned = $cleaned -replace '.*github\.com[:/]', ''
-            if ($cleaned -match '/' -and $cleaned -ne $remoteUrl) {
-                $repoFullName = $cleaned
-            }
-        }
+# Repo detection lives in scripts/lib/git-remote.js — the same code the CLI uses —
+# so bash, PowerShell and the CLI can never disagree about which repo this is.
+$detectScript = "$pluginDir\scripts\detect-repo.js"
+$detectReason = ""
+
+if ((Get-Command node -ErrorAction SilentlyContinue) -and (Test-Path $detectScript)) {
+    $detected = & node $detectScript 2>$null
+    if ($LASTEXITCODE -eq 0 -and $detected) {
+        $repoFullName = ($detected | Select-Object -First 1).ToString().Trim()
+    } else {
+        $detectReason = (& node $detectScript --explain 2>$null) -join "`n"
     }
 }
 
@@ -179,9 +179,13 @@ if ($repoFullName) {
     & node "$pluginDir\scripts\lightsprint.js" connect
 } else {
     Write-Host ([char]0x2500 * 41)
-    Write-Host "  No git repository detected"
+    Write-Host "  No GitHub repository detected"
     Write-Host ([char]0x2500 * 41)
     Write-Host ""
+    if ($detectReason) {
+        foreach ($line in $detectReason -split "`n") { Write-Host "  $line" }
+        Write-Host ""
+    }
     Write-Host "  To connect a project to Lightsprint, open Claude Code"
     Write-Host "  inside a git repository and run:"
     Write-Host ""

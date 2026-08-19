@@ -70,6 +70,31 @@ The active workspace is stored in a single connection file (`~/.lightsprint/conn
 
 Run `lightsprint connect` again to authorize and switch to a different workspace, or `lightsprint disconnect` to clear the active connection. Use `lightsprint status` / `lightsprint whoami` to see which workspace is currently connected.
 
+### Repository detection
+
+Connecting needs a GitHub repository. The plugin inspects **every** remote in the working tree — not just `origin` — and understands every URL form git accepts (`https://`, `ssh://` with or without a port, `git://`, `git+ssh://`, scp-style `git@host:owner/repo.git`, embedded credentials, trailing `.git` or `/`, and repo names containing dots). SSH host aliases from `~/.ssh/config` (e.g. `git@github-work:owner/repo.git`) are resolved via `ssh -G`.
+
+When several remotes could match, the first of these wins:
+
+1. the remote your current branch tracks
+2. `origin`
+3. `upstream`
+4. the only GitHub remote, if there is exactly one
+
+Anything else resolves deterministically and tells you which remote it picked. Remotes that are not GitHub (GitLab, Bitbucket, local paths) are skipped and listed in the error message if none match.
+
+For GitHub Enterprise, hosts named `github.<your-domain>` are recognized automatically; anything else can be added explicitly:
+
+```bash
+export LIGHTSPRINT_GITHUB_HOSTS=git.acme.internal,code.acme.internal
+```
+
+To see what the plugin detects for the current folder:
+
+```bash
+node ~/.claude/plugins/marketplaces/lightsprint/scripts/detect-repo.js --explain
+```
+
 ### Optional: Custom base URL
 
 For self-hosted Lightsprint instances:
