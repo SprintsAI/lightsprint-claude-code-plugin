@@ -50,12 +50,13 @@ lightsprint ask get <threadId>
 List messages in a thread or send a new message.
 
 ```
-lightsprint ask messages <threadId> [--content <text>]
+lightsprint ask messages <threadId> [--content <text>] [--last N]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--content <text>` | — | Message to send. Omit to list existing messages. |
+| `--last N` | — | Return only the last N messages. Ignored when sending. |
 
 Sending a message dispatches an agent turn and blocks until the agent responds (SSE). The response is streamed.
 

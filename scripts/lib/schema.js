@@ -238,7 +238,8 @@ const COMMAND_SCHEMAS = {
 		description: 'List or send messages in a Codebase Ask thread. Send via --content flag.',
 		params: {
 			threadId: { type: 'string', required: true, flag: '--thread', description: 'Thread ID' },
-			content: { type: 'string', flag: '--content', description: 'Message content to send. Omit to list messages.' }
+			content: { type: 'string', flag: '--content', description: 'Message content to send. Omit to list messages.' },
+			last: { type: 'integer', flag: '--last', description: 'Return only the last N messages (ignored when sending)' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false

@@ -26,7 +26,7 @@
  *   ask list [--limit N] [--offset N]
  *   ask create [--stack <ref>]
  *   ask get <threadId>
- *   ask messages <threadId> [--content <text>]
+ *   ask messages <threadId> [--content <text>] [--last N]
  *   ask cancel <threadId>
  *   ask delete <threadId>
  */
@@ -406,10 +406,11 @@ Commands:
     Example:
       lightsprint ask get abc123
 
-  ask messages <threadId> [--content <text>]
+  ask messages <threadId> [--content <text>] [--last N]
     List messages in a thread or send a new message
     Example:
       lightsprint ask messages abc123
+      lightsprint ask messages abc123 --last 10
       lightsprint ask messages abc123 --content "How does auth work?"
 
   ask cancel <threadId>
@@ -2400,22 +2401,25 @@ async function cmdAskGet(args, opts) {
 async function cmdAskMessages(args, opts) {
 	let threadIdInput = null;
 	let content = null;
+	let last = null;
 
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--thread' && args[i + 1]) {
 			threadIdInput = args[++i];
 		} else if (args[i] === '--content' && args[i + 1]) {
 			content = args[++i];
+		} else if (args[i] === '--last' && args[i + 1]) {
+			last = parseInt(args[++i], 10);
 		} else if (!threadIdInput && !args[i].startsWith('-')) {
 			threadIdInput = args[i];
 		} else if (!content && threadIdInput && !args[i].startsWith('-')) {
 			content = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask messages <threadId> [--content <text>]`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask messages <threadId> [--content <text>] [--last N]`);
 		}
 	}
 
-	if (!threadIdInput) throw new Error('Usage: lightsprint ask messages <threadId> [--content <text>]');
+	if (!threadIdInput) throw new Error('Usage: lightsprint ask messages <threadId> [--content <text>] [--last N]');
 
 	const workspaceId = await getWorkspaceId();
 
@@ -2433,13 +2437,16 @@ async function cmdAskMessages(args, opts) {
 	} else {
 		// Fetch conversation history (events endpoint)
 		const data = await apiRequest(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}/events`);
-		const events = data.events || [];
+		let events = data.events || [];
+		if (last != null && last > 0) {
+			events = events.slice(-last);
+		}
 		outputResult({ events }, opts, () => {
 			if (events.length === 0) {
 				console.log(`No messages in thread ${threadIdInput}.`);
 				return;
 			}
-			console.log(`Messages in thread ${threadIdInput} (${events.length}):\n`);
+			console.log(`Messages in thread ${threadIdInput} (${events.length}${last != null ? ` of ${last} requested` : ''}):\n`);
 			for (const evt of events) {
 				const role = evt.role || 'unknown';
 				const text = typeof evt.content === 'string' ? evt.content : JSON.stringify(evt.content);
