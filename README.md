@@ -97,6 +97,16 @@ All skills operate on the connected workspace.
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:delete <id>` | Delete a task permanently from the workspace board |
+| `/lightsprint:current-task` | Get the Lightsprint task linked to the current Claude Code session |
+| `/lightsprint:link-pr <id>` | Link a GitHub pull request to a task |
+| `/lightsprint:unlink-pr <id>` | Remove a linked GitHub pull request from a task |
+| `/lightsprint:merge <id>` | Merge the GitHub PR linked to a task |
+| `/lightsprint:review-hub-scores` | Get AI readiness analysis for a task's linked PR |
+| `/lightsprint:review-hub-signals` | Get PR signals (CI, reviews, comments, deployments) for a task's linked PR |
+| `/lightsprint:agent <id>` | Launch, stop, or check settings for cloud agents on a task |
+| `/lightsprint:agent-create-pr` | Create a GitHub PR from a cloud agent's working branch |
+| `/lightsprint:agent-settings` | Check which cloud agent providers are configured |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -129,12 +139,23 @@ lightsprint-claude-code-plugin/
 │       ├── task-map.js         # CC↔LS task ID mapping
 │       └── status-mapper.js    # Status mapping logic
 ├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   ├── agent/SKILL.md            # /lightsprint:agent
+│   ├── agent-create-pr/SKILL.md  # /lightsprint:agent-create-pr
+│   ├── agent-settings/SKILL.md   # /lightsprint:agent-settings
+│   ├── claim/SKILL.md            # /lightsprint:claim
+│   ├── comment/SKILL.md          # /lightsprint:comment
+│   ├── create/SKILL.md           # /lightsprint:create
+│   ├── current-task/SKILL.md     # /lightsprint:current-task
+│   ├── delete/SKILL.md           # /lightsprint:delete
+│   ├── get/SKILL.md              # /lightsprint:get
+│   ├── link-pr/SKILL.md          # /lightsprint:link-pr
+│   ├── merge/SKILL.md            # /lightsprint:merge
+│   ├── projects/SKILL.md         # /lightsprint:projects
+│   ├── review-hub-scores/SKILL.md  # /lightsprint:review-hub-scores
+│   ├── review-hub-signals/SKILL.md # /lightsprint:review-hub-signals
+│   ├── tasks/SKILL.md            # /lightsprint:tasks
+│   ├── unlink-pr/SKILL.md        # /lightsprint:unlink-pr
+│   └── update/SKILL.md           # /lightsprint:update
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
