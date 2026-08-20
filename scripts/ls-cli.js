@@ -23,6 +23,12 @@
  *   agent stop --task <taskId> --provider <provider>
  *   agent settings [--provider <provider>]
  *   agent create-pr --task <taskId> --provider <provider> --agent-id <id>
+ *   ask list [--limit N] [--offset N]
+ *   ask create [--stack <ref>]
+ *   ask get <threadId>
+ *   ask messages <threadId> [--content <text>]
+ *   ask cancel <threadId>
+ *   ask delete <threadId>
  */
 
 import { createHash } from 'crypto';
@@ -63,7 +69,7 @@ const VALID_COMMANDS = [
 	'tasks', 'projects', 'stacks', 'create', 'update', 'get', 'claim', 'current-task',
 	'link-pr', 'unlink-pr', 'delete', 'comment', 'whoami',
 	'open', 'status', 'connect', 'disconnect', 'upgrade', 'config', 'describe',
-	'agent', 'merge', 'review-hub'
+	'agent', 'merge', 'review-hub', 'ask'
 ];
 
 function suggestCommand(input) {
@@ -185,6 +191,7 @@ export async function cliMain(command, args, context = {}) {
 			case 'agent': return await cmdAgent(remainingArgs, opts);
 			case 'merge': return await cmdMerge(remainingArgs, opts);
 			case 'review-hub': return await cmdReviewHub(remainingArgs, opts);
+			case 'ask': return await cmdAsk(remainingArgs, opts);
 			default: {
 				const suggestion = suggestCommand(command);
 				const hint = suggestion ? ` Did you mean '${suggestion}'?` : '';
@@ -378,6 +385,42 @@ Commands:
     Example:
       lightsprint review-hub scores LIG-024
       lightsprint review-hub scores LIG-024 --refresh
+
+  ask list [--limit N] [--offset N]
+    List Codebase Ask threads in the active workspace
+    Example:
+      lightsprint ask list
+      lightsprint ask list --limit 10
+
+  ask create [--stack <ref>] [--title <text>]
+    Create a new Codebase Ask thread
+    Options:
+      --stack <ref>         Target stack (stack ID, task prefix, or name)
+      --title <text>        Thread title
+    Example:
+      lightsprint ask create --stack ENG --title "Review authentication"
+      lightsprint ask create "Review authentication"
+
+  ask get <threadId>
+    Show details of a Codebase Ask thread
+    Example:
+      lightsprint ask get abc123
+
+  ask messages <threadId> [--content <text>]
+    List messages in a thread or send a new message
+    Example:
+      lightsprint ask messages abc123
+      lightsprint ask messages abc123 --content "How does auth work?"
+
+  ask cancel <threadId>
+    Cancel the currently running turn on an Ask thread
+    Example:
+      lightsprint ask cancel abc123
+
+  ask delete <threadId>
+    Delete a Codebase Ask thread permanently
+    Example:
+      lightsprint ask delete abc123
 
   config <subcommand> [key] [value]
     Manage user preferences (stored in ~/.lightsprint/preferences.json)
@@ -2219,6 +2262,245 @@ async function cmdReviewHubScores(args, opts) {
 				console.log(`    - ${typeof a === 'string' ? a : a.message || JSON.stringify(a)}`);
 			}
 		}
+	});
+}
+
+// ─── ask ──────────────────────────────────────────────────────────────
+
+async function cmdAsk(args, opts) {
+	const sub = args[0];
+	const subArgs = args.slice(1);
+
+	switch (sub) {
+		case 'list': return await cmdAskList(subArgs, opts);
+		case 'create': return await cmdAskCreate(subArgs, opts);
+		case 'get': return await cmdAskGet(subArgs, opts);
+		case 'messages':
+		case 'send': return await cmdAskMessages(subArgs, opts);
+		case 'cancel': return await cmdAskCancel(subArgs, opts);
+		case 'delete': return await cmdAskDelete(subArgs, opts);
+		default:
+			throw new Error(`Unknown ask subcommand: ${sub || '(none)'}. Valid: list, create, get, messages, cancel, delete`);
+	}
+}
+
+async function cmdAskList(args, opts) {
+	let limit = null;
+	let offset = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--limit' && args[i + 1]) {
+			limit = parseInt(args[++i], 10);
+		} else if (args[i] === '--offset' && args[i + 1]) {
+			offset = parseInt(args[++i], 10);
+		} else if (!args[i].startsWith('-')) {
+			// ignore stray positionals
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask list [--limit N] [--offset N]`);
+		}
+	}
+
+	const workspaceId = await getWorkspaceId();
+	let path = `/api/workspaces/${workspaceId}/ask/threads`;
+	const params = [];
+	if (limit != null) params.push(`limit=${limit}`);
+	if (offset != null) params.push(`offset=${offset}`);
+	if (params.length > 0) path += '?' + params.join('&');
+
+	const data = await apiRequest(path);
+	const threads = (data.threads || []).map(t => ({
+		id: t.id,
+		title: t.title || null,
+		visibility: t.visibility,
+		archivedAt: t.archivedAt || null,
+		eventCount: t.eventCount ?? t._count?.events ?? null,
+		createdAt: t.createdAt,
+		updatedAt: t.updatedAt
+	}));
+
+	outputResult({ threads, total: data.total ?? threads.length }, opts, () => {
+		if (threads.length === 0) {
+			console.log('No ask threads found.');
+			return;
+		}
+		console.log(`Found ${threads.length} thread(s):\n`);
+		for (const t of threads) {
+			const title = t.title || '(untitled)';
+			const archived = t.archivedAt ? ' [archived]' : '';
+			const vis = t.visibility === 'workspace' ? ' [shared]' : '';
+			console.log(`  ${t.id}  ${title}${archived}${vis}`);
+		}
+	});
+}
+
+async function cmdAskCreate(args, opts) {
+	let stackRef = null;
+	let title = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--stack' && args[i + 1]) {
+			stackRef = args[++i];
+		} else if (args[i] === '--title' && args[i + 1]) {
+			title = args[++i];
+		} else if (!args[i].startsWith('-')) {
+			// positional: treat as title or stack hint
+			if (title == null) { title = args[i]; }
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask create [--stack <ref>] [--title <text>]`);
+		}
+	}
+
+	const workspaceId = await getWorkspaceId();
+	const executionStackId = stackRef ? await resolveStackId(workspaceId, stackRef) : null;
+	const body = { executionStackId };
+	if (title) body.title = title;
+
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/ask/threads`, {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
+	const thread = data.thread;
+
+	outputResult({ thread }, opts, () => {
+		console.log(`Created ask thread: ${thread.id}`);
+		if (thread.title) console.log(`Title: ${thread.title}`);
+		console.log(`Visibility: ${thread.visibility}`);
+	});
+}
+
+async function cmdAskGet(args, opts) {
+	let threadIdInput = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--thread' && args[i + 1]) {
+			threadIdInput = args[++i];
+		} else if (!threadIdInput && !args[i].startsWith('-')) {
+			threadIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask get <threadId>`);
+		}
+	}
+
+	if (!threadIdInput) throw new Error('Usage: lightsprint ask get <threadId>');
+
+	const workspaceId = await getWorkspaceId();
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}`);
+	const thread = data.thread;
+
+	outputResult({ thread }, opts, () => {
+		console.log(`Thread: ${thread.id}`);
+		console.log(`Title: ${thread.title || '(untitled)'}`);
+		console.log(`Visibility: ${thread.visibility}`);
+		console.log(`Archived: ${thread.archivedAt ? 'yes' : 'no'}`);
+		console.log(`Created: ${thread.createdAt}`);
+		console.log(`Updated: ${thread.updatedAt}`);
+	});
+}
+
+async function cmdAskMessages(args, opts) {
+	let threadIdInput = null;
+	let content = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--thread' && args[i + 1]) {
+			threadIdInput = args[++i];
+		} else if (args[i] === '--content' && args[i + 1]) {
+			content = args[++i];
+		} else if (!threadIdInput && !args[i].startsWith('-')) {
+			threadIdInput = args[i];
+		} else if (!content && threadIdInput && !args[i].startsWith('-')) {
+			content = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask messages <threadId> [--content <text>]`);
+		}
+	}
+
+	if (!threadIdInput) throw new Error('Usage: lightsprint ask messages <threadId> [--content <text>]');
+
+	const workspaceId = await getWorkspaceId();
+
+	if (content) {
+		// Send a message (SSE endpoint — use apiRequestSSE for streaming support)
+		const body = JSON.stringify({ content });
+		const result = await apiRequestSSE(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}/messages`, {
+			body,
+			method: 'POST'
+		});
+		outputResult({ result }, opts, () => {
+			console.log(`Message sent to thread ${threadIdInput}`);
+			if (result) console.log(JSON.stringify(result, null, 2));
+		});
+	} else {
+		// Fetch conversation history (events endpoint)
+		const data = await apiRequest(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}/events`);
+		const events = data.events || [];
+		outputResult({ events }, opts, () => {
+			if (events.length === 0) {
+				console.log(`No messages in thread ${threadIdInput}.`);
+				return;
+			}
+			console.log(`Messages in thread ${threadIdInput} (${events.length}):\n`);
+			for (const evt of events) {
+				const role = evt.role || 'unknown';
+				const text = typeof evt.content === 'string' ? evt.content : JSON.stringify(evt.content);
+				const preview = text.slice(0, 280).replace(/\n/g, ' ');
+				console.log(`  [${role}] ${preview}${text.length > 280 ? '...' : ''}`);
+			}
+		});
+	}
+}
+
+async function cmdAskCancel(args, opts) {
+	let threadIdInput = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--thread' && args[i + 1]) {
+			threadIdInput = args[++i];
+		} else if (!threadIdInput && !args[i].startsWith('-')) {
+			threadIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask cancel <threadId>`);
+		}
+	}
+
+	if (!threadIdInput) throw new Error('Usage: lightsprint ask cancel <threadId>');
+
+	const workspaceId = await getWorkspaceId();
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}/cancel`, {
+		method: 'POST'
+	});
+
+	outputResult(data, opts, () => {
+		if (data.cancelled) {
+			console.log(`Cancelled active turn on thread ${threadIdInput}.`);
+		} else {
+			console.log(`No active turn to cancel on thread ${threadIdInput} (${data.reason || 'unknown'}).`);
+		}
+	});
+}
+
+async function cmdAskDelete(args, opts) {
+	let threadIdInput = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--thread' && args[i + 1]) {
+			threadIdInput = args[++i];
+		} else if (!threadIdInput && !args[i].startsWith('-')) {
+			threadIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask delete <threadId>`);
+		}
+	}
+
+	if (!threadIdInput) throw new Error('Usage: lightsprint ask delete <threadId>');
+
+	const workspaceId = await getWorkspaceId();
+	await apiRequest(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}`, {
+		method: 'DELETE'
+	});
+
+	outputResult({ success: true, threadId: threadIdInput }, opts, () => {
+		console.log(`Deleted thread ${threadIdInput}.`);
 	});
 }
 

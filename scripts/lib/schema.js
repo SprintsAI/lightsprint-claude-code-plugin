@@ -208,6 +208,57 @@ const COMMAND_SCHEMAS = {
 		supportsDryRun: true,
 		supportsJsonBody: false
 	},
+	'ask-list': {
+		description: 'List Codebase Ask threads in the active workspace',
+		params: {
+			limit: { type: 'integer', flag: '--limit', description: 'Max results' },
+			offset: { type: 'integer', flag: '--offset', default: 0, description: 'Skip first N results' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'ask-create': {
+		description: 'Create a new Codebase Ask thread',
+		params: {
+			stack: { type: 'string', flag: '--stack', description: 'Target stack (stack ID, task prefix, or name)' },
+			title: { type: 'string', flag: '--title', description: 'Thread title' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'ask-get': {
+		description: 'Show details of a Codebase Ask thread',
+		params: {
+			threadId: { type: 'string', required: true, flag: '--thread', description: 'Thread ID' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'ask-messages': {
+		description: 'List or send messages in a Codebase Ask thread. Send via --content flag.',
+		params: {
+			threadId: { type: 'string', required: true, flag: '--thread', description: 'Thread ID' },
+			content: { type: 'string', flag: '--content', description: 'Message content to send. Omit to list messages.' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'ask-cancel': {
+		description: 'Cancel the currently running turn in an Ask thread',
+		params: {
+			threadId: { type: 'string', required: true, flag: '--thread', description: 'Thread ID' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'ask-delete': {
+		description: 'Delete a Codebase Ask thread permanently',
+		params: {
+			threadId: { type: 'string', required: true, flag: '--thread', description: 'Thread ID' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
 	merge: {
 		description: 'Merge the GitHub PR linked to a task',
 		params: {
