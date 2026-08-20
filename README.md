@@ -90,13 +90,24 @@ All skills operate on the connected workspace.
 
 | Command | Description |
 |---|---|
-| `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
-| `/lightsprint:projects` | List projects in the workspace |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
+| `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N`, `--offset N`, `--mine`, `--unassigned`, `--deps <filter>`, `--project <filter>`, `--sort <field>`, `--page-all` |
+| `/lightsprint:projects` | List projects in the workspace. Options: `--status active\|completed\|archived` |
+| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--project <id>`, `--depends-on <ids>`, `--parent <taskId>`, `--json-body <json>`, `--dry-run` |
+| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>`, `--project <id>`, `--position <num>`, `--requires-schema-change <bool>`, `--add-dep <id>`, `--remove-dep <id>`, `--json-body <json>`, `--dry-run` |
+| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity, dependencies. Options: `--fields <field1,field2,...>` |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
-| `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:comment <id> <text>` | Add a comment to a task. Options: `--task <taskId> --body <text>` |
+| `/lightsprint:agent launch` | Launch a cloud agent on a task. Options: `--task <id>`, `--provider <anthropic\|cursor\|codex>`, `--model <model>`, `--auto-merge`, `--environment-id <id>` |
+| `/lightsprint:agent stop` | Stop a running cloud agent. Options: `--task <id> --provider <provider>` |
+| `/lightsprint:agent settings` | Check which cloud agent providers are configured. Options: `--provider <provider>` |
+| `/lightsprint:agent create-pr` | Create a PR from a finished cloud agent's working branch. Options: `--task <id> --provider <provider> --agent-id <id>` |
+| `/lightsprint:link-pr` | Link a GitHub PR to a task. Options: `--task <id> --pr-url <url> [--force]` |
+| `/lightsprint:unlink-pr` | Remove a linked GitHub PR from a task |
+| `/lightsprint:merge` | Merge the PR linked to a task (or queue for merge). Options: `<taskId>` |
+| `/lightsprint:review-hub scores` | Get AI readiness analysis for a task's linked PR. Options: `<taskId> [--refresh]` |
+| `/lightsprint:review-hub signals` | Get PR signals (CI, reviews, comments) for a task's linked PR. Options: `<taskId> [--refresh]` |
+| `/lightsprint:delete` | Permanently delete a task from the workspace board. Options: `<taskId>` |
+| `/lightsprint:current-task` | Get the Lightsprint task linked to the current CC session (auto-discovered from session PID) |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -129,12 +140,23 @@ lightsprint-claude-code-plugin/
 │       ├── task-map.js         # CC↔LS task ID mapping
 │       └── status-mapper.js    # Status mapping logic
 ├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
+│   ├── agent/SKILL.md          # /lightsprint:agent (launch, stop, settings)
+│   ├── agent-create-pr/SKILL.md # /lightsprint:agent create-pr
+│   ├── agent-settings/SKILL.md  # /lightsprint:agent settings
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   ├── comment/SKILL.md        # /lightsprint:comment
+│   ├── create/SKILL.md         # /lightsprint:create
+│   ├── current-task/SKILL.md   # /lightsprint:current-task
+│   ├── delete/SKILL.md         # /lightsprint:delete
+│   ├── get/SKILL.md            # /lightsprint:get
+│   ├── link-pr/SKILL.md        # /lightsprint:link-pr
+│   ├── merge/SKILL.md          # /lightsprint:merge
+│   ├── projects/SKILL.md       # /lightsprint:projects
+│   ├── review-hub-scores/SKILL.md   # /lightsprint:review-hub scores
+│   ├── review-hub-signals/SKILL.md  # /lightsprint:review-hub signals
+│   ├── tasks/SKILL.md          # /lightsprint:tasks
+│   ├── unlink-pr/SKILL.md      # /lightsprint:unlink-pr
+│   └── update/SKILL.md         # /lightsprint:update
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
