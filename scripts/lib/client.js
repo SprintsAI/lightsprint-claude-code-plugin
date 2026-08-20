@@ -305,10 +305,15 @@ export async function apiRequestSSE(path, options = {}) {
 
 	const url = `${cfg.baseUrl}${path}`;
 	const response = await retryableFetch(url, {
+		method: options.method || 'GET',
+		body: options.body || undefined,
+		redirect: options.redirect || 'follow',
 		signal: AbortSignal.timeout(timeout),
 		headers: {
 			'Authorization': `Bearer ${cfg.accessToken}`,
-			'Accept': 'text/event-stream'
+			'Accept': 'text/event-stream',
+			'Content-Type': options.body ? 'application/json' : undefined,
+			...(options.headers || {})
 		}
 	});
 
