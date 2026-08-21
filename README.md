@@ -107,6 +107,7 @@ All skills operate on the connected workspace. The full set of `/lightsprint:` c
 | `/lightsprint:agent-settings` | Check which cloud agent providers are configured and their default models |
 | `/lightsprint:review-hub-scores <id>` | Get AI readiness analysis (score, summaries, callouts, suggested actions) for a task's linked PR |
 | `/lightsprint:review-hub-signals <id>` | Get PR signals (CI checks, reviews, comments, deployments) for a task's linked PR |
+| `/lightsprint:ask [list\|create\|get\|messages\|cancel\|delete]` | Interact with Codebase Ask threads — read-only Q&A over every repo in a stack. Send a message via `ask messages --content <text>`. Options: `--stack <ref>`, `--title <text>`, `--limit N`, `--offset N`, `--content <text>`, `--last N` |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -158,6 +159,7 @@ lightsprint-claude-code-plugin/
 │   ├── agent/                  # /lightsprint:agent (launch/stop/settings)
 │   ├── agent-create-pr/        # /lightsprint:agent-create-pr
 │   ├── agent-settings/         # /lightsprint:agent-settings
+│   ├── ask/                    # /lightsprint:ask (Codebase Ask threads)
 │   ├── claim/                  # /lightsprint:claim
 │   ├── comment/                # /lightsprint:comment
 │   ├── create/                 # /lightsprint:create
