@@ -5,12 +5,15 @@
 // there is no GitHub remote at all.
 import { describe, test, expect, beforeAll, afterAll, mock } from 'bun:test';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs';
-import { tmpdir, homedir } from 'os';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 
-const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
-const CONNECTION_FILE = join(CONFIG_DIR, 'connection.json');
+// Redirect the connection file into a temp dir BEFORE anything imports config.js.
+// The alternative — writing the developer's real ~/.lightsprint/connection.json and
+// restoring it afterwards — loses their live connection if the run is interrupted.
+const TEMP_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'ls-auth-cfg-'));
+process.env.LIGHTSPRINT_CONFIG_DIR = TEMP_CONFIG_DIR;
 
 let openedUrl = null;
 
@@ -40,8 +43,9 @@ async function completeCallback(authorizeUrl) {
 	}
 }
 
-const createdDirs = [];
-let savedConnection = null;
+const createdDirs = [TEMP_CONFIG_DIR];
+let savedGlobalConfig;
+let savedSystemConfig;
 
 function git(cwd, args) {
 	return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
@@ -56,12 +60,19 @@ function makeRepo(remotes) {
 }
 
 beforeAll(() => {
-	savedConnection = existsSync(CONNECTION_FILE) ? readFileSync(CONNECTION_FILE, 'utf-8') : null;
+	// A developer's ~/.gitconfig (an insteadOf rewrite, say) must not steer these repos.
+	savedGlobalConfig = process.env.GIT_CONFIG_GLOBAL;
+	savedSystemConfig = process.env.GIT_CONFIG_SYSTEM;
+	process.env.GIT_CONFIG_GLOBAL = '/dev/null';
+	process.env.GIT_CONFIG_SYSTEM = '/dev/null';
 });
 
 afterAll(() => {
-	if (savedConnection !== null) writeFileSync(CONNECTION_FILE, savedConnection, { mode: 0o600 });
-	else { try { unlinkSync(CONNECTION_FILE); } catch { /* already gone */ } }
+	if (savedGlobalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+	else process.env.GIT_CONFIG_GLOBAL = savedGlobalConfig;
+	if (savedSystemConfig === undefined) delete process.env.GIT_CONFIG_SYSTEM;
+	else process.env.GIT_CONFIG_SYSTEM = savedSystemConfig;
+	delete process.env.LIGHTSPRINT_CONFIG_DIR;
 	for (const dir of createdDirs) {
 		try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
 	}
@@ -101,5 +112,27 @@ describe('authenticate — repo detection', () => {
 		expect(error.message).toContain('No GitHub remote found');
 		expect(error.message).toContain('origin -> git@gitlab.com:acme/widget.git');
 		expect(error.message).not.toContain('requires a git repo with an origin remote');
+		// Structured too, so `--output json` can emit the reason rather than prose.
+		expect(error.code).toBe('repo_detection_failed');
+		expect(error.details.reason).toBe('no-github-remote');
+		expect(error.details.remotes.map((r) => r.name)).toEqual(['origin']);
+	});
+
+	test('credentials in a remote URL never reach the thrown error', async () => {
+		const { authenticate } = await import('../lib/auth.js');
+		const dir = makeRepo([['origin', 'https://user:ghp_LEAKME@gitlab.com/acme/widget.git']]);
+
+		const error = await authenticate('https://app.lightsprint.ai', { cwd: dir, quiet: true })
+			.then(() => null, (e) => e);
+
+		// This message reaches the terminal, ~/.lightsprint/daemon.log and Sentry.
+		expect(error.message).not.toContain('ghp_LEAKME');
+		expect(JSON.stringify(error.details)).not.toContain('ghp_LEAKME');
+	});
+
+	test('writes the connection to the temp config dir, not the real one', async () => {
+		const { readConnection } = await import('../lib/connection.js');
+		expect(process.env.LIGHTSPRINT_CONFIG_DIR).toBe(TEMP_CONFIG_DIR);
+		expect(readConnection()?.workspaceId).toBe('ws-test');
 	});
 });

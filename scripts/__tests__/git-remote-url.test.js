@@ -8,6 +8,7 @@ import {
 	splitOwnerRepo,
 	isGitHubHost,
 	normalizeHost,
+	redactRemoteUrl,
 } from '../lib/git-remote.js';
 
 // ─── GitHub URLs that must resolve ───────────────────────────────────────
@@ -54,10 +55,6 @@ const GITHUB_URLS = [
 	['  git@github.com:owner/repo.git\n', 'owner/repo', 'github.com'],
 	['git@GitHub.com:Owner/Repo.git', 'Owner/Repo', 'github.com'],
 	['https://GITHUB.COM/Owner/Repo', 'Owner/Repo', 'github.com'],
-	// GitHub Enterprise / self-hosted
-	['https://github.acme.com/owner/repo.git', 'owner/repo', 'github.acme.com'],
-	['git@github.acme.com:owner/repo.git', 'owner/repo', 'github.acme.com'],
-	['ssh://git@github.internal.acme.com:2222/owner/repo.git', 'owner/repo', 'github.internal.acme.com'],
 ];
 
 describe('parseGitHubRemoteUrl — GitHub URL forms', () => {
@@ -82,6 +79,14 @@ const NON_GITHUB_URLS = [
 	'https://dev.azure.com/org/project/_git/repo',
 	'https://mygithub.com/owner/repo.git',
 	'https://github.com.evil.tld/owner/repo.git',
+	// github.<anything> is NOT auto-trusted — a self-hosted host must be opted in
+	// via LIGHTSPRINT_GITHUB_HOSTS, because no denylist separates github.acme.com
+	// from github.evil.com.
+	'https://github.evil.com/owner/repo.git',
+	'https://github.attacker.io/victim/repo.git',
+	'git@github.evil-corp.com:facebook/react.git',
+	'https://github.acme.com/owner/repo.git',
+	'https://github.com%2eevil.com/facebook/react.git',
 	// local paths — must be reported as "no GitHub remote", never thrown
 	'file:///home/user/repo.git',
 	'file://C:/repos/repo',
@@ -184,9 +189,13 @@ describe('isGitHubHost', () => {
 		expect(isGitHubHost('ssh.github.com')).toBe(true);
 	});
 
-	test('GitHub Enterprise hosts', () => {
-		expect(isGitHubHost('github.acme.com')).toBe(true);
-		expect(isGitHubHost('github.internal.acme.com')).toBe(true);
+	test('github.<anything> is NOT auto-trusted as GitHub Enterprise', () => {
+		// The alternative is a hand-rolled public-suffix check: any rule that lets
+		// github.acme.com through also lets github.evil.com through.
+		expect(isGitHubHost('github.acme.com')).toBe(false);
+		expect(isGitHubHost('github.evil.com')).toBe(false);
+		expect(isGitHubHost('github.attacker.io')).toBe(false);
+		expect(isGitHubHost('github.internal')).toBe(false);
 	});
 
 	test('lookalike hosts are rejected', () => {
@@ -198,12 +207,58 @@ describe('isGitHubHost', () => {
 		expect(isGitHubHost(null)).toBe(false);
 	});
 
+	test('hosts that smuggle userinfo or encoded dots are rejected', () => {
+		// github.com%2eevil.com is percent-decoded by git/libcurl to an attacker domain.
+		expect(isGitHubHost('github.com%2eevil.com')).toBe(false);
+		expect(isGitHubHost('github.com@evil.com')).toBe(false);
+		expect(isGitHubHost('github.com/evil')).toBe(false);
+		expect(isGitHubHost('github.com evil.com')).toBe(false);
+	});
+
 	test('LIGHTSPRINT_GITHUB_HOSTS adds self-hosted hosts', () => {
 		expect(isGitHubHost('git.acme.internal')).toBe(false);
 		process.env.LIGHTSPRINT_GITHUB_HOSTS = 'git.acme.internal, code.acme.internal';
 		expect(isGitHubHost('git.acme.internal')).toBe(true);
 		expect(isGitHubHost('code.acme.internal')).toBe(true);
 		expect(parseGitHubRemoteUrl('https://git.acme.internal/owner/repo.git')?.fullName).toBe('owner/repo');
+	});
+
+	test('an enterprise host is the only way in, and only when opted into', () => {
+		expect(parseGitHubRemoteUrl('https://github.acme.com/owner/repo.git')).toBeNull();
+		process.env.LIGHTSPRINT_GITHUB_HOSTS = 'github.acme.com';
+		expect(parseGitHubRemoteUrl('https://github.acme.com/owner/repo.git')?.fullName).toBe('owner/repo');
+	});
+});
+
+// ─── credential redaction ────────────────────────────────────────────────
+
+describe('redactRemoteUrl', () => {
+	test('masks credentials in scheme URLs', () => {
+		expect(redactRemoteUrl('https://x-access-token:ghp_SECRET@github.com/o/r.git'))
+			.toBe('https://***@github.com/o/r.git');
+		expect(redactRemoteUrl('https://token@github.com/o/r.git')).toBe('https://***@github.com/o/r.git');
+		expect(redactRemoteUrl('ssh://git:pw@github.com:22/o/r.git')).toBe('ssh://***@github.com:22/o/r.git');
+	});
+
+	test('masks a user:password pair in scp-style URLs', () => {
+		expect(redactRemoteUrl('user:secret@github.com:o/r.git')).toBe('***@github.com:o/r.git');
+	});
+
+	test('leaves credential-free URLs alone', () => {
+		expect(redactRemoteUrl('git@github.com:o/r.git')).toBe('git@github.com:o/r.git');
+		expect(redactRemoteUrl('https://github.com/o/r.git')).toBe('https://github.com/o/r.git');
+		expect(redactRemoteUrl('/srv/git/repo.git')).toBe('/srv/git/repo.git');
+	});
+
+	test('never throws on junk input', () => {
+		expect(redactRemoteUrl(null)).toBe('');
+		expect(redactRemoteUrl(undefined)).toBe('');
+		expect(redactRemoteUrl(42)).toBe('');
+	});
+
+	test('a redacted URL still parses to the same repo', () => {
+		const raw = 'https://x-access-token:ghp_SECRET@github.com/owner/repo.git';
+		expect(parseGitHubRemoteUrl(redactRemoteUrl(raw))?.fullName).toBe(parseGitHubRemoteUrl(raw)?.fullName);
 	});
 });
 

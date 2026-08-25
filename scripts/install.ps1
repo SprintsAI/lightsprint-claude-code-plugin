@@ -160,7 +160,11 @@ $repoFullName = ""
 $detectScript = "$pluginDir\scripts\detect-repo.js"
 $detectReason = ""
 
-if ((Get-Command node -ErrorAction SilentlyContinue) -and (Test-Path $detectScript)) {
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    $detectReason = "node was not found on PATH, so Lightsprint could not inspect this repository's git remotes. Install Node.js 18+ (https://nodejs.org), then run 'lightsprint connect' from your repo."
+} elseif (-not (Test-Path $detectScript)) {
+    $detectReason = "Plugin files are missing from $pluginDir (no scripts\detect-repo.js). Re-run this installer."
+} else {
     $detected = & node $detectScript 2>$null
     if ($LASTEXITCODE -eq 0 -and $detected) {
         $repoFullName = ($detected | Select-Object -First 1).ToString().Trim()
@@ -185,9 +189,11 @@ if ($repoFullName) {
     if ($detectReason) {
         foreach ($line in $detectReason -split "`n") { Write-Host "  $line" }
         Write-Host ""
+        Write-Host "  Once this repo has a GitHub remote, connect it from Claude Code with:"
+    } else {
+        Write-Host "  To connect a project to Lightsprint, open Claude Code"
+        Write-Host "  inside a git repository and run:"
     }
-    Write-Host "  To connect a project to Lightsprint, open Claude Code"
-    Write-Host "  inside a git repository and run:"
     Write-Host ""
     Write-Host "    /lightsprint:tasks"
     Write-Host ""

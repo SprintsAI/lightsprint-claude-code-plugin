@@ -129,10 +129,15 @@ export async function authenticate(baseUrl = 'https://app.lightsprint.ai', optio
 	const resolution = resolveGitHubRemote(cwd);
 	const repoFullName = resolution.fullName;
 	if (!repoFullName) {
-		throw new Error(describeRemoteResolution(resolution));
+		// Carry the structured reason so `--output json` can emit it instead of prose.
+		const error = new Error(describeRemoteResolution(resolution));
+		error.code = 'repo_detection_failed';
+		error.details = { reason: resolution.reason, remotes: resolution.remotes };
+		throw error;
 	}
+	// A diagnostic, not the command's result — stderr keeps stdout parseable.
 	if (resolution.ambiguous && !quiet) {
-		console.log(describeRemoteResolution(resolution));
+		console.error(describeRemoteResolution(resolution));
 	}
 
 	const port = await findFreePort();

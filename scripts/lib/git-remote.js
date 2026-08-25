@@ -19,14 +19,12 @@
  */
 
 import { execFileSync } from 'child_process';
+import { existsSync } from 'fs';
 
 const GIT_TIMEOUT_MS = 5000;
 const SSH_TIMEOUT_MS = 3000;
+const SSH_CACHE_LIMIT = 64;
 
-/** Schemes git accepts that point at a network host. */
-const NETWORK_SCHEMES = new Set(['ssh', 'ssh+git', 'git+ssh', 'git', 'http', 'https', 'ftp', 'ftps']);
-/** Schemes that are always local, never a GitHub remote. */
-const LOCAL_SCHEMES = new Set(['file']);
 /** Schemes where ~/.ssh/config host aliases apply. */
 const SSH_SCHEMES = new Set(['ssh', 'ssh+git', 'git+ssh']);
 
@@ -34,8 +32,8 @@ const SSH_SCHEMES = new Set(['ssh', 'ssh+git', 'git+ssh']);
 // repos whose name starts with a dot (owner/.github).
 const NAME_RE = /^[A-Za-z0-9._-]+$/;
 
-/** Second labels that mean the host is not an enterprise install (github.com.evil.tld). */
-const TLD_LIKE_LABELS = new Set(['com', 'net', 'org', 'io', 'co', 'dev', 'app', 'ai', 'me', 'sh']);
+/** Hostnames must not smuggle userinfo, encoded dots, or path separators. */
+const INVALID_HOST_RE = /[@%/\s]/;
 
 // ─── host helpers ────────────────────────────────────────────────────────
 
@@ -48,7 +46,8 @@ export function normalizeHost(host) {
 	if (typeof host !== 'string') return null;
 	let h = host.trim().toLowerCase();
 	while (h.endsWith('.')) h = h.slice(0, -1);
-	return h || null;
+	if (!h || INVALID_HOST_RE.test(h)) return null;
+	return h;
 }
 
 /** Extra hosts to treat as GitHub, e.g. LIGHTSPRINT_GITHUB_HOSTS="github.acme.com,git.acme.com". */
@@ -59,8 +58,14 @@ function extraGitHubHosts() {
 }
 
 /**
- * Is this hostname GitHub (github.com, a github.com subdomain, a GitHub Enterprise
- * host such as github.acme.com, or one configured via LIGHTSPRINT_GITHUB_HOSTS)?
+ * Is this hostname GitHub?
+ *
+ * Only github.com, its subdomains, and hosts explicitly listed in
+ * LIGHTSPRINT_GITHUB_HOSTS count. There is deliberately no `github.<anything>`
+ * heuristic: guessing that github.acme.com is an enterprise install also accepts
+ * github.evil.com, and no denylist of TLD-shaped labels can separate the two
+ * without a public suffix list. Self-hosted users opt in explicitly instead.
+ *
  * @param {string|null|undefined} host
  * @returns {boolean}
  */
@@ -68,13 +73,7 @@ export function isGitHubHost(host) {
 	const h = normalizeHost(host);
 	if (!h) return false;
 	if (h === 'github.com' || h.endsWith('.github.com')) return true;
-	if (extraGitHubHosts().includes(h)) return true;
-	// GitHub Enterprise convention: the first label is literally "github"
-	// (github.acme.com). Reject spoofs like github.com.evil.tld, where the second
-	// label is a TLD and the registrable domain therefore belongs to someone else.
-	const labels = h.split('.');
-	if (labels.length >= 2 && labels[0] === 'github' && !TLD_LIKE_LABELS.has(labels[1])) return true;
-	return false;
+	return extraGitHubHosts().includes(h);
 }
 
 // ─── URL parsing ─────────────────────────────────────────────────────────
@@ -102,7 +101,7 @@ export function parseRemoteUrl(raw) {
 	if (schemeMatch) {
 		const scheme = schemeMatch[1].toLowerCase();
 		const rest = schemeMatch[2];
-		if (LOCAL_SCHEMES.has(scheme)) {
+		if (scheme === 'file') {
 			return { scheme, host: null, port: null, path: rest, isLocal: true, sshLike: false };
 		}
 		const slash = rest.indexOf('/');
@@ -143,7 +142,7 @@ export function parseRemoteUrl(raw) {
 			host: normalizeHost(host),
 			port,
 			path,
-			isLocal: !NETWORK_SCHEMES.has(scheme) && !host,
+			isLocal: !host,
 			sshLike: SSH_SCHEMES.has(scheme),
 		};
 	}
@@ -175,6 +174,28 @@ export function parseRemoteUrl(raw) {
 	return { scheme: null, host: null, port: null, path: url, isLocal: true, sshLike: false };
 }
 
+const SCHEME_CREDENTIALS_RE = /^([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/@]*@/;
+const SCP_CREDENTIALS_RE = /^[^@/]*:[^@/]*@/;
+
+/**
+ * Mask any credentials embedded in a remote URL.
+ *
+ * Remote URLs routinely carry tokens (https://x-access-token:ghp_…@github.com/o/r).
+ * Every URL this module hands back is redacted at the source, because the URLs end
+ * up in error messages that reach the terminal, ~/.lightsprint/daemon.log and Sentry.
+ *
+ * @param {string} url
+ * @returns {string}
+ */
+export function redactRemoteUrl(url) {
+	if (typeof url !== 'string' || !url) return '';
+	if (SCHEME_CREDENTIALS_RE.test(url)) return url.replace(SCHEME_CREDENTIALS_RE, '$1***@');
+	// scp-style only carries a secret when there is a user:password pair;
+	// a bare `git@host:path` is not a credential.
+	if (SCP_CREDENTIALS_RE.test(url)) return url.replace(SCP_CREDENTIALS_RE, '***@');
+	return url;
+}
+
 /**
  * Turn a remote URL path into `{ owner, repo }`.
  * Strips leading/trailing slashes and a trailing `.git` suffix — dots *inside*
@@ -186,7 +207,7 @@ export function splitOwnerRepo(path) {
 	if (typeof path !== 'string') return null;
 	let p = path.replace(/^\/+/, '').replace(/\/+$/, '');
 	if (!p) return null;
-	if (p.length > 4 && p.toLowerCase().endsWith('.git')) {
+	if (p.toLowerCase().endsWith('.git')) {
 		p = p.slice(0, -4).replace(/\/+$/, '');
 	}
 	const segments = p.split('/').filter(Boolean);
@@ -251,27 +272,46 @@ function runGit(args, cwd) {
 }
 
 /**
- * @returns {'yes'|'no'|'git-unavailable'}
+ * Classify the working directory. Distinguishes "git is missing" from "the
+ * directory is gone" from "git ran and refused" (dubious ownership, a broken
+ * repo), because each needs different advice.
+ * @returns {{ state: 'yes'|'no'|'bad-cwd'|'git-unavailable'|'git-failed', detail?: string }}
  */
 function gitRepoState(cwd) {
+	// spawnSync reports ENOENT both for a missing binary and a missing cwd.
+	if (cwd && !existsSync(cwd)) return { state: 'bad-cwd' };
+
+	let failure = null;
 	try {
-		return runGit(['rev-parse', '--is-inside-work-tree'], cwd).trim() === 'true' ? 'yes' : 'no';
+		if (runGit(['rev-parse', '--is-inside-work-tree'], cwd).trim() === 'true') return { state: 'yes' };
 	} catch (err) {
-		// ENOENT means git itself is missing; anything else means "not a repo".
-		if (err && (err.code === 'ENOENT' || err.errno === 'ENOENT')) return 'git-unavailable';
-		return 'no';
+		if (err && (err.code === 'ENOENT' || err.errno === 'ENOENT')) return { state: 'git-unavailable' };
+		const stderr = (err?.stderr || '').toString().trim();
+		// "not a git repository" is the ordinary answer, not a malfunction.
+		if (stderr && !/not a git repository/i.test(stderr)) failure = stderr;
 	}
+
+	// A bare repo prints "false" above but still has usable remotes.
+	try {
+		if (runGit(['rev-parse', '--is-bare-repository'], cwd).trim() === 'true') return { state: 'yes' };
+	} catch { /* handled below */ }
+
+	return failure ? { state: 'git-failed', detail: failure } : { state: 'no' };
 }
 
 /**
- * List every configured remote with its fetch URL.
- * Uses `git remote -v` so url.<base>.insteadOf rewrites are applied, and falls back
- * to raw config when that fails.
+ * List every configured remote with its fetch URL, falling back to the push URL
+ * for a remote that only has one.
+ *
+ * Uses `git remote -v` rather than raw config so url.<base>.insteadOf rewrites are
+ * applied — reading remote.<name>.url directly would miss them.
+ *
  * @param {string} [cwd]
  * @returns {Array<{ name: string, url: string }>}
  */
 export function listGitRemotes(cwd) {
-	const seen = new Map();
+	const fetchUrls = new Map();
+	const pushUrls = new Map();
 	try {
 		const out = runGit(['remote', '-v'], cwd);
 		for (const line of out.split('\n')) {
@@ -281,32 +321,15 @@ export function listGitRemotes(cwd) {
 			const match = trimmed.match(/^(\S+)\s+(.*?)\s+\((fetch|push)\)$/);
 			if (!match) continue;
 			const [, name, url, kind] = match;
-			// Prefer the fetch URL; only fall back to push when there is no fetch entry.
-			if (kind === 'fetch' || !seen.has(name)) seen.set(name, url);
+			const target = kind === 'fetch' ? fetchUrls : pushUrls;
+			if (!target.has(name)) target.set(name, url);
 		}
 	} catch {
-		// fall through to the config-based reader
+		// no remotes, or git failed — an empty list is the answer
 	}
 
-	if (seen.size === 0) {
-		try {
-			const out = runGit(['config', '--get-regexp', '^remote\\..*\\.url$'], cwd);
-			for (const line of out.split('\n')) {
-				const trimmed = line.trim();
-				if (!trimmed) continue;
-				const space = trimmed.indexOf(' ');
-				if (space === -1) continue;
-				const key = trimmed.slice(0, space);
-				const url = trimmed.slice(space + 1).trim();
-				const name = key.replace(/^remote\./, '').replace(/\.url$/, '');
-				if (name && url && !seen.has(name)) seen.set(name, url);
-			}
-		} catch {
-			// no remotes, or git failed — an empty list is the answer
-		}
-	}
-
-	return [...seen.entries()].map(([name, url]) => ({ name, url }));
+	const names = [...new Set([...fetchUrls.keys(), ...pushUrls.keys()])];
+	return names.map((name) => ({ name, url: fetchUrls.get(name) ?? pushUrls.get(name) }));
 }
 
 /**
@@ -339,12 +362,14 @@ const sshHostCache = new Map();
  */
 export function resolveSshHostAlias(host) {
 	const key = normalizeHost(host);
-	if (!key) return null;
+	// A leading dash would be read by ssh as an option, not a host operand.
+	if (!key || key.startsWith('-')) return null;
 	if (sshHostCache.has(key)) return sshHostCache.get(key);
 
 	let resolved = null;
 	try {
-		const out = execFileSync('ssh', ['-G', key], {
+		// `--` so a hostname can never be taken for a flag.
+		const out = execFileSync('ssh', ['-G', '--', key], {
 			encoding: 'utf-8',
 			timeout: SSH_TIMEOUT_MS,
 			stdio: ['pipe', 'pipe', 'pipe'],
@@ -360,13 +385,10 @@ export function resolveSshHostAlias(host) {
 	} catch {
 		resolved = null;
 	}
+	// Keys come from repo config, so bound the map rather than letting a repo grow it.
+	if (sshHostCache.size >= SSH_CACHE_LIMIT) sshHostCache.clear();
 	sshHostCache.set(key, resolved);
 	return resolved;
-}
-
-/** Test seam: drop memoized `ssh -G` lookups. */
-export function clearSshHostCache() {
-	sshHostCache.clear();
 }
 
 // ─── resolution ──────────────────────────────────────────────────────────
@@ -374,10 +396,12 @@ export function clearSshHostCache() {
 /**
  * @typedef {Object} RemoteEntry
  * @property {string} name
- * @property {string} url
+ * @property {string} url            redacted — any embedded credentials are masked
  * @property {string|null} host
  * @property {string|null} fullName
  * @property {boolean} isGitHub
+ * @property {'not-a-url'|'host-not-github'|'ssh-alias-unresolved'|'not-owner-repo'|null} skipped
+ *   why this remote was not usable, or null when it was
  */
 
 /**
@@ -385,11 +409,26 @@ export function clearSshHostCache() {
  * @property {string|null} fullName   e.g. "owner/repo"
  * @property {string|null} remote     the remote name that was chosen
  * @property {string|null} host
- * @property {'ok'|'git-unavailable'|'not-a-git-repo'|'no-remotes'|'no-github-remote'} reason
+ * @property {'ok'|'git-unavailable'|'git-failed'|'bad-cwd'|'not-a-git-repo'|'no-remotes'|'no-github-remote'} reason
  * @property {RemoteEntry[]} remotes  every remote that was inspected
- * @property {boolean} ambiguous      several GitHub remotes, none of them preferred
+ * @property {boolean} ambiguous      the chosen remote may not be the one the user meant
  * @property {string|null} selectedBy how the remote was chosen
+ * @property {string} [detail]        raw git stderr, when reason is 'git-failed'
  */
+
+/**
+ * Why a remote could not be used. Kept separate from the parse so the failure
+ * message can say "github.com, but the path is not owner/repo" instead of the
+ * flatly untrue "host github.com is not GitHub".
+ * @returns {RemoteEntry['skipped']}
+ */
+function classifySkip(parsed) {
+	if (!parsed || parsed.isLocal || !parsed.host) return 'not-a-url';
+	if (isGitHubHost(parsed.host)) return 'not-owner-repo';
+	// An ssh-ish host with no dot is almost always a ~/.ssh/config alias.
+	if (parsed.sshLike && !parsed.host.includes('.')) return 'ssh-alias-unresolved';
+	return 'host-not-github';
+}
 
 /**
  * Find the GitHub repository for a working tree. Never throws.
@@ -404,16 +443,18 @@ export function resolveGitHubRemote(cwd, options = {}) {
 	const resolveHost = options.resolveHost === undefined ? resolveSshHostAlias : options.resolveHost;
 
 	if (!hasInjectedRemotes) {
-		const state = gitRepoState(cwd);
+		const { state, detail } = gitRepoState(cwd);
 		if (state !== 'yes') {
+			const reason = state === 'no' ? 'not-a-git-repo' : state;
 			return {
 				fullName: null,
 				remote: null,
 				host: null,
-				reason: state === 'git-unavailable' ? 'git-unavailable' : 'not-a-git-repo',
+				reason,
 				remotes: [],
 				ambiguous: false,
 				selectedBy: null,
+				...(detail ? { detail } : {}),
 			};
 		}
 	}
@@ -424,10 +465,11 @@ export function resolveGitHubRemote(cwd, options = {}) {
 		const gh = parseGitHubRemoteUrl(url, resolveHost ? { resolveHost } : {});
 		return {
 			name,
-			url,
+			url: redactRemoteUrl(url),
 			host: gh?.host ?? parsed?.host ?? null,
 			fullName: gh?.fullName ?? null,
 			isGitHub: Boolean(gh),
+			skipped: gh ? null : classifySkip(parsed),
 		};
 	});
 
@@ -459,7 +501,13 @@ export function resolveGitHubRemote(cwd, options = {}) {
 	for (const [name, selectedBy] of preferences) {
 		if (!name) continue;
 		const hit = githubRemotes.find((r) => r.name === name);
-		if (hit) return pick(hit, selectedBy);
+		if (!hit) continue;
+		// Tracking a non-origin remote silently changes which repo we connect to,
+		// and it changes again when the user switches branch — say so.
+		const overridesOrigin = selectedBy === 'branch-upstream'
+			&& name !== 'origin'
+			&& githubRemotes.some((r) => r.name === 'origin');
+		return pick(hit, selectedBy, overridesOrigin);
 	}
 
 	if (githubRemotes.length === 1) return pick(githubRemotes[0], 'only-remote');
@@ -476,31 +524,47 @@ export function resolveGitHubRemote(cwd, options = {}) {
  */
 export function describeRemoteResolution(result) {
 	if (!result) return 'Could not determine the GitHub repository for this folder.';
+	const remotes = Array.isArray(result.remotes) ? result.remotes : [];
 
 	if (result.reason === 'ok') {
 		const via = result.remote ? ` (remote "${result.remote}")` : '';
-		const warning = result.ambiguous
-			? `\nSeveral GitHub remotes are configured (${result.remotes.filter((r) => r.isGitHub).map((r) => r.name).join(', ')}); using "${result.remote}". Set the branch upstream or rename the canonical remote to "origin" to choose explicitly.`
-			: '';
-		return `Detected GitHub repository ${result.fullName}${via}.${warning}`;
+		// Anything other than github.com is worth naming: the backend is told only
+		// "owner/repo", so an enterprise host links against that name alone.
+		const onHost = result.host && result.host !== 'github.com' ? ` on host ${result.host}` : '';
+		let warning = '';
+		if (result.ambiguous) {
+			const candidates = remotes
+				.filter((r) => r.isGitHub)
+				.map((r) => `${r.name} (${r.fullName})`)
+				.join(', ');
+			warning = `\nMore than one GitHub remote could apply: ${candidates}. Using "${result.remote}".`
+				+ `\nTo choose a different one: git branch --set-upstream-to=<remote>/<branch>`
+				+ `\nor rename the canonical remote: git remote rename <remote> origin`;
+		}
+		return `Detected GitHub repository ${result.fullName}${onHost}${via}.${warning}`;
 	}
 
 	if (result.reason === 'git-unavailable') {
 		return 'git was not found on PATH. Lightsprint needs git to detect the GitHub repository for this folder.';
 	}
 
+	if (result.reason === 'bad-cwd') {
+		return 'The current directory no longer exists. Change into your project folder and try again.';
+	}
+
+	if (result.reason === 'git-failed') {
+		return `git could not read this repository:\n  ${result.detail || 'unknown error'}\nFix the problem git reports above, then try again.`;
+	}
+
 	if (result.reason === 'not-a-git-repo') {
-		return 'This folder is not a git repository. Lightsprint needs a git repo with a GitHub remote — run "git init" and add a remote, or cd into your project first.';
+		return 'This folder is not a git repository. Lightsprint needs a git repo with a GitHub remote: run "git init" and add a remote, or cd into your project first.';
 	}
 
 	if (result.reason === 'no-remotes') {
 		return 'This git repository has no remotes configured. Add one, e.g.:\n  git remote add origin git@github.com:owner/repo.git';
 	}
 
-	const lines = result.remotes.map((r) => {
-		const why = r.host ? `host ${r.host} is not GitHub` : 'not a GitHub URL';
-		return `  ${r.name} -> ${r.url} (${why})`;
-	});
+	const lines = remotes.map((r) => `  ${r.name} -> ${r.url} (${skipReason(r)})`);
 	return [
 		'No GitHub remote found in this repository.',
 		'Remotes checked:',
@@ -508,6 +572,24 @@ export function describeRemoteResolution(result) {
 		'',
 		'Lightsprint needs a remote pointing at GitHub. Add one, e.g.:',
 		'  git remote add origin git@github.com:owner/repo.git',
-		'For GitHub Enterprise, set LIGHTSPRINT_GITHUB_HOSTS to your host (comma-separated).',
+		'Self-hosted GitHub Enterprise: set LIGHTSPRINT_GITHUB_HOSTS to your host (comma-separated).',
+		'Note that Lightsprint links the repository by owner/repo name only, so an enterprise',
+		'repo connects against the workspace repo of the same name.',
 	].join('\n');
+}
+
+/** One clause explaining why a single remote was skipped. */
+function skipReason(entry) {
+	switch (entry.skipped) {
+		case 'not-owner-repo':
+			return `${entry.host} is GitHub, but the URL is not a plain owner/repo`;
+		case 'ssh-alias-unresolved':
+			return `ssh host "${entry.host}" did not resolve to a GitHub host (checked with ssh -G)`;
+		case 'host-not-github':
+			return `host ${entry.host} is not GitHub`;
+		case 'not-a-url':
+			return 'a local path, not a remote URL';
+		default:
+			return entry.host ? `host ${entry.host} is not GitHub` : 'not a GitHub URL';
+	}
 }

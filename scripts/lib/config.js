@@ -9,10 +9,9 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { readConnection, writeConnection, clearConnection } from './connection.js';
-import { resolveGitHubRemote, describeRemoteResolution } from './git-remote.js';
+import { resolveGitHubRemote } from './git-remote.js';
 
 export { readConnection, writeConnection, clearConnection };
-export { resolveGitHubRemote, describeRemoteResolution };
 
 export const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
 const PLUGIN_CONFIG_FILE = join(CONFIG_DIR, 'config.json');
@@ -77,8 +76,8 @@ export function getDefaultBaseUrl() {
  *
  * Inspects every remote (not just "origin") and understands every URL form git
  * accepts — see scripts/lib/git-remote.js for the selection order and parsing rules.
- * Callers that need to explain a failure should use `resolveGitHubRemote()` +
- * `describeRemoteResolution()` directly.
+ * Callers that need to explain a failure should import `resolveGitHubRemote()` and
+ * `describeRemoteResolution()` from './git-remote.js' directly.
  *
  * @param {string} [cwd] - Working directory to run git in
  * @returns {string|null} e.g. "owner/repo" or null

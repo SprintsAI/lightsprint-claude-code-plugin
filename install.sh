@@ -217,14 +217,21 @@ CURRENT_DIR="$(pwd)"
 # Repo detection lives in scripts/lib/git-remote.js — the same code the CLI uses —
 # so bash, PowerShell and the CLI can never disagree about which repo this is.
 DETECT_SCRIPT="$PLUGIN_DIR/scripts/detect-repo.js"
+DETECT_STDERR="$(mktemp)"
 REPO_FULL_NAME=""
 DETECT_REASON=""
-if command -v node &>/dev/null && [[ -f "$DETECT_SCRIPT" ]]; then
-  REPO_FULL_NAME=$(node "$DETECT_SCRIPT" 2>/dev/null || true)
+if ! command -v node &>/dev/null; then
+  DETECT_REASON="node was not found on PATH, so Lightsprint could not inspect this repository's git remotes. Install Node.js 18+ (https://nodejs.org), then run 'lightsprint connect' from your repo."
+elif [[ ! -f "$DETECT_SCRIPT" ]]; then
+  DETECT_REASON="Plugin files are missing from $PLUGIN_DIR (no scripts/detect-repo.js). Re-run this installer."
+else
+  # One invocation: the repo name on stdout, the reason on stderr.
+  REPO_FULL_NAME=$(node "$DETECT_SCRIPT" 2>"$DETECT_STDERR" || true)
   if [[ -z "$REPO_FULL_NAME" ]]; then
-    DETECT_REASON=$(node "$DETECT_SCRIPT" --explain 2>/dev/null || true)
+    DETECT_REASON=$(cat "$DETECT_STDERR")
   fi
 fi
+rm -f "$DETECT_STDERR"
 
 if [[ -n "$REPO_FULL_NAME" ]]; then
   echo "─────────────────────────────────────────"
@@ -240,11 +247,14 @@ else
   echo "─────────────────────────────────────────"
   echo ""
   if [[ -n "$DETECT_REASON" ]]; then
-    echo "$DETECT_REASON" | sed 's/^/  /'
+    # Indent, leaving blank separator lines blank.
+    echo "$DETECT_REASON" | sed 's/^./  &/'
     echo ""
+    echo "  Once this repo has a GitHub remote, connect it from Claude Code with:"
+  else
+    echo "  To connect a repo to Lightsprint, open Claude Code"
+    echo "  inside a git repository and run:"
   fi
-  echo "  To connect a repo to Lightsprint, open Claude Code"
-  echo "  inside a git repository and run:"
   echo ""
   echo "    /lightsprint:tasks"
   echo ""
