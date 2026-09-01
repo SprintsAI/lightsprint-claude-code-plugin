@@ -88,17 +88,58 @@ Defaults to `https://app.lightsprint.ai`.
 
 All skills operate on the connected workspace.
 
+#### Tasks
+
 | Command | Description |
 |---|---|
-| `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
-| `/lightsprint:projects` | List projects in the workspace |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
-| `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
+| `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--assignee <name>`, `--project <id>`, `--stack <ref>`, `--limit N`, `--offset N`, `--sort position\|updated_at\|created_at` |
+| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status <status>`, `--stack <ref>`, `--projectId <id>`, `--dependsOn <ids>` |
+| `/lightsprint:update <id>` | Update a task. Options: `--title`, `--description`, `--status`, `--complexity`, `--assignee`, `--requiresSchemaChange`, `--position`, `--dependsOn` |
+| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, dependencies, complexity |
+| `/lightsprint:claim <id>` | Claim a task — sets it to in_progress, assigns it to you, and links the Claude Code session |
+| `/lightsprint:current-task` | Get the task linked to the current Claude Code session, discovered by session PID — no task ID needed |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:delete <id>` | Delete a task permanently |
+| `/lightsprint:projects` | List projects in the workspace. Options: `--status active\|completed\|archived` |
+
+#### Pull requests
+
+| Command | Description |
+|---|---|
+| `/lightsprint:link-pr <id> <url>` | Link a GitHub pull request to a task |
+| `/lightsprint:unlink-pr <id>` | Remove a linked pull request from a task |
+| `/lightsprint:merge <id>` | Merge the pull request linked to a task. Supports direct merge and the GitHub merge queue |
+| `/lightsprint:review-hub-signals <id>` | PR signals — CI checks, reviews, comments, deployments. Options: `--refresh` |
+| `/lightsprint:review-hub-scores <id>` | AI readiness analysis — score, summaries, callouts, suggested actions. Options: `--refresh` |
+
+#### Cloud agents
+
+| Command | Description |
+|---|---|
+| `/lightsprint:agent` | Launch or stop a cloud agent on a task. Providers: `anthropic`, `cursor`, `codex` |
+| `/lightsprint:agent-settings` | Show which agent providers are configured and their default models |
+| `/lightsprint:agent-create-pr` | Create a GitHub PR from a cloud agent's working branch |
+
+#### Codebase Ask
+
+| Command | Description |
+|---|---|
+| `/lightsprint:ask` | Create, list, inspect, message, cancel, or delete Codebase Ask threads |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
+
+### Using the CLI directly
+
+Every skill wraps the `lightsprint` binary, which you can also call yourself. It is built to be driven by agents:
+
+```bash
+lightsprint describe create        # JSON schema of a command's params, types, and enums
+lightsprint tasks --output json    # structured output (also implied by --fields)
+lightsprint get <id> --fields title,status
+lightsprint create "Fix login" --dry-run   # validate locally without hitting the API
+```
+
+`describe` with no argument lists every command. Inputs are validated before they reach the API, and in JSON mode errors are emitted as structured JSON on stderr.
 
 ### Claiming tasks
 
@@ -120,28 +161,45 @@ lightsprint-claude-code-plugin/
 │   └── hooks.json              # Session lifecycle + task sync hooks
 ├── scripts/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
-│   ├── ls-cli.js               # Task management commands (exports cliMain)
-│   ├── compile.sh              # Build script for lightsprint binary
+│   ├── ls-cli.js               # Command implementations (exports cliMain)
+│   ├── cc-start.js             # SessionStart hook
+│   ├── cc-end.js               # SessionEnd hook
+│   ├── cc-event.js             # Task-sync hook (prompt, stop, task, subagent events)
+│   ├── cc-pr-created.js        # PR detection hook (PostToolUse on Bash)
+│   ├── cc-daemon.js            # Background sync daemon
+│   ├── compile.sh              # Build script for the lightsprint binary
+│   ├── dev-local.sh            # Point the install at a local checkout
+│   ├── dev-restore.sh          # Restore the released install
+│   ├── deploy-tag.sh           # Cut a release tag
+│   ├── install.ps1             # Windows installer
+│   ├── __tests__/              # CLI unit tests
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
-│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
+│       ├── browser.js          # Cross-platform browser launcher
+│       ├── config.js           # Token resolution + on-demand auth trigger
+│       ├── connection.js       # Active workspace connection file
 │       ├── client.js           # HTTP client with automatic token refresh
+│       ├── options.js          # Cross-cutting flags (--output, --dry-run, --fields)
+│       ├── output.js           # Text and JSON renderers, structured errors
+│       ├── schema.js           # Command schemas behind `lightsprint describe`
+│       ├── validate.js         # Input hardening (IDs, enums, control chars)
+│       ├── filelock.js         # Cross-process file locking
+│       ├── cc-utils.js         # Claude Code session helpers
+│       ├── sentry.js           # Optional error reporting
 │       ├── task-map.js         # CC↔LS task ID mapping
 │       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+├── skills/                     # One SKILL.md per /lightsprint: command (18 total)
+├── pi-extension/               # Same integration as a pi extension
+├── docs/                       # Local testing and design notes
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
+├── npx-install.js              # `npx lightsprint` entry point
+├── CLAUDE.md                   # Repo guidance for Claude Code
 ├── package.json
 └── README.md
 ```
 
-Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
+One runtime dependency (`@sentry/node`, for optional error reporting). Everything else uses Node.js built-ins — `fetch`, `crypto`, and `fs`.
 
 ### Local files
 
