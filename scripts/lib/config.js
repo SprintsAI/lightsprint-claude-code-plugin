@@ -8,8 +8,8 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { execSync } from 'child_process';
 import { readConnection, writeConnection, clearConnection } from './connection.js';
+import { resolveGitHubRemote } from './git-remote.js';
 
 export { readConnection, writeConnection, clearConnection };
 
@@ -72,19 +72,18 @@ export function getDefaultBaseUrl() {
 }
 
 /**
- * Try to extract the GitHub owner/repo from the git remote URL.
+ * Try to extract the GitHub owner/repo from the repository's remotes.
+ *
+ * Inspects every remote (not just "origin") and understands every URL form git
+ * accepts — see scripts/lib/git-remote.js for the selection order and parsing rules.
+ * Callers that need to explain a failure should import `resolveGitHubRemote()` and
+ * `describeRemoteResolution()` from './git-remote.js' directly.
+ *
  * @param {string} [cwd] - Working directory to run git in
  * @returns {string|null} e.g. "owner/repo" or null
  */
 export function getGitRepoFullName(cwd) {
-	try {
-		const remote = execSync('git remote get-url origin', { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-		// Match SSH (git@github.com:owner/repo.git) or HTTPS (https://github.com/owner/repo.git)
-		const match = remote.match(/github\.com[:/]([^/]+\/[^/.]+?)(?:\.git)?$/);
-		return match ? match[1] : null;
-	} catch {
-		return null;
-	}
+	return resolveGitHubRemote(cwd).fullName;
 }
 
 /**
