@@ -56,7 +56,10 @@ function makeRepo(remotes = [], opts = {}) {
 	for (const [key, value] of opts.config || []) git(dir, ['config', key, value]);
 	for (const [name, url] of remotes) git(dir, ['remote', 'add', name, url]);
 	if (opts.trackedRemote) {
-		// What `git branch --set-upstream-to` writes, without needing to fetch.
+		// Model a fetched upstream: @{upstream} resolves only when the configured
+		// remote-tracking ref exists, not from branch config alone.
+		git(dir, ['-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init']);
+		git(dir, ['update-ref', `refs/remotes/${opts.trackedRemote}/main`, 'HEAD']);
 		git(dir, ['config', 'branch.main.remote', opts.trackedRemote]);
 		git(dir, ['config', 'branch.main.merge', 'refs/heads/main']);
 	}
@@ -133,6 +136,19 @@ describe('resolveGitHubRemote — remote selection', () => {
 		const result = resolveGitHubRemote(dir);
 		expect(result.selectedBy).toBe('branch-upstream');
 		expect(result.ambiguous).toBe(false);
+	});
+
+	test('a stale branch remote without an upstream merge ref is ignored', () => {
+		const dir = makeRepo([
+			['origin', 'git@github.com:me/widget.git'],
+			['upstream', GH('widget')],
+		]);
+		git(dir, ['config', 'branch.main.remote', 'upstream']);
+
+		expect(getBranchUpstreamRemote(dir)).toBeNull();
+		const result = resolveGitHubRemote(dir);
+		expect(result.fullName).toBe('me/widget');
+		expect(result.selectedBy).toBe('origin');
 	});
 
 	test('branch tracking a remote that is not a GitHub remote falls through to origin', () => {

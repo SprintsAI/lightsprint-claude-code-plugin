@@ -79,13 +79,6 @@ const NON_GITHUB_URLS = [
 	'https://dev.azure.com/org/project/_git/repo',
 	'https://mygithub.com/owner/repo.git',
 	'https://github.com.evil.tld/owner/repo.git',
-	// github.<anything> is NOT auto-trusted — a self-hosted host must be opted in
-	// via LIGHTSPRINT_GITHUB_HOSTS, because no denylist separates github.acme.com
-	// from github.evil.com.
-	'https://github.evil.com/owner/repo.git',
-	'https://github.attacker.io/victim/repo.git',
-	'git@github.evil-corp.com:facebook/react.git',
-	'https://github.acme.com/owner/repo.git',
 	'https://github.com%2eevil.com/facebook/react.git',
 	// local paths — must be reported as "no GitHub remote", never thrown
 	'file:///home/user/repo.git',
@@ -189,13 +182,11 @@ describe('isGitHubHost', () => {
 		expect(isGitHubHost('ssh.github.com')).toBe(true);
 	});
 
-	test('github.<anything> is NOT auto-trusted as GitHub Enterprise', () => {
-		// The alternative is a hand-rolled public-suffix check: any rule that lets
-		// github.acme.com through also lets github.evil.com through.
-		expect(isGitHubHost('github.acme.com')).toBe(false);
-		expect(isGitHubHost('github.evil.com')).toBe(false);
-		expect(isGitHubHost('github.attacker.io')).toBe(false);
-		expect(isGitHubHost('github.internal')).toBe(false);
+	test('conventional github.<domain> Enterprise hosts are recognized', () => {
+		expect(isGitHubHost('github.acme.com')).toBe(true);
+		expect(isGitHubHost('github.internal')).toBe(true);
+		expect(parseGitHubRemoteUrl('https://github.acme.com/owner/repo.git')?.fullName).toBe('owner/repo');
+		expect(parseGitHubRemoteUrl('git@github.internal:owner/repo.git')?.fullName).toBe('owner/repo');
 	});
 
 	test('lookalike hosts are rejected', () => {
@@ -223,10 +214,10 @@ describe('isGitHubHost', () => {
 		expect(parseGitHubRemoteUrl('https://git.acme.internal/owner/repo.git')?.fullName).toBe('owner/repo');
 	});
 
-	test('an enterprise host is the only way in, and only when opted into', () => {
-		expect(parseGitHubRemoteUrl('https://github.acme.com/owner/repo.git')).toBeNull();
-		process.env.LIGHTSPRINT_GITHUB_HOSTS = 'github.acme.com';
-		expect(parseGitHubRemoteUrl('https://github.acme.com/owner/repo.git')?.fullName).toBe('owner/repo');
+	test('an arbitrary enterprise hostname can be opted into', () => {
+		expect(parseGitHubRemoteUrl('https://code.acme.internal/owner/repo.git')).toBeNull();
+		process.env.LIGHTSPRINT_GITHUB_HOSTS = 'code.acme.internal';
+		expect(parseGitHubRemoteUrl('https://code.acme.internal/owner/repo.git')?.fullName).toBe('owner/repo');
 	});
 });
 

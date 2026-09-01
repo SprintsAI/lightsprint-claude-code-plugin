@@ -83,13 +83,15 @@ When several remotes could match, the first of these wins:
 
 Anything else resolves deterministically and tells you which remote it picked. If your branch tracks a remote other than `origin`, the plugin says which repo it chose and how to change it — the answer would otherwise shift when you switch branches. Remotes that are not GitHub (GitLab, Bitbucket, local paths) are skipped and listed in the error message if none match.
 
-Self-hosted GitHub Enterprise hosts must be opted into explicitly:
+Conventional GitHub Enterprise hosts such as `github.acme.com` and
+`github.internal` are recognized automatically. If your Enterprise installation
+uses another hostname, opt it in explicitly:
 
 ```bash
 export LIGHTSPRINT_GITHUB_HOSTS=github.acme.com,code.acme.internal
 ```
 
-There is deliberately no `github.<anything>` auto-detection: a rule loose enough to accept `github.acme.com` also accepts `github.evil.com`. Note that Lightsprint links repos by `owner/repo` name alone, so an enterprise repo connects against the workspace repo of the same name.
+Note that Lightsprint links repos by `owner/repo` name alone, so an enterprise repo connects against the workspace repo of the same name.
 
 To see what the plugin detects for the current folder:
 

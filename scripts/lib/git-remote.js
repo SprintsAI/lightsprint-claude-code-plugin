@@ -60,11 +60,9 @@ function extraGitHubHosts() {
 /**
  * Is this hostname GitHub?
  *
- * Only github.com, its subdomains, and hosts explicitly listed in
- * LIGHTSPRINT_GITHUB_HOSTS count. There is deliberately no `github.<anything>`
- * heuristic: guessing that github.acme.com is an enterprise install also accepts
- * github.evil.com, and no denylist of TLD-shaped labels can separate the two
- * without a public suffix list. Self-hosted users opt in explicitly instead.
+ * Recognizes github.com, its subdomains, and the conventional `github.<domain>`
+ * hostname used by many GitHub Enterprise Server installations. Enterprise
+ * installations on an arbitrary hostname can opt in with LIGHTSPRINT_GITHUB_HOSTS.
  *
  * @param {string|null|undefined} host
  * @returns {boolean}
@@ -73,6 +71,10 @@ export function isGitHubHost(host) {
 	const h = normalizeHost(host);
 	if (!h) return false;
 	if (h === 'github.com' || h.endsWith('.github.com')) return true;
+	// github.com.evil.example and github.io.evil.example are lookalikes, not
+	// Enterprise hostnames. github.io itself is GitHub Pages, not a git host.
+	if (h.startsWith('github.com.') || h === 'github.io' || h.startsWith('github.io.')) return false;
+	if (h.startsWith('github.')) return true;
 	return extraGitHubHosts().includes(h);
 }
 
@@ -344,6 +346,10 @@ export function getBranchUpstreamRemote(cwd) {
 		// it exits non-zero on a detached HEAD, which is exactly what we want.
 		const branch = runGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], cwd).trim();
 		if (!branch || branch === 'HEAD') return null; // detached HEAD
+		// branch.<name>.remote alone is not enough: it can be left behind without
+		// branch.<name>.merge, in which case @{upstream} does not actually exist.
+		// Ask git to resolve the upstream first, as the documented selection rule says.
+		runGit(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], cwd);
 		const remote = runGit(['config', '--get', `branch.${branch}.remote`], cwd).trim();
 		// A "." remote means the branch tracks another local branch.
 		return remote && remote !== '.' ? remote : null;
