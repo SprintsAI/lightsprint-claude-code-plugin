@@ -97,8 +97,25 @@ All skills operate on the connected workspace.
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:ask <subcommand>` | Create and manage read-only Codebase Ask threads |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
+
+### Codebase Ask
+
+Codebase Ask provides read-only Q&A across every repository in a stack. Use the `/lightsprint:ask` skill or run the CLI directly:
+
+| Command | Description |
+|---|---|
+| `lightsprint ask list [--limit N] [--offset N]` | List Ask threads in the active workspace |
+| `lightsprint ask create [--stack <ref>] [--title <text>]` | Create a thread for the default stack or a specific stack |
+| `lightsprint ask get <threadId>` | Show a thread's details |
+| `lightsprint ask messages <threadId> [--last N]` | List all or the latest messages in a thread |
+| `lightsprint ask messages <threadId> --content <text>` | Send a message and stream the agent's response |
+| `lightsprint ask cancel <threadId>` | Cancel the thread's active agent turn |
+| `lightsprint ask delete <threadId>` | Permanently delete a thread |
+
+All Ask subcommands support `--output json` for machine-readable output. Sending a message starts a read-only agent turn; it does not modify code.
 
 ### Claiming tasks
 
@@ -134,7 +151,8 @@ lightsprint-claude-code-plugin/
 │   ├── update/SKILL.md         # /lightsprint:update
 │   ├── get/SKILL.md            # /lightsprint:get
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   ├── comment/SKILL.md        # /lightsprint:comment
+│   └── ask/SKILL.md            # /lightsprint:ask
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
