@@ -90,13 +90,24 @@ All skills operate on the connected workspace.
 
 | Command | Description |
 |---|---|
-| `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
-| `/lightsprint:projects` | List projects in the workspace |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
-| `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
-| `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:tasks` | List and filter workspace tasks by status, assignee, project, stack, dependencies, or complexity. |
+| `/lightsprint:projects` | List projects, optionally filtered by `active`, `completed`, or `archived` status. |
+| `/lightsprint:stacks` | List stacks, or use `stacks get <id\|prefix\|name>` for details. |
+| `/lightsprint:create <title>` | Create a task with an optional description, complexity, status, project, dependencies, or stack. |
+| `/lightsprint:update <id>` | Update task fields, assignees, and dependencies. |
+| `/lightsprint:get <id>` | Get complete task details, including status, description, todos, related files, and complexity. |
+| `/lightsprint:claim <id>` | Claim a task, set it to `in_progress`, and show its full details. |
+| `/lightsprint:current-task` | Show the task associated with the active Claude Code session. |
+| `/lightsprint:comment <id> <text>` | Add a comment to a task. |
+| `/lightsprint:link-pr <id> <url>` | Link a GitHub pull request to a task. |
+| `/lightsprint:review-hub signals <id>` | Inspect review signals for a task. |
+| `/lightsprint:agent <action>` | Launch, stop, configure, or create a PR from an agent session. |
+| `/lightsprint:ask <action>` | List, create, inspect, message, cancel, or delete read-only Ask threads. |
+| `/lightsprint:status` | Show the local CLI connection and installation status. |
+| `/lightsprint:connect` | Authorize and select the active Lightsprint workspace. |
+| `/lightsprint:whoami` | Show the connected account and workspace. |
+
+All commands support `--output json` for machine-readable output. Mutating commands support `--dry-run` where applicable, and `--fields` limits the fields returned by task queries. Run `lightsprint <command> --help` for command-specific options.
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -134,7 +145,11 @@ lightsprint-claude-code-plugin/
 │   ├── update/SKILL.md         # /lightsprint:update
 │   ├── get/SKILL.md            # /lightsprint:get
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   ├── comment/SKILL.md        # /lightsprint:comment
+│   ├── current-task/SKILL.md   # /lightsprint:current-task
+│   ├── projects/SKILL.md       # /lightsprint:projects
+│   ├── agent/SKILL.md          # /lightsprint:agent
+│   └── ask/SKILL.md            # /lightsprint:ask
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
