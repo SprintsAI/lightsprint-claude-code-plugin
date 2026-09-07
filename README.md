@@ -86,7 +86,7 @@ Defaults to `https://app.lightsprint.ai`.
 
 ### Skills (slash commands)
 
-Task-management skills operate on the connected workspace.
+All skills operate on the connected workspace.
 
 | Command | Description |
 |---|---|
@@ -97,12 +97,6 @@ Task-management skills operate on the connected workspace.
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
-
-The plugin also includes `/lightsprint:wait-what`, an explicitly invoked
-conversation helper that asks Claude to re-pitch its last explanation in plain
-English with the missing context. This skill is reproduced from
-[mattpocock/skills](https://github.com/mattpocock/skills/tree/main/skills/productivity/wait-what)
-under the MIT license included beside the skill.
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -140,8 +134,7 @@ lightsprint-claude-code-plugin/
 │   ├── update/SKILL.md         # /lightsprint:update
 │   ├── get/SKILL.md            # /lightsprint:get
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   ├── comment/SKILL.md        # /lightsprint:comment
-│   └── wait-what/              # /lightsprint:wait-what + upstream license
+│   └── comment/SKILL.md        # /lightsprint:comment
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
