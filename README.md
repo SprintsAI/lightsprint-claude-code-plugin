@@ -88,17 +88,52 @@ Defaults to `https://app.lightsprint.ai`.
 
 All skills operate on the connected workspace.
 
+**Tasks**
+
 | Command | Description |
 |---|---|
 | `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
-| `/lightsprint:projects` | List projects in the workspace |
 | `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
+| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, dependencies, complexity |
+| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>`, plus schema-change flag, position, and dependencies |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
+| `/lightsprint:current-task` | Get the task linked to this Claude Code session, discovered from the session PID — no task ID needed |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:delete <id>` | Delete a task permanently from the board |
+| `/lightsprint:projects` | List projects in the workspace |
+
+**Pull requests**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:link-pr` | Link a GitHub pull request to a task |
+| `/lightsprint:unlink-pr` | Remove a linked pull request from a task |
+| `/lightsprint:merge` | Merge the pull request linked to a task. Supports direct merge and the GitHub merge queue |
+| `/lightsprint:review-hub-signals` | PR signals for a task's linked PR — CI checks, reviews, comments, deployments |
+| `/lightsprint:review-hub-scores` | AI readiness analysis for a task's linked PR — score, summaries, callouts, suggested actions |
+
+**Cloud agents and Ask**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:agent` | Launch or stop a cloud agent on a task |
+| `/lightsprint:agent-settings` | Show which agent providers are configured and their default models |
+| `/lightsprint:agent-create-pr` | Open a pull request from a cloud agent's working branch |
+| `/lightsprint:ask` | Create, list, and send messages to read-only Codebase Ask threads |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
+
+### CLI flags for agents
+
+The `lightsprint` CLI is written to be driven by agents, so every command takes the same global flags:
+
+| Flag | Purpose |
+|---|---|
+| `--output json\|text` | Output format. Defaults to `text`; `--json` is shorthand for `--output json` |
+| `--fields f1,f2` | Return only the named fields, to keep a large task out of the context window. Implies `--output json` |
+| `--dry-run` | Validate inputs without calling the API (`create`, `update`, `claim`, `comment`) |
+
+`lightsprint describe` dumps the available command names as JSON, and `lightsprint describe <command>` dumps one command's parameters, types, required fields, and valid enum values — so a schema can be read at runtime instead of from documentation that may have drifted.
 
 ### Claiming tasks
 
@@ -121,27 +156,35 @@ lightsprint-claude-code-plugin/
 ├── scripts/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
 │   ├── ls-cli.js               # Task management commands (exports cliMain)
+│   ├── cc-start.js  cc-end.js  cc-event.js  cc-pr-created.js
+│   │                           # Hook handlers, invoked as `lightsprint cc-*`
+│   ├── cc-daemon.js            # Background task-sync daemon (~/.lightsprint/daemon.log)
 │   ├── compile.sh              # Build script for lightsprint binary
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
 │       ├── config.js           # Per-folder token resolution + on-demand auth trigger
 │       ├── client.js           # HTTP client with automatic token refresh
+│       ├── options.js          # Global flag parsing (--output, --json, --dry-run, --fields)
+│       ├── output.js           # Text/JSON rendering
+│       ├── schema.js           # Command schemas behind `describe` and per-command help
 │       ├── task-map.js         # CC↔LS task ID mapping
 │       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+├── skills/                     # One directory per /lightsprint: command
+│   ├── tasks/  create/  get/  update/  claim/  current-task/  comment/  delete/
+│   ├── projects/  link-pr/  unlink-pr/  merge/
+│   ├── review-hub-signals/  review-hub-scores/
+│   └── agent/  agent-settings/  agent-create-pr/  ask/
+├── pi-extension/               # The pi equivalent of this plugin, same functionality
+├── docs/                       # Longer-form plugin docs
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
+├── npx-install.js              # `npx lightsprint` entry point
+├── CLAUDE.md                   # Repo guidance for coding agents
 ├── package.json
 └── README.md
 ```
 
-Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
+The CLI itself runs on Node.js built-ins — `fetch`, `crypto`, and `fs`. The only npm dependency is `@sentry/node`, used by the background sync daemon (`scripts/cc-daemon.js`) for crash reporting.
 
 ### Local files
 
