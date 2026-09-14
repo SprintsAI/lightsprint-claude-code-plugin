@@ -214,18 +214,24 @@ echo ""
 
 CURRENT_DIR="$(pwd)"
 
+# Repo detection lives in scripts/lib/git-remote.js — the same code the CLI uses —
+# so bash, PowerShell and the CLI can never disagree about which repo this is.
+DETECT_SCRIPT="$PLUGIN_DIR/scripts/detect-repo.js"
+DETECT_STDERR="$(mktemp)"
 REPO_FULL_NAME=""
-if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-  REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
-  if [[ -n "$REMOTE_URL" ]]; then
-    CLEANED="${REMOTE_URL%.git}"
-    CLEANED="${CLEANED##*github.com/}"
-    CLEANED="${CLEANED##*github.com:}"
-    if [[ "$CLEANED" == *"/"* && "$CLEANED" != "$REMOTE_URL" ]]; then
-      REPO_FULL_NAME="$CLEANED"
-    fi
+DETECT_REASON=""
+if ! command -v node &>/dev/null; then
+  DETECT_REASON="node was not found on PATH, so Lightsprint could not inspect this repository's git remotes. Install Node.js 18+ (https://nodejs.org), then run 'lightsprint connect' from your repo."
+elif [[ ! -f "$DETECT_SCRIPT" ]]; then
+  DETECT_REASON="Plugin files are missing from $PLUGIN_DIR (no scripts/detect-repo.js). Re-run this installer."
+else
+  # One invocation: the repo name on stdout, the reason on stderr.
+  REPO_FULL_NAME=$(node "$DETECT_SCRIPT" 2>"$DETECT_STDERR" || true)
+  if [[ -z "$REPO_FULL_NAME" ]]; then
+    DETECT_REASON=$(cat "$DETECT_STDERR")
   fi
 fi
+rm -f "$DETECT_STDERR"
 
 if [[ -n "$REPO_FULL_NAME" ]]; then
   echo "─────────────────────────────────────────"
@@ -237,11 +243,18 @@ if [[ -n "$REPO_FULL_NAME" ]]; then
   node "$PLUGIN_DIR/scripts/lightsprint.js" connect </dev/tty
 else
   echo "─────────────────────────────────────────"
-  echo "  No git repository detected"
+  echo "  No GitHub repository detected"
   echo "─────────────────────────────────────────"
   echo ""
-  echo "  To connect a repo to Lightsprint, open Claude Code"
-  echo "  inside a git repository and run:"
+  if [[ -n "$DETECT_REASON" ]]; then
+    # Indent, leaving blank separator lines blank.
+    echo "$DETECT_REASON" | sed 's/^./  &/'
+    echo ""
+    echo "  Once this repo has a GitHub remote, connect it from Claude Code with:"
+  else
+    echo "  To connect a repo to Lightsprint, open Claude Code"
+    echo "  inside a git repository and run:"
+  fi
   echo ""
   echo "    /lightsprint:tasks"
   echo ""

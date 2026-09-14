@@ -70,6 +70,35 @@ The active workspace is stored in a single connection file (`~/.lightsprint/conn
 
 Run `lightsprint connect` again to authorize and switch to a different workspace, or `lightsprint disconnect` to clear the active connection. Use `lightsprint status` / `lightsprint whoami` to see which workspace is currently connected.
 
+### Repository detection
+
+Connecting needs a GitHub repository. The plugin inspects **every** remote in the working tree — not just `origin` — and understands every URL form git accepts (`https://`, `ssh://` with or without a port, `git://`, `git+ssh://`, scp-style `git@host:owner/repo.git`, embedded credentials, trailing `.git` or `/`, and repo names containing dots). SSH host aliases from `~/.ssh/config` (e.g. `git@github-work:owner/repo.git`) are resolved via `ssh -G`.
+
+When several remotes could match, the first of these wins:
+
+1. the remote your current branch tracks
+2. `origin`
+3. `upstream`
+4. the only GitHub remote, if there is exactly one
+
+Anything else resolves deterministically and tells you which remote it picked. If your branch tracks a remote other than `origin`, the plugin says which repo it chose and how to change it — the answer would otherwise shift when you switch branches. Remotes that are not GitHub (GitLab, Bitbucket, local paths) are skipped and listed in the error message if none match.
+
+Conventional GitHub Enterprise hosts such as `github.acme.com` and
+`github.internal` are recognized automatically. If your Enterprise installation
+uses another hostname, opt it in explicitly:
+
+```bash
+export LIGHTSPRINT_GITHUB_HOSTS=github.acme.com,code.acme.internal
+```
+
+Note that Lightsprint links repos by `owner/repo` name alone, so an enterprise repo connects against the workspace repo of the same name.
+
+To see what the plugin detects for the current folder:
+
+```bash
+node ~/.claude/plugins/marketplaces/lightsprint/scripts/detect-repo.js --explain
+```
+
 ### Optional: Custom base URL
 
 For self-hosted Lightsprint instances:

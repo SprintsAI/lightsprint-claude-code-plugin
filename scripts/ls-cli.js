@@ -210,7 +210,7 @@ export async function cliMain(command, args, context = {}) {
 				}
 			}
 		} catch { /* never block exit on error reporting */ }
-		outputError(classifyError(err), err.message, {}, opts);
+		outputError(err.code || classifyError(err), err.message, err.details || {}, opts);
 		process.exit(1);
 	}
 }
