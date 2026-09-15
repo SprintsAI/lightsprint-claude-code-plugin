@@ -90,15 +90,41 @@ All skills operate on the connected workspace.
 
 | Command | Description |
 |---|---|
-| `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
+| `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status`, `--stack <ref>`, `--limit N` |
 | `/lightsprint:projects` | List projects in the workspace |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
+| `/lightsprint:create <title>` | Create a new task. Options: `--description`, `--complexity`, `--status`, `--stack <ref>` |
+| `/lightsprint:update <id>` | Update a task. Options: `--title`, `--description`, `--status`, `--complexity`, `--assignee` |
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
-| `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
+| `/lightsprint:claim <id>` | Claim a task — sets it to `in_progress` and shows full details |
+| `/lightsprint:current-task` | Get the Lightsprint task linked to the current Claude Code session (auto-discovers via session PID) |
+| `/lightsprint:delete <id>` | Delete a task permanently from the workspace board |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:link-pr` | Link a GitHub PR to a task. Options: `--task`, `--pr-url`, `--force` |
+| `/lightsprint:unlink-pr` | Remove a linked GitHub PR from a task |
+| `/lightsprint:merge <id>` | Merge the GitHub PR linked to a task |
+| `/lightsprint:review-hub-scores <id>` | Get AI readiness analysis for a task's linked PR |
+| `/lightsprint:review-hub-signals <id>` | Get PR signals (CI checks, reviews, comments, deployments) |
+| `/lightsprint:agent` | Launch, stop, or check settings for cloud agents. Options: `--task`, `--provider`, `--auto-merge` |
+| `/lightsprint:agent-settings` | Check which cloud agent providers are configured and their default models |
+| `/lightsprint:agent-create-pr` | Create a GitHub PR from a cloud agent's working branch |
+| `/lightsprint:ask` | Interact with Lightsprint Codebase Ask threads. Subcommands: `list`, `create`, `get`, `messages`, `cancel`, `delete` |
 
-Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
+### Additional CLI commands
+
+Beyond slash skills, the `lightsprint` CLI exposes workflow commands that run outside Claude Code's slash-command system:
+
+| Command | Description |
+|---|---|
+| `lightsprint stacks` | List stacks in the workspace; `stacks get <ref>` to inspect one |
+| `lightsprint connect` | Authorize and select a workspace |
+| `lightsprint disconnect` | Clear the active workspace connection |
+| `lightsprint whoami` / `status` | Show the connected workspace and user |
+| `lightsprint config` | Manage local preferences (`get`, `set`, `delete`, `list`) |
+| `lightsprint open <taskId>` | Open a task in the Lightsprint web app |
+| `lightsprint describe <command>` | Show detailed help for any command |
+| `lightsprint upgrade` | Update the plugin to the latest version |
+
+All commands support `--output json` for machine-readable output.
 
 ### Claiming tasks
 
@@ -122,19 +148,30 @@ lightsprint-claude-code-plugin/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
 │   ├── ls-cli.js               # Task management commands (exports cliMain)
 │   ├── compile.sh              # Build script for lightsprint binary
-│   └── lib/
-│       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
-│       ├── config.js           # Per-folder token resolution + on-demand auth trigger
-│       ├── client.js           # HTTP client with automatic token refresh
-│       ├── task-map.js         # CC↔LS task ID mapping
-│       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   └── lib/                    # Auth, config, client, validation, output, schema, etc.
+├── skills/                     # Slash-command skill definitions
+│   ├── tasks/
+│   ├── create/
+│   ├── update/
+│   ├── get/
+│   ├── claim/
+│   ├── current-task/
+│   ├── delete/
+│   ├── comment/
+│   ├── link-pr/
+│   ├── unlink-pr/
+│   ├── merge/
+│   ├── review-hub-scores/
+│   ├── review-hub-signals/
+│   ├── agent/
+│   ├── agent-settings/
+│   ├── agent-create-pr/
+│   ├── ask/
+│   └── projects/
+├── docs/
+│   └── LOCAL_TESTING.md
+├── pi-extension/
+│   └── index.ts
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
@@ -161,6 +198,11 @@ curl -fsSL https://raw.githubusercontent.com/SprintsAI/lightsprint-claude-code-p
 This removes the plugin from Claude Code and clears the active workspace connection in `~/.lightsprint/connection.json`.
 
 ---
+
+## Related
+
+- [Lightsprint](https://github.com/SprintsAI/lightsprint) — Main application and platform
+- [AIGateway](https://github.com/SprintsAI/aigateway) — Standalone metered AI provider gateway
 
 ## Troubleshooting
 
