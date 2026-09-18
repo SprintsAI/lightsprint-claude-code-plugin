@@ -34,7 +34,7 @@ frontend and backend repos.
    from the repo" can be ambiguous.
 
 3. **Most task commands are already workspace-agnostic.** `get`/`update`/
-   `claim`/`comment`/`delete`/`link-pr`/`cloud-agents`/`merge` use
+   `claim`/`comment`/`delete`/`link-pr`/`lightsprint-agents`/`merge` use
    `/api/tasks/{taskId}/...` (globally addressable, membership-gated) and
    `create` already posts `workspaceId`. Only `tasks` (list), `projects`,
    `create-plan`, and `resolve` are genuinely repo-scoped.
@@ -132,7 +132,7 @@ Every reference below is deleted or rewritten against `connection.json`:
 | `create-plan` | `/api/repos/{repoId}/plans` | workspace/stack-scoped plan create |
 | `whoami` / `status` | `/api/repo-key/info` | `/api/workspaces/{wsId}` + `/api/user/profile` |
 | `open` | `/repos/{repoId}` | `/workspaces/{wsId}/tasks` |
-| `get`/`update`/`claim`/`comment`/`delete`/`link-pr`/`cloud-agents`/`merge` | `/api/tasks/{id}/...` | unchanged (already membership-gated) |
+| `get`/`update`/`claim`/`comment`/`delete`/`link-pr`/`lightsprint-agents`/`merge` | `/api/tasks/{id}/...` | unchanged (already membership-gated) |
 | `create` | `POST /api/tasks` (+`workspaceId`) | unchanged + optional `stackId` |
 | `stacks` | — | new: `GET /api/workspaces/{wsId}/stacks` |
 | `stacks get <id>` | — | new: `GET /api/workspaces/{wsId}/stacks/{id}` |

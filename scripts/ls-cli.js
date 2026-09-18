@@ -330,13 +330,13 @@ Commands:
       lightsprint comment --task abc123 --body "This is now complete"
 
   agent launch [options]
-    Launch a cloud agent for a task
+    Launch a Lightsprint agent for a task
     Options:
       --task <taskId>         Task ID (required)
-      --provider <provider>   Provider: anthropic, cursor, codex (required)
+      --provider <provider>   Provider: claude, codex (required)
       --model <model>         Override default model
       --base-ref <ref>        Base branch
-      --environment-id <id>   Environment for codex/anthropic
+      --environment-id <id>   Environment for codex
       --auto-merge            Arm auto-merge: the autopilot merges the PR once it
                               reaches 100/100 readiness with green CI. Needs merge
                               permission (any role but member_no_merge)
@@ -345,24 +345,24 @@ Commands:
       --yes                   Confirm arming auto-merge on more than one task
 
   agent stop [options]
-    Stop the active cloud agent for a task
+    Stop the active Lightsprint agent for a task
     Options:
       --task <taskId>         Task ID (required)
-      --provider <provider>   Provider: anthropic, cursor, codex (required)
+      --provider <provider>   Provider: claude, codex (required)
 
   agent settings [options]
-    Show cloud agent provider configuration
+    Show Lightsprint agent provider configuration
     Options:
       --provider <provider>   Also fetch environments for this provider
 
   agent create-pr [options]
-    Create a GitHub PR from a cloud agent's working branch
+    Create a GitHub PR from a Lightsprint agent's working branch
     Options:
       --task <taskId>         Task ID (required)
-      --provider <provider>   Provider: anthropic, cursor, codex (required)
+      --provider <provider>   Provider: claude, codex (required)
       --agent-id <id>         Agent ID (required)
     Example:
-      lightsprint agent create-pr --task LIG-024 --provider anthropic --agent-id abc123
+      lightsprint agent create-pr --task LIG-024 --provider claude --agent-id abc123
 
   merge <taskId>
     Merge the GitHub PR linked to a task
@@ -1893,7 +1893,7 @@ async function cmdAgentLaunch(args, opts) {
 	}
 
 	if (taskIdInputs.length === 0) throw new Error('Usage: lightsprint agent launch --task <taskId> [--task <taskId> ...] --provider <provider>');
-	if (!provider) throw new Error('--provider is required. Allowed values: anthropic, cursor, codex');
+	if (!provider) throw new Error('--provider is required. Allowed values: claude, codex');
 
 	for (const id of taskIdInputs) validateId(id, 'Task ID');
 	validateProvider(provider);
@@ -1913,13 +1913,13 @@ async function cmdAgentLaunch(args, opts) {
 	}
 
 	if (opts.dryRun) {
-		return outputDryRun('agent launch', body, taskIdInputs.map(id => `POST /api/tasks/${id}/cloud-agents/${provider}`).join(', '), opts);
+		return outputDryRun('agent launch', body, taskIdInputs.map(id => `POST /api/tasks/${id}/lightsprint-agents/${provider}`).join(', '), opts);
 	}
 
 	// Launch single task directly (preserve original behavior)
 	if (taskIdInputs.length === 1) {
 		const taskId = await resolveTaskId(taskIdInputs[0]);
-		const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}`, {
+		const result = await apiRequest(`/api/tasks/${taskId}/lightsprint-agents/${provider}`, {
 			method: 'POST',
 			body: JSON.stringify(body)
 		});
@@ -1937,7 +1937,7 @@ async function cmdAgentLaunch(args, opts) {
 	// Launch multiple tasks concurrently
 	const outcomes = await Promise.allSettled(taskIdInputs.map(async (input) => {
 		const taskId = await resolveTaskId(input);
-		const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}`, {
+		const result = await apiRequest(`/api/tasks/${taskId}/lightsprint-agents/${provider}`, {
 			method: 'POST',
 			body: JSON.stringify(body)
 		});
@@ -1977,17 +1977,17 @@ async function cmdAgentStop(args, opts) {
 	}
 
 	if (!taskIdInput) throw new Error('Usage: lightsprint agent stop --task <taskId> --provider <provider>');
-	if (!provider) throw new Error('--provider is required. Allowed values: anthropic, cursor, codex');
+	if (!provider) throw new Error('--provider is required. Allowed values: claude, codex');
 
 	validateId(taskIdInput, 'Task ID');
 	validateProvider(provider);
 
 	if (opts.dryRun) {
-		return outputDryRun('agent stop', { taskId: taskIdInput, provider }, `DELETE /api/tasks/${taskIdInput}/cloud-agents/${provider}`, opts);
+		return outputDryRun('agent stop', { taskId: taskIdInput, provider }, `DELETE /api/tasks/${taskIdInput}/lightsprint-agents/${provider}`, opts);
 	}
 
 	const taskId = await resolveTaskId(taskIdInput);
-	const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}`, {
+	const result = await apiRequest(`/api/tasks/${taskId}/lightsprint-agents/${provider}`, {
 		method: 'DELETE'
 	});
 
@@ -2010,11 +2010,11 @@ async function cmdAgentSettings(args, opts) {
 
 	if (providerFilter) validateProvider(providerFilter);
 
-	const settings = await apiRequest('/api/cloud-agents/settings');
+	const settings = await apiRequest('/api/lightsprint-agents/settings');
 
 	let environments = null;
 	if (providerFilter) {
-		const envResult = await apiRequest(`/api/cloud-agents/settings/environments?provider=${providerFilter}`);
+		const envResult = await apiRequest(`/api/lightsprint-agents/settings/environments?engine=${providerFilter}`);
 		environments = envResult.environments;
 	}
 
@@ -2025,7 +2025,7 @@ async function cmdAgentSettings(args, opts) {
 
 	outputResult(data, opts, () => {
 		console.log('Provider     Configured  Default Model');
-		for (const [name, info] of Object.entries(settings.providers)) {
+		for (const [name, info] of Object.entries(settings.engines)) {
 			const configured = info.configured ? 'yes' : 'no';
 			console.log(`${name.padEnd(13)}${configured.padEnd(12)}${info.defaultModel}`);
 		}
@@ -2059,7 +2059,7 @@ async function cmdAgentCreatePr(args, opts) {
 	}
 
 	if (!taskIdInput) throw new Error('Usage: lightsprint agent create-pr --task <taskId> --provider <provider> --agent-id <agentId>');
-	if (!provider) throw new Error('--provider is required. Allowed values: anthropic, cursor, codex');
+	if (!provider) throw new Error('--provider is required. Allowed values: claude, codex');
 	if (!agentId) throw new Error('--agent-id is required.');
 
 	validateId(taskIdInput, 'Task ID');
@@ -2067,11 +2067,11 @@ async function cmdAgentCreatePr(args, opts) {
 	validateId(agentId, 'Agent ID');
 
 	if (opts.dryRun) {
-		return outputDryRun('agent create-pr', { taskId: taskIdInput, provider, agentId }, `POST /api/tasks/${taskIdInput}/cloud-agents/${provider}/${agentId}/create-pr`, opts);
+		return outputDryRun('agent create-pr', { taskId: taskIdInput, provider, agentId }, `POST /api/tasks/${taskIdInput}/lightsprint-agents/${provider}/${agentId}/create-pr`, opts);
 	}
 
 	const taskId = await resolveTaskId(taskIdInput);
-	const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}/${agentId}/create-pr`, {
+	const result = await apiRequest(`/api/tasks/${taskId}/lightsprint-agents/${provider}/${agentId}/create-pr`, {
 		method: 'POST'
 	});
 

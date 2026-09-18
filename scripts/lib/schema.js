@@ -167,13 +167,13 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	'agent-launch': {
-		description: 'Launch a cloud agent for a task',
+		description: 'Launch a Lightsprint agent for a task',
 		params: {
 			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
-			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Cloud agent provider' },
+			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Lightsprint agent provider' },
 			model: { type: 'string', flag: '--model', description: 'Override default model for the provider' },
 			baseRef: { type: 'string', flag: '--base-ref', description: 'Base branch (defaults to repo default branch)' },
-			environmentId: { type: 'string', flag: '--environment-id', description: 'Environment ID (for codex/anthropic)' },
+			environmentId: { type: 'string', flag: '--environment-id', description: 'Environment ID (for codex)' },
 			autoMerge: { type: 'boolean', flag: '--auto-merge', description: 'Arm auto-merge: the autopilot merges the PR at 100/100 readiness with green CI. Bare flag — takes no value. Needs merge permission (any role but member_no_merge). Use when the user asks for an "auto-merge", "automerge", or "yolo" launch. Omitting this and --no-auto-merge inherits the task\'s current setting — it does NOT mean off.' },
 			noAutoMerge: { type: 'boolean', flag: '--no-auto-merge', description: 'Launch with auto-merge explicitly off, overriding a setting already armed on the task.' },
 			yes: { type: 'boolean', flag: '--yes', description: 'Confirm arming auto-merge across more than one --task. Without it, --auto-merge with multiple tasks is refused.' }
@@ -182,16 +182,16 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	'agent-stop': {
-		description: 'Stop the active cloud agent for a task',
+		description: 'Stop the active Lightsprint agent for a task',
 		params: {
 			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID' },
-			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Cloud agent provider' }
+			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Lightsprint agent provider' }
 		},
 		supportsDryRun: true,
 		supportsJsonBody: false
 	},
 	'agent-settings': {
-		description: 'Show cloud agent provider configuration',
+		description: 'Show Lightsprint agent provider configuration',
 		params: {
 			provider: { type: 'enum', flag: '--provider', values: VALID_PROVIDERS, description: 'Also fetch environments for this provider' }
 		},
@@ -199,10 +199,10 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	'agent-create-pr': {
-		description: 'Create a GitHub PR from a cloud agent working branch',
+		description: 'Create a GitHub PR from a Lightsprint agent working branch',
 		params: {
 			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
-			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Cloud agent provider' },
+			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Lightsprint agent provider' },
 			agentId: { type: 'string', required: true, flag: '--agent-id', description: 'Agent ID' }
 		},
 		supportsDryRun: true,

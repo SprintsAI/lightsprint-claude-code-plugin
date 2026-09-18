@@ -20,7 +20,7 @@ Usage: `review-hub signals <taskId> [--refresh]`
 |-------|-------------|
 | signals | Array of signal objects (category, status, title, body, URL, actor) |
 | lastViewedAt | When the review hub was last viewed (for unread detection) |
-| ownerAgentType | Cloud agent provider that owns this PR (`anthropic`, `cursor`, `codex`, or null) |
+| ownerAgentType | Lightsprint agent provider that owns this PR (`claude`, `codex`, or null) |
 | additions / deletions / changedFiles | PR diff stats |
 
 Each signal has: `id`, `category` (ci/review/deployment/bot_comment/human_comment/custom), `status` (success/failure/pending/running/neutral/warning), `title`, `signalBody`, `url`, `actorLogin`, `scoreValue`, `scoreLabel`.
