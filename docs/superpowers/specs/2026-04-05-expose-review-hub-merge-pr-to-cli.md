@@ -5,7 +5,7 @@
 
 ## Problem
 
-The Lightsprint app has review hub (signals + AI scores), cloud agent create-pr, and PR merge functionality available via API, but none of it is accessible from the CLI plugin. AI agents working in Claude Code sessions cannot inspect PR readiness, merge PRs, or create PRs from agent branches without leaving the terminal.
+The Lightsprint app has review hub (signals + AI scores), Lightsprint agent create-pr, and PR merge functionality available via API, but none of it is accessible from the CLI plugin. AI agents working in Claude Code sessions cannot inspect PR readiness, merge PRs, or create PRs from agent branches without leaving the terminal.
 
 ## Scope
 
@@ -13,7 +13,7 @@ Add 5 new capabilities to the CLI and corresponding skills:
 
 1. `review-hub signals` — read/refresh PR signals
 2. `review-hub scores` — read/trigger AI readiness scores
-3. `agent create-pr` — create PR from cloud agent branch
+3. `agent create-pr` — create PR from Lightsprint agent branch
 4. `merge` — merge a task's linked PR
 5. `agent settings` — already exists in CLI, just needs a dedicated skill
 
@@ -59,7 +59,7 @@ Item 5 (`agent settings`) already has a CLI command and is documented in the `ag
     }
   ],
   "lastViewedAt": "timestamp|null",
-  "ownerAgentType": "cursor|anthropic|codex|cc_session|null",
+  "ownerAgentType": "claude|codex|cc_session|null",
   "ownerAgentId": "string|null",
   "additions": "number|null",
   "deletions": "number|null",
@@ -169,20 +169,20 @@ AI Readiness for task LIG-024 (PR #42):
 
 ### Command: `lightsprint agent create-pr <taskId>`
 
-**Purpose:** Create a GitHub PR from a cloud agent's working branch.
+**Purpose:** Create a GitHub PR from a Lightsprint agent's working branch.
 
 **CLI routing:** New subcommand under existing `agent` router.
 
 **Args:**
 - `--task <taskId>` — task ID (required)
-- `--provider <anthropic|cursor|codex>` — provider (required)
+- `--provider <claude|codex>` — provider (required)
 - `--agent-id <id>` — agent ID (required)
 - Standard global options: `--output json|text`, `--dry-run`
 
 **Resolution flow:**
 1. Validate task ID, provider, agent ID
 2. Resolve task ID
-3. `POST /api/tasks/{taskId}/cloud-agents/{provider}/{agentId}/create-pr`
+3. `POST /api/tasks/{taskId}/lightsprint-agents/{provider}/{agentId}/create-pr`
 4. Return PR details
 
 **JSON output shape:**

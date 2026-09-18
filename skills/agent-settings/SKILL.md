@@ -1,15 +1,15 @@
 ---
 name: agent-settings
-description: Check which cloud agent providers (anthropic, cursor, codex) are configured and their default models. Use before launching agents.
+description: Check which Lightsprint agent providers (claude and codex) are configured and their default models. Use before launching agents.
 ---
 
-Run this command to check cloud agent provider configuration:
+Run this command to check Lightsprint agent provider configuration:
 
 ```bash
 lightsprint agent settings $ARGUMENTS
 ```
 
-Usage: `agent settings [--provider <anthropic|cursor|codex>]`
+Usage: `agent settings [--provider <claude|codex>]`
 
 - `--provider <provider>` — Also fetch available environments for this provider. Required for codex (needs `--environment-id` to launch).
 
@@ -17,7 +17,7 @@ Usage: `agent settings [--provider <anthropic|cursor|codex>]`
 
 | Field | Description |
 |-------|-------------|
-| providers | Object keyed by provider name, each with `configured` (boolean) and `defaultModel` (string) |
+| engines | Object keyed by provider name, each with `configured` (boolean), `defaultModel` (string), and `authMode` |
 | environments | (Only with `--provider`) Object with `provider` name and `items` array of environment objects |
 
 ## Examples
