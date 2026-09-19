@@ -50,7 +50,6 @@ if (credsFile) {
 		// Delete credentials file immediately after reading
 		try { unlinkSync(credsFile); } catch { /* ignore */ }
 	} catch {
-		// Fall back to env vars / config
 	}
 }
 
@@ -77,16 +76,13 @@ let watchdogInterval = null;
 // Local auth token — required on all daemon HTTP endpoints (except /health for liveness probes)
 const DAEMON_AUTH_TOKEN = randomBytes(32).toString('hex');
 
-// WebSocket request-response tracking
 let msgIdCounter = 0;
 const pendingRequests = new Map(); // id -> { resolve, reject, timer }
 
-// -- Task Sync State --
 let cachedParentLsTaskId = null; // null=unchecked, ''=none found
 
 const log = createLogger('cc-daemon');
 
-// -- Event Queue (buffers events during WS disconnect) --
 const EVENT_QUEUE_MAX = 100;
 const eventQueue = [];
 
@@ -146,7 +142,6 @@ async function shutdown(reason) {
 
 	if (watchdogInterval) clearInterval(watchdogInterval);
 
-	// Tell server session ended
 	if (ws?.readyState === WebSocket.OPEN && lsSessionId) {
 		try {
 			await sendRequest('session:end', {
@@ -155,7 +150,6 @@ async function shutdown(reason) {
 		} catch { /* ignore */ }
 	}
 
-	// Cleanup
 	try { removeSessionMappings(CC_SESSION_ID); } catch (err) {
 		log('Failed to clean task mappings', { error: err.message });
 	}
@@ -166,8 +160,6 @@ async function shutdown(reason) {
 	log('Cleanup complete');
 	process.exit(0);
 }
-
-// -- Token Refresh --
 
 async function refreshTokenIfNeeded() {
 	const fiveMinutes = 5 * 60 * 1000;
@@ -224,8 +216,6 @@ async function refreshTokenIfNeeded() {
 		return false;
 	}
 }
-
-// -- WebSocket Client --
 
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -330,7 +320,6 @@ async function connectWebSocket() {
 	ws.onclose = (event) => {
 		log('WebSocket closed', { code: event.code, reason: event.reason });
 		addBreadcrumb('websocket', 'WebSocket closed', 'warning', { code: event.code, reason: event.reason });
-		// Reject all pending requests
 		for (const [id, pending] of pendingRequests) {
 			clearTimeout(pending.timer);
 			pending.reject(new Error('WebSocket closed'));
@@ -348,8 +337,6 @@ async function connectWebSocket() {
 		// onclose will follow
 	};
 }
-
-// -- Local HTTP Server --
 
 async function startHttpServer() {
 	const MAX_PORT_RETRIES = 3;
@@ -498,8 +485,6 @@ function readBody(req) {
 	});
 }
 
-// -- Task Sync Handlers --
-
 /**
  * Get the LS task ID linked to this CC session.
  * Caches result: null=unchecked, ''=checked but none found, string=found.
@@ -615,7 +600,6 @@ async function handleTaskUpdate(payload) {
 		}
 	}
 
-	// Status sync
 	const ccStatus = payload.tool_input?.status;
 	if (ccStatus) {
 		const lsStatus = ccToLsStatus(ccStatus);
@@ -654,8 +638,6 @@ async function handleTaskCompleted(payload) {
 	}
 }
 
-// -- PID Watchdog --
-
 function startWatchdog() {
 	if (!CC_PID_VALID) return;
 
@@ -668,12 +650,9 @@ function startWatchdog() {
 	}, 5000);
 }
 
-// -- Main --
-
 export async function main() {
 	log('Starting daemon', { ccSessionId: CC_SESSION_ID, workspaceId: WORKSPACE_ID, ccPid: CC_PID });
 
-	// Initialize Sentry crash reporting
 	initSentry({ baseUrl: BASE_URL });
 	wireCrashHandlers();
 	setSentryContext({
@@ -704,11 +683,9 @@ export async function main() {
 		workspaceId: WORKSPACE_ID,
 	});
 
-	// Start local HTTP server
 	const port = await startHttpServer();
 	log('HTTP server started', { port });
 
-	// Connect WebSocket
 	connectWebSocket();
 
 	// Save session state (includes daemon auth token for CLI callers)
@@ -722,10 +699,8 @@ export async function main() {
 		daemonToken: DAEMON_AUTH_TOKEN,
 	});
 
-	// Start PID watchdog
 	startWatchdog();
 
-	// Handle signals
 	process.on('SIGTERM', () => shutdown('sigterm'));
 	process.on('SIGINT', () => shutdown('sigint'));
 	process.on('SIGHUP', () => shutdown('sighup'));

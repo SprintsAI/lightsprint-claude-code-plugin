@@ -1,4 +1,3 @@
-// scripts/__tests__/config-atomicity.test.js
 import { describe, test, expect, beforeAll, beforeEach, afterEach } from 'bun:test';
 import { readFileSync, writeFileSync, existsSync, unlinkSync, readdirSync, statSync, mkdirSync } from 'fs';
 import { join } from 'path';
@@ -31,7 +30,6 @@ describe('writeConnection atomicity', () => {
 		} else {
 			try { unlinkSync(CONNECTION_FILE); } catch { /* already gone */ }
 		}
-		// Clean up any leftover temp files
 		try {
 			const files = readdirSync(CONFIG_DIR);
 			for (const f of files) {

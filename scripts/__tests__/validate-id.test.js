@@ -10,8 +10,6 @@ import {
 	validateVersion,
 } from '../lib/validate.js';
 
-// ─── validateId ─────────────────────────────────────────────────────────
-
 describe('validateId', () => {
 	describe('valid IDs', () => {
 		test('alphanumeric', () => {
@@ -134,8 +132,6 @@ describe('validateId', () => {
 	});
 });
 
-// ─── validateTitle ──────────────────────────────────────────────────────
-
 describe('validateTitle', () => {
 	test('accepts normal string', () => {
 		expect(validateTitle('My Task Title')).toBe('My Task Title');
@@ -175,8 +171,6 @@ describe('validateTitle', () => {
 		expect(validateTitle('')).toBe('');
 	});
 });
-
-// ─── validateDescription ────────────────────────────────────────────────
 
 describe('validateDescription', () => {
 	test('accepts normal string', () => {
@@ -222,8 +216,6 @@ describe('validateDescription', () => {
 	});
 });
 
-// ─── validateCommentBody ────────────────────────────────────────────────
-
 describe('validateCommentBody', () => {
 	test('accepts normal string', () => {
 		expect(validateCommentBody('A comment.')).toBe('A comment.');
@@ -264,8 +256,6 @@ describe('validateCommentBody', () => {
 	});
 });
 
-// ─── validateStatus ─────────────────────────────────────────────────────
-
 describe('validateStatus', () => {
 	test.each(['backlog', 'todo', 'in_progress', 'in_review', 'done'])('accepts valid status: %s', (status) => {
 		expect(validateStatus(status)).toBe(status);
@@ -284,8 +274,6 @@ describe('validateStatus', () => {
 	});
 });
 
-// ─── validateComplexity ─────────────────────────────────────────────────
-
 describe('validateComplexity', () => {
 	test.each(['low', 'medium', 'high'])('accepts valid complexity: %s', (complexity) => {
 		expect(validateComplexity(complexity)).toBe(complexity);
@@ -299,8 +287,6 @@ describe('validateComplexity', () => {
 		expect(() => validateComplexity('nope')).toThrow('low, medium, high');
 	});
 });
-
-// ─── validateBaseUrl ────────────────────────────────────────────────────
 
 describe('validateBaseUrl', () => {
 	test('accepts https URL', () => {
@@ -339,8 +325,6 @@ describe('validateBaseUrl', () => {
 		expect(() => validateBaseUrl(null)).toThrow('Base URL is required');
 	});
 });
-
-// ─── validateVersion ────────────────────────────────────────────────────
 
 describe('validateVersion', () => {
 	test('accepts 1.0.0', () => {

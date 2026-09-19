@@ -25,8 +25,6 @@ export function setValidationBreadcrumbReporter(fn) {
 	_onBreadcrumb = fn;
 }
 
-// ─── ID validation ──────────────────────────────────────────────────────
-
 const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
@@ -46,8 +44,6 @@ export function validateId(id, label = 'ID') {
 	}
 	return id;
 }
-
-// ─── Enum validation ────────────────────────────────────────────────────
 
 export const VALID_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'done'];
 export const VALID_COMPLEXITIES = ['low', 'medium', 'high'];
@@ -122,8 +118,6 @@ export function validatePosition(position) {
 	return validatePositiveInt(position, 'position');
 }
 
-// ─── Project filter validation ──────────────────────────────────────────
-
 /**
  * Validate a project filter string (comma-separated project IDs or 'none').
  * Splits, trims, deduplicates, caps at 10 values.
@@ -150,8 +144,6 @@ export function validateProjectFilter(value) {
 	}
 	return tokens.join(',');
 }
-
-// ─── PID validation ─────────────────────────────────────────────────────
 
 /**
  * Validate that a PID is a positive integer string (safe for shell interpolation).
@@ -197,8 +189,6 @@ export function validateAssignee(value) {
 	return value;
 }
 
-// ─── Length validation ──────────────────────────────────────────────────
-
 export const MAX_TITLE_LENGTH = 500;
 export const MAX_DESCRIPTION_LENGTH = 50000;
 export const MAX_COMMENT_LENGTH = 10000;
@@ -228,28 +218,17 @@ export function validateLength(value, maxLength, fieldName, options = {}) {
 	return value;
 }
 
-/**
- * Validate a task title.
- */
 export function validateTitle(title) {
 	return validateLength(title, MAX_TITLE_LENGTH, 'Title');
 }
 
-/**
- * Validate a task description.
- */
 export function validateDescription(description) {
 	return validateLength(description, MAX_DESCRIPTION_LENGTH, 'Description', { allowNewlines: true });
 }
 
-/**
- * Validate a comment body.
- */
 export function validateCommentBody(body) {
 	return validateLength(body, MAX_COMMENT_LENGTH, 'Comment body', { allowNewlines: true });
 }
-
-// ─── URL validation ─────────────────────────────────────────────────────
 
 /**
  * Validate that a base URL uses HTTPS (allows localhost/127.0.0.1 for development).
@@ -279,8 +258,6 @@ export function validateBaseUrl(url) {
 		throw new Error(`Invalid base URL: "${url}".`);
 	}
 }
-
-// ─── Version validation ─────────────────────────────────────────────────
 
 /**
  * Validate a semver-like version string.
