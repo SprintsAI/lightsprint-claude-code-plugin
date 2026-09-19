@@ -132,12 +132,10 @@ function showSubcommandHelp(commandName) {
 }
 
 export async function cliMain(command, args, context = {}) {
-	// Handle help flags
 	if (!command || command === 'help' || command === '--help' || command === '-h') {
 		return showHelp();
 	}
 
-	// Resolve aliases
 	const resolvedCommand = COMMAND_ALIASES[command] || command;
 
 	// Handle hyphenated compound command aliases (review-hub-signals -> review-hub signals)
@@ -214,8 +212,6 @@ export async function cliMain(command, args, context = {}) {
 		process.exit(1);
 	}
 }
-
-// ─── help ────────────────────────────────────────────────────────────────
 
 function showHelp() {
 	console.log(`Lightsprint CLI — Manage tasks in your Lightsprint workspace
@@ -474,13 +470,10 @@ Global Flags:
 `);
 }
 
-// ─── tasks ───────────────────────────────────────────────────────────────
-
 async function cmdTasks(args, opts) {
 	const workspaceId = await getWorkspaceId();
 	const params = new URLSearchParams();
 
-	// Parse args
 	let status = null;
 	let limit = 20;
 	let offset = 0;
@@ -521,7 +514,6 @@ async function cmdTasks(args, opts) {
 		}
 	}
 
-	// Validate numeric inputs
 	limit = validatePositiveInt(limit, 'limit');
 	offset = validatePositiveInt(offset, 'offset');
 	if (assigneeFilter) validateAssignee(assigneeFilter);
@@ -670,8 +662,6 @@ async function cmdTasks(args, opts) {
 	});
 }
 
-// ─── projects ───────────────────────────────────────────────────────────
-
 const VALID_PROJECT_STATUSES = ['active', 'completed', 'archived'];
 
 async function cmdProjects(args, opts) {
@@ -725,8 +715,6 @@ async function cmdProjects(args, opts) {
 	});
 }
 
-// ─── stacks ──────────────────────────────────────────────────────────────
-
 async function cmdStacks(args, opts) {
 	const workspaceId = await getWorkspaceId();
 	const data = await apiRequest(`/api/workspaces/${workspaceId}/stacks`);
@@ -750,8 +738,6 @@ async function cmdStackGet(args, opts) {
 	});
 }
 
-// ─── create ──────────────────────────────────────────────────────────────
-
 async function cmdCreate(args, opts) {
 	if (args.length === 0) {
 		throw new Error('Usage: lightsprint create --title <text> [--description <text>] [--complexity low|medium|high] [--status backlog|todo|in_progress|in_review|done] [--project <projectId>] [--depends-on <id1,id2,...>] [--parent <taskId>] [--cc-pid <pid>]');
@@ -759,7 +745,6 @@ async function cmdCreate(args, opts) {
 
 	const workspaceId = await getWorkspaceId();
 
-	// Check for --json-body
 	let jsonBody = null;
 
 	// Parse args: supports both --title <text> and positional <title>
@@ -933,8 +918,6 @@ async function cmdCreate(args, opts) {
 	});
 }
 
-// ─── update ──────────────────────────────────────────────────────────────
-
 async function cmdUpdate(args, opts) {
 	// Parse flags — supports both --task <id> and positional <taskId>
 	let taskIdInput = null;
@@ -1024,7 +1007,6 @@ async function cmdUpdate(args, opts) {
 
 	const taskId = await resolveTaskId(taskIdInput);
 
-	// Apply field updates
 	if (hasPatch) {
 		await apiRequest(`/api/tasks/${taskId}`, {
 			method: 'PATCH',
@@ -1032,7 +1014,6 @@ async function cmdUpdate(args, opts) {
 		});
 	}
 
-	// Apply dependency changes
 	const depsAdded = [];
 	const depsRemoved = [];
 	const errors = [];
@@ -1089,8 +1070,6 @@ async function cmdUpdate(args, opts) {
 		for (const e of errors) console.error(`Failed to ${e.action} ${e.input}: ${e.message}`);
 	});
 }
-
-// ─── get ─────────────────────────────────────────────────────────────────
 
 async function cmdGet(args, opts) {
 	let taskIdInput = null;
@@ -1171,8 +1150,6 @@ async function cmdGet(args, opts) {
 	});
 }
 
-// ─── current-task ────────────────────────────────────────────────────────
-
 async function cmdCurrentTask(args, opts) {
 	// Parse --cc-pid flag (passed by skill via $PPID)
 	let ccPidArg;
@@ -1206,8 +1183,6 @@ async function cmdCurrentTask(args, opts) {
 
 	outputResult(result, opts, () => formatTaskText(task));
 }
-
-// ─── claim ───────────────────────────────────────────────────────────────
 
 async function cmdClaim(args, opts) {
 	let taskIdInput = null;
@@ -1261,7 +1236,6 @@ async function cmdClaim(args, opts) {
 		body: JSON.stringify(claimBody)
 	});
 
-	// Get full task details
 	const data = await apiRequest(`/api/tasks/${taskId}`);
 	const task = data.task;
 
@@ -1280,8 +1254,6 @@ async function cmdClaim(args, opts) {
 		console.log(`  metadata: { lightsprint_task_id: "${task.id}" }`);
 	});
 }
-
-// ─── link-pr ─────────────────────────────────────────────────────────────
 
 async function cmdLinkPr(args, opts) {
 	let taskIdInput = null;
@@ -1305,7 +1277,6 @@ async function cmdLinkPr(args, opts) {
 
 	validateId(taskIdInput, 'Task ID');
 
-	// Basic validation of PR URL format
 	if (!/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(prUrl)) {
 		throw new Error('Invalid GitHub PR URL. Expected format: https://github.com/owner/repo/pull/123');
 	}
@@ -1329,8 +1300,6 @@ async function cmdLinkPr(args, opts) {
 		if (pr.title) console.log(`Title: ${pr.title}`);
 	});
 }
-
-// ─── unlink-pr ───────────────────────────────────────────────────────────
 
 async function cmdUnlinkPr(args, opts) {
 	let taskIdInput = null;
@@ -1357,8 +1326,6 @@ async function cmdUnlinkPr(args, opts) {
 	const result = { success: true, taskId, message: `Unlinked PR from task ${taskIdInput}.` };
 	outputResult(result, opts, () => console.log(result.message));
 }
-
-// ─── delete ─────────────────────────────────────────────────────────────
 
 async function cmdDelete(args, opts) {
 	let taskIdInput = null;
@@ -1390,8 +1357,6 @@ async function cmdDelete(args, opts) {
 	const result = { success: true, taskId, message: `Deleted task ${taskIdInput}.` };
 	outputResult(result, opts, () => console.log(result.message));
 }
-
-// ─── comment ─────────────────────────────────────────────────────────────
 
 async function cmdComment(args, opts) {
 	let taskIdInput = null;
@@ -1438,8 +1403,6 @@ async function cmdComment(args, opts) {
 	outputResult(result, opts, () => console.log(result.message));
 }
 
-// ─── whoami ──────────────────────────────────────────────────────────────
-
 async function cmdWhoami(opts) {
 	const workspaceId = await getWorkspaceId();
 	const [ws, user] = await Promise.all([
@@ -1456,8 +1419,6 @@ async function cmdWhoami(opts) {
 		console.log(`Workspace: ${result.workspace.name ?? workspaceId} (${result.workspace.id})`);
 	});
 }
-
-// ─── open ────────────────────────────────────────────────────────────────
 
 function cmdOpen(opts) {
 	const cwd = process.cwd();
@@ -1493,8 +1454,6 @@ function cmdOpen(opts) {
 		}
 	});
 }
-
-// ─── status ──────────────────────────────────────────────────────────────
 
 function cmdStatus(opts) {
 	const cwd = process.cwd();
@@ -1540,8 +1499,6 @@ function cmdStatus(opts) {
 	});
 }
 
-// ─── connect ─────────────────────────────────────────────────────────────
-
 async function cmdConnect(args, opts) {
 	let baseUrl = null;
 	for (let i = 0; i < args.length; i++) {
@@ -1566,8 +1523,6 @@ async function cmdConnect(args, opts) {
 	}
 }
 
-// ─── disconnect ──────────────────────────────────────────────────────
-
 async function cmdDisconnect(args, opts) {
 	const conn = readConnection();
 	clearConnection();
@@ -1579,8 +1534,6 @@ async function cmdDisconnect(args, opts) {
 		else console.log(`Disconnected workspace: ${conn.workspaceName || conn.workspaceId}`);
 	});
 }
-
-// ─── upgrade ─────────────────────────────────────────────────────────
 
 const UPGRADE_REPO = 'SprintsAI/lightsprint-claude-code-plugin';
 const UPGRADE_BINARY = 'lightsprint';
@@ -1622,7 +1575,6 @@ async function cmdUpgrade(currentVersion, opts) {
 	log(`Latest version:  v${latestVersion}`);
 	log(`Downloading ${assetName}...`);
 
-	// Download binary
 	const downloadUrl = `https://github.com/${UPGRADE_REPO}/releases/download/${tag}/${assetName}`;
 	const checksumUrl = `${downloadUrl}.sha256`;
 
@@ -1644,7 +1596,6 @@ async function cmdUpgrade(currentVersion, opts) {
 		throw new Error(`Checksum verification failed!\n  Expected: ${expected}\n  Actual:   ${actual}`);
 	}
 
-	// Determine install paths
 	const home = homedir();
 	const pluginCacheDir = join(home, '.claude', 'plugins', 'cache', 'lightsprint', 'lightsprint', latestVersion);
 	const pluginBinDir = join(pluginCacheDir, 'bin');
@@ -1674,7 +1625,6 @@ async function cmdUpgrade(currentVersion, opts) {
 		const tarPath = join(tmpDir, 'source.tar.gz');
 		writeFileSync(tarPath, Buffer.from(await tarRes.arrayBuffer()));
 
-		// Remove old version directory if it exists (start fresh)
 		try { rmSync(pluginCacheDir, { recursive: true, force: true }); } catch {}
 		mkdirSync(pluginCacheDir, { recursive: true });
 		execFileSync('tar', ['-xzf', tarPath, '-C', pluginCacheDir, '--strip-components=1'], { stdio: 'ignore' });
@@ -1700,13 +1650,11 @@ async function cmdUpgrade(currentVersion, opts) {
 		}
 
 	} finally {
-		// Clean up temp directory
 		try { rmSync(tmpDir, { recursive: true }); } catch {}
 	}
 
 	ensureInstalledPluginsJson(latestVersion, { logger: log });
 
-	// Clean up old version directories
 	const pluginParentDir = join(homedir(), '.claude', 'plugins', 'cache', 'lightsprint', 'lightsprint');
 	try {
 		for (const entry of readdirSync(pluginParentDir)) {
@@ -1721,8 +1669,6 @@ async function cmdUpgrade(currentVersion, opts) {
 		console.log(`\nUpgraded lightsprint v${currentVersion === 'dev' ? 'dev' : currentVersion} → v${latestVersion}`);
 	});
 }
-
-// ─── config ──────────────────────────────────────────────────────────────
 
 function cmdConfig(args, opts) {
 	const subcommand = args[0];
@@ -1782,12 +1728,9 @@ function cmdConfig(args, opts) {
 	}
 }
 
-// ─── describe ────────────────────────────────────────────────────────────
-
 function cmdDescribe(args) {
 	const commandName = args[0];
 	if (!commandName) {
-		// List all commands
 		const names = getAllCommandNames();
 		console.log(JSON.stringify({ commands: names }));
 		return;
@@ -1829,8 +1772,6 @@ function cmdDescribe(args) {
 	console.error(JSON.stringify({ error: 'not_found', message: `Unknown command: "${commandName}". Use 'lightsprint describe' to list all commands.` }));
 	process.exit(1);
 }
-
-// ─── agent ──────────────────────────────────────────────────────────────
 
 async function cmdAgent(args, opts) {
 	const subcommand = args[0];
@@ -1934,7 +1875,6 @@ async function cmdAgentLaunch(args, opts) {
 		return;
 	}
 
-	// Launch multiple tasks concurrently
 	const outcomes = await Promise.allSettled(taskIdInputs.map(async (input) => {
 		const taskId = await resolveTaskId(input);
 		const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}`, {
@@ -2083,8 +2023,6 @@ async function cmdAgentCreatePr(args, opts) {
 	});
 }
 
-// ─── merge ───────────────────────────────────────────────────────────────
-
 async function cmdMerge(args, opts) {
 	let taskIdInput = null;
 
@@ -2119,8 +2057,6 @@ async function cmdMerge(args, opts) {
 		if (pr.prUrl) console.log(pr.prUrl);
 	});
 }
-
-// ─── review-hub ──────────────────────────────────────────────────────────
 
 async function cmdReviewHub(args, opts) {
 	const subcommand = args[0];
@@ -2265,8 +2201,6 @@ async function cmdReviewHubScores(args, opts) {
 		}
 	});
 }
-
-// ─── ask ──────────────────────────────────────────────────────────────
 
 async function cmdAsk(args, opts) {
 	const sub = args[0];
@@ -2510,8 +2444,6 @@ async function cmdAskDelete(args, opts) {
 		console.log(`Deleted thread ${threadIdInput}.`);
 	});
 }
-
-// ─── helpers ─────────────────────────────────────────────────────────────
 
 function ensureInstalledPluginsJson(version, { logger = console.log } = {}) {
 	const home = homedir();

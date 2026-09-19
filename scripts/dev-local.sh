@@ -25,8 +25,6 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 echo "==> Switching to local server: ${LOCAL_URL}"
 
-# ── 1. Back up current config ────────────────────────────────────────────────
-
 mkdir -p "${BACKUP_DIR}"
 
 if [ -f "${CONFIG_FILE}" ]; then
@@ -38,8 +36,6 @@ if [ -f "${REPOS_FILE}" ]; then
   cp "${REPOS_FILE}" "${BACKUP_DIR}/repos.json"
   echo "    Backed up repos.json"
 fi
-
-# ── 2. Rewrite baseUrl to localhost ──────────────────────────────────────────
 
 # config.json — simple key
 if [ -f "${CONFIG_FILE}" ]; then
@@ -69,14 +65,10 @@ if [ -f "${REPOS_FILE}" ]; then
   echo "    repos.json → all baseUrls: ${LOCAL_URL}"
 fi
 
-# ── 3. Build from source ────────────────────────────────────────────────────
-
 echo ""
 echo "==> Building binary from source..."
 cd "${PROJECT_DIR}"
 bash scripts/compile.sh
-
-# ── 4. Done ──────────────────────────────────────────────────────────────────
 
 echo ""
 echo "==> Done. Plugin now points at ${LOCAL_URL}"
