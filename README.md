@@ -88,15 +88,37 @@ Defaults to `https://app.lightsprint.ai`.
 
 All skills operate on the connected workspace.
 
+**Task management**
+
 | Command | Description |
 |---|---|
 | `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
 | `/lightsprint:projects` | List projects in the workspace |
+| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
 | `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:current-task` | Show the Lightsprint task linked to the current Claude Code session (auto-discovered via session PID — no ID needed) |
+| `/lightsprint:delete <id>` | Permanently delete a task from the workspace board |
+
+**Pull requests**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:link-pr` | Link a GitHub PR to a task. `--task <id> --pr-url <url> [--force]` (`--force` moves a PR already linked to another task) |
+| `/lightsprint:unlink-pr <id>` | Remove the linked GitHub PR from a task |
+| `/lightsprint:merge <id>` | Merge the GitHub PR linked to a task (supports direct merge and the GitHub merge queue) |
+| `/lightsprint:review-hub-signals <id>` | Show PR signals (CI checks, reviews, comments, deployments) for a task's linked PR. `[--refresh]` |
+| `/lightsprint:review-hub-scores <id>` | Show AI readiness analysis (score, summaries, callouts, suggested actions) for a task's linked PR. `[--refresh]` |
+
+**Cloud agents**
+
+| Command | Description |
+|---|---|
+| `/lightsprint:agent` | Launch, stop, or inspect cloud agents on a task. Providers: `anthropic`, `cursor`, `codex`. Launch with `--task <id> --provider <provider> [--model <model>]` |
+| `/lightsprint:agent-settings` | Show which cloud agent providers are configured and their default models |
+| `/lightsprint:agent-create-pr` | Open a GitHub PR from a cloud agent's working branch. `--task <id> --provider <provider> --agent-id <id>` |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -128,13 +150,24 @@ lightsprint-claude-code-plugin/
 │       ├── client.js           # HTTP client with automatic token refresh
 │       ├── task-map.js         # CC↔LS task ID mapping
 │       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+├── skills/                     # one dir per /lightsprint: slash command
+│   ├── tasks/                  # /lightsprint:tasks
+│   ├── projects/               # /lightsprint:projects
+│   ├── get/                    # /lightsprint:get
+│   ├── create/                 # /lightsprint:create
+│   ├── update/                 # /lightsprint:update
+│   ├── claim/                  # /lightsprint:claim
+│   ├── comment/                # /lightsprint:comment
+│   ├── current-task/           # /lightsprint:current-task
+│   ├── delete/                 # /lightsprint:delete
+│   ├── link-pr/                # /lightsprint:link-pr
+│   ├── unlink-pr/              # /lightsprint:unlink-pr
+│   ├── merge/                  # /lightsprint:merge
+│   ├── review-hub-signals/     # /lightsprint:review-hub-signals
+│   ├── review-hub-scores/      # /lightsprint:review-hub-scores
+│   ├── agent/                  # /lightsprint:agent
+│   ├── agent-settings/         # /lightsprint:agent-settings
+│   └── agent-create-pr/        # /lightsprint:agent-create-pr
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
