@@ -92,11 +92,22 @@ All skills operate on the connected workspace.
 |---|---|
 | `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
 | `/lightsprint:projects` | List projects in the workspace |
+| `/lightsprint:ask` | List, create, inspect, message, cancel, or delete Codebase Ask threads |
 | `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
 | `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:current-task` | Find the task linked to the current Claude Code session |
+| `/lightsprint:delete <id>` | Permanently delete a task |
+| `/lightsprint:link-pr` | Link a GitHub pull request to a task |
+| `/lightsprint:unlink-pr` | Remove a pull request link from a task |
+| `/lightsprint:agent` | Launch, stop, or inspect cloud agents |
+| `/lightsprint:agent-settings` | Check configured cloud agent providers and models |
+| `/lightsprint:agent-create-pr` | Create a pull request from a completed cloud agent branch |
+| `/lightsprint:review-hub-scores` | Get AI readiness analysis for a task's linked pull request |
+| `/lightsprint:review-hub-signals` | Inspect CI, review, comment, and deployment signals for a pull request |
+| `/lightsprint:merge` | Merge the pull request linked to a task |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -129,12 +140,21 @@ lightsprint-claude-code-plugin/
 │       ├── task-map.js         # CC↔LS task ID mapping
 │       └── status-mapper.js    # Status mapping logic
 ├── skills/
+│   ├── agent*/SKILL.md         # Cloud-agent commands
+│   ├── ask/SKILL.md            # /lightsprint:ask
 │   ├── tasks/SKILL.md          # /lightsprint:tasks
 │   ├── create/SKILL.md         # /lightsprint:create
 │   ├── update/SKILL.md         # /lightsprint:update
 │   ├── get/SKILL.md            # /lightsprint:get
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   ├── comment/SKILL.md        # /lightsprint:comment
+│   ├── current-task/SKILL.md   # /lightsprint:current-task
+│   ├── delete/SKILL.md         # /lightsprint:delete
+│   ├── link-pr/SKILL.md        # /lightsprint:link-pr
+│   ├── unlink-pr/SKILL.md      # /lightsprint:unlink-pr
+│   ├── merge/SKILL.md          # /lightsprint:merge
+│   ├── projects/SKILL.md       # /lightsprint:projects
+│   └── review-hub-*/SKILL.md   # Review Hub commands
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
