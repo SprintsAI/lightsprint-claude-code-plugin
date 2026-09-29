@@ -90,13 +90,38 @@ All skills operate on the connected workspace.
 
 | Command | Description |
 |---|---|
-| `/lightsprint:tasks` | List tasks from the workspace board. Options: `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>`, `--limit N` |
-| `/lightsprint:projects` | List projects in the workspace |
-| `/lightsprint:create <title>` | Create a new task. Options: `--description <text>`, `--complexity low\|medium\|high`, `--status backlog\|todo\|in_progress\|in_review\|done`, `--stack <ref>` |
-| `/lightsprint:update <id>` | Update a task. Options: `--title <text>`, `--description <text>`, `--status <status>`, `--complexity <level>`, `--assignee <name>` |
-| `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
-| `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
-| `/lightsprint:comment <id> <text>` | Add a comment to a task |
+| `/lightsprint:tasks` | List tasks from the workspace board. Supports status, stack, project, assignee, dependency, sorting, pagination, and JSON output filters. |
+| `/lightsprint:projects` | List workspace projects. |
+| `/lightsprint:create <title>` | Create a task with an optional description, complexity, status, stack, project, or dependencies. |
+| `/lightsprint:update <id>` | Update a task's title, description, status, complexity, assignee, project, schema-change flag, or dependencies. |
+| `/lightsprint:get <id>` | Get full task details, including todos, related files, dependencies, and complexity. |
+| `/lightsprint:claim <id>` | Claim a task, set it to `in_progress`, and link it to the current Claude Code session. |
+| `/lightsprint:current-task` | Find the task linked to the current Claude Code session. |
+| `/lightsprint:comment <id> <text>` | Add a comment to a task. |
+| `/lightsprint:delete <id>` | Delete a task permanently. |
+| `/lightsprint:link-pr <id> <url>` | Link a GitHub pull request to a task. |
+| `/lightsprint:unlink-pr <id>` | Remove a linked pull request from a task. |
+| `/lightsprint:agent <action>` | Launch, stop, or inspect settings for a cloud agent. |
+| `/lightsprint:agent-create-pr` | Create a GitHub pull request from a cloud agent branch. |
+| `/lightsprint:merge <id>` | Merge the pull request linked to a task. |
+| `/lightsprint:review-hub-signals <id>` | Inspect CI, review, comment, and deployment signals for a linked pull request. |
+| `/lightsprint:review-hub-scores <id>` | Get the AI readiness analysis for a linked pull request. |
+| `/lightsprint:ask <action>` | List, create, inspect, or message Codebase Ask threads. |
+
+The CLI also exposes these workspace commands:
+
+```bash
+lightsprint status
+lightsprint whoami
+lightsprint connect
+lightsprint disconnect
+lightsprint stacks
+lightsprint config get <key>
+lightsprint describe <command>
+```
+
+Commands support `--output json` for machine-readable results. Run `lightsprint help`
+or `lightsprint <command> --help` for the complete option list.
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -134,14 +159,27 @@ lightsprint-claude-code-plugin/
 │   ├── update/SKILL.md         # /lightsprint:update
 │   ├── get/SKILL.md            # /lightsprint:get
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   ├── current-task/SKILL.md   # /lightsprint:current-task
+│   ├── comment/SKILL.md        # /lightsprint:comment
+│   ├── delete/SKILL.md         # /lightsprint:delete
+│   ├── link-pr/SKILL.md        # /lightsprint:link-pr
+│   ├── unlink-pr/SKILL.md      # /lightsprint:unlink-pr
+│   ├── agent/SKILL.md          # /lightsprint:agent
+│   ├── agent-settings/SKILL.md # /lightsprint:agent-settings
+│   ├── agent-create-pr/SKILL.md # /lightsprint:agent-create-pr
+│   ├── merge/SKILL.md          # /lightsprint:merge
+│   ├── ask/SKILL.md            # /lightsprint:ask
+│   ├── projects/SKILL.md       # /lightsprint:projects
+│   ├── review-hub-signals/SKILL.md # /lightsprint:review-hub-signals
+│   └── review-hub-scores/SKILL.md  # /lightsprint:review-hub-scores
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
 └── README.md
 ```
 
-Zero npm dependencies — uses Node.js built-in `fetch`, `crypto`, and `fs`.
+The CLI uses Node.js built-in `fetch`, `crypto`, and `fs` for its core behavior.
+The package also declares `@sentry/node` for error reporting.
 
 ### Local files
 
