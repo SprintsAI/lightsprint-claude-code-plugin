@@ -177,3 +177,7 @@ claude --debug
 ```
 
 Check that `hooks/hooks.json` is being picked up and `PostToolUse` matchers are registered.
+
+### MCP integrations return "User refused permission to run tool"
+
+In hosted Claude Code environments there is no interactive "Allow" prompt, so any MCP tool not already in the settings allow-list silently fails. See [`docs/recommended-mcp-permissions.md`](docs/recommended-mcp-permissions.md) for the read-only Stripe, PostHog, and Figma entries we recommend pre-approving, plus a drop-in [`docs/recommended-settings.local.json`](docs/recommended-settings.local.json) template.

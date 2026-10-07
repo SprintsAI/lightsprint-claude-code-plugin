@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__pipedream-stripe__retrieve_options",
+      "mcp__pipedream-stripe__stripe-retrieve-balance",
+      "mcp__pipedream-stripe__stripe-retrieve-checkout-session",
+      "mcp__pipedream-stripe__stripe-retrieve-checkout-session-line-items",
+      "mcp__pipedream-stripe__stripe-retrieve-customer",
+      "mcp__pipedream-stripe__stripe-retrieve-invoice",
+      "mcp__pipedream-stripe__stripe-retrieve-invoice-item",
+      "mcp__pipedream-stripe__stripe-retrieve-payment-intent",
+      "mcp__pipedream-stripe__stripe-retrieve-payout",
+      "mcp__pipedream-stripe__stripe-retrieve-price",
+      "mcp__pipedream-stripe__stripe-retrieve-product",
+      "mcp__pipedream-stripe__stripe-retrieve-refund",
+      "mcp__pipedream-stripe__stripe-list-balance-history",
+      "mcp__pipedream-stripe__stripe-list-customers",
+      "mcp__pipedream-stripe__stripe-list-invoices",
+      "mcp__pipedream-stripe__stripe-list-payment-intents",
+      "mcp__pipedream-stripe__stripe-list-payouts",
+      "mcp__pipedream-stripe__stripe-list-refunds",
+      "mcp__pipedream-stripe__stripe-search-customers",
+      "mcp__pipedream-stripe__stripe-search-subscriptions",
+      "mcp__pipedream-posthog__retrieve_options",
+      "mcp__pipedream-posthog__posthog-get-cohorts",
+      "mcp__pipedream-posthog__posthog-get-persons",
+      "mcp__pipedream-posthog__posthog-get-project-insight",
+      "mcp__pipedream-posthog__posthog-get-surveys",
+      "mcp__pipedream-posthog__posthog-list-organization-id-options",
+      "mcp__pipedream-posthog__posthog-list-project-insights",
+      "mcp__pipedream-posthog__posthog-create-query",
+      "mcp__pipedream-figma__retrieve_options",
+      "mcp__pipedream-figma__figma-list-comments"
+    ]
+  }
+}
