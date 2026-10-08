@@ -7,7 +7,7 @@
 
 import { createServer } from 'http';
 import { writeConnection, ensureConfigDir, getGitRepoFullName } from './config.js';
-import { findBrowserProfileForEmail, openBrowser } from './browser.js';
+import { findBrowserProfileForEmail, openBrowser, isSshSession } from './browser.js';
 import { findFreePort } from './cc-utils.js';
 
 /**
@@ -138,6 +138,11 @@ export async function authenticate(baseUrl = 'https://app.lightsprint.ai', optio
 	if (!openBrowser(authorizeUrl)) {
 		console.log('Open this URL in your browser:');
 		console.log(`  ${authorizeUrl}`);
+		if (isSshSession()) {
+			console.log(`Authorizing redirects the browser to a local callback on port ${port}.`);
+			console.log('If your browser runs on another computer, forward that port first:');
+			console.log(`  ssh -L ${port}:127.0.0.1:${port} <this-host>`);
+		}
 	}
 
 	const result = await waitForCallback(port);
