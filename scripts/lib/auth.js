@@ -6,7 +6,8 @@
  */
 
 import { createServer } from 'http';
-import { writeConnection, ensureConfigDir, getGitRepoFullName } from './config.js';
+import { writeConnection, ensureConfigDir } from './config.js';
+import { resolveGitHubRemote, describeRemoteResolution } from './git-remote.js';
 import { findBrowserProfileForEmail, openBrowser } from './browser.js';
 import { findFreePort } from './cc-utils.js';
 
@@ -125,9 +126,18 @@ export async function authenticate(baseUrl = 'https://app.lightsprint.ai', optio
 	const { cwd, quiet } = options;
 	ensureConfigDir();
 
-	const repoFullName = getGitRepoFullName(cwd);
+	const resolution = resolveGitHubRemote(cwd);
+	const repoFullName = resolution.fullName;
 	if (!repoFullName) {
-		throw new Error('Not a git repository with a GitHub remote. Lightsprint requires a git repo with an origin remote.');
+		// Carry the structured reason so `--output json` can emit it instead of prose.
+		const error = new Error(describeRemoteResolution(resolution));
+		error.code = 'repo_detection_failed';
+		error.details = { reason: resolution.reason, remotes: resolution.remotes };
+		throw error;
+	}
+	// A diagnostic, not the command's result — stderr keeps stdout parseable.
+	if (resolution.ambiguous && !quiet) {
+		console.error(describeRemoteResolution(resolution));
 	}
 
 	const port = await findFreePort();
