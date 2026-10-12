@@ -26,7 +26,6 @@ function readMap() {
 			return JSON.parse(readFileSync(MAP_FILE, 'utf-8'));
 		}
 	} catch {
-		// Corrupted file, start fresh
 	}
 	return {};
 }

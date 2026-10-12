@@ -93,7 +93,6 @@ async function refreshTokenIfNeeded() {
 			}
 		});
 
-		// Update in-memory config
 		cfg.accessToken = data.access_token;
 		cfg.refreshToken = data.refresh_token;
 		cfg.expiresAt = Date.now() + (data.expires_in * 1000);

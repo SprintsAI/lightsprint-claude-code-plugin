@@ -1,4 +1,3 @@
-// scripts/__tests__/client-resilience.test.js
 import { describe, test, expect } from 'bun:test';
 
 describe('safeJsonParse', () => {

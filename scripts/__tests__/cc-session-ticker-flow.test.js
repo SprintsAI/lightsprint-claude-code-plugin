@@ -16,8 +16,6 @@ import { randomBytes } from 'crypto';
  * 6. handleTaskCreate payload → API call with correct parent linkage
  */
 
-// ─── Session State I/O ──────────────────────────────────────────────────────
-
 import {
 	writeSessionState,
 	readSessionState,
@@ -89,12 +87,9 @@ describe('Session State I/O', () => {
 	});
 
 	test('deleteSessionState is safe for nonexistent files', () => {
-		// Should not throw
 		deleteSessionState('does-not-exist-12345');
 	});
 });
-
-// ─── findRunningDaemonForCcPid ──────────────────────────────────────────────
 
 describe('findRunningDaemonForCcPid', () => {
 	const testSessionId = `test-find-daemon-${randomBytes(8).toString('hex')}`;
@@ -148,8 +143,6 @@ describe('findRunningDaemonForCcPid', () => {
 	});
 });
 
-// ─── isPidAlive ─────────────────────────────────────────────────────────────
-
 describe('isPidAlive', () => {
 	test('returns true for own process', () => {
 		expect(isPidAlive(process.pid)).toBe(true);
@@ -169,8 +162,6 @@ describe('isPidAlive', () => {
 	});
 });
 
-// ─── Task ID Mapping ────────────────────────────────────────────────────────
-
 import { setMapping, getMapping, removeSessionMappings } from '../lib/task-map.js';
 
 const MAP_FILE = join(homedir(), '.lightsprint', 'task-map.json');
@@ -179,7 +170,6 @@ describe('Task ID Mapping (CC ↔ LS)', () => {
 	let originalMap;
 
 	beforeEach(() => {
-		// Backup existing map
 		try {
 			originalMap = readFileSync(MAP_FILE, 'utf-8');
 		} catch {
@@ -188,7 +178,6 @@ describe('Task ID Mapping (CC ↔ LS)', () => {
 	});
 
 	afterEach(() => {
-		// Restore original map
 		if (originalMap !== null) {
 			writeFileSync(MAP_FILE, originalMap);
 		} else {
@@ -225,8 +214,6 @@ describe('Task ID Mapping (CC ↔ LS)', () => {
 		expect(getMapping('session-remove', 'cc-2')).toBeNull();
 	});
 });
-
-// ─── cc-event.js: Event Forwarding ──────────────────────────────────────────
 
 describe('cc-event forwarding', () => {
 	const testSessionId = `test-event-fwd-${randomBytes(8).toString('hex')}`;
@@ -273,7 +260,6 @@ describe('cc-event forwarding', () => {
 	});
 
 	test('PostToolUse:TaskCreate event is forwarded to daemon', async () => {
-		// Import cc-event's main function
 		const { main } = await import('../cc-event.js');
 
 		// Simulate hook input via temp file (PermissionRequest-style)
@@ -320,8 +306,6 @@ describe('cc-event forwarding', () => {
 		}
 	});
 });
-
-// ─── Claim: Session Discovery & Linking ─────────────────────────────────────
 
 describe('Claim session discovery', () => {
 	const testSessionId = `test-claim-${randomBytes(8).toString('hex')}`;
@@ -370,8 +354,6 @@ describe('Claim session discovery', () => {
 	});
 });
 
-// ─── Status Mapping ─────────────────────────────────────────────────────────
-
 import { ccToLsStatus, lsToCcStatus } from '../lib/status-mapper.js';
 
 describe('Status mapping for subtask creation', () => {
@@ -392,8 +374,6 @@ describe('Status mapping for subtask creation', () => {
 		expect(lsToCcStatus('in_progress')).toBe('in_progress');
 	});
 });
-
-// ─── Integration: CLI claim with session linking ────────────────────────────
 
 describe('CLI claim integration', () => {
 	const CLI_PATH = join(import.meta.dir, '../lightsprint.js');
@@ -422,8 +402,6 @@ describe('CLI claim integration', () => {
 		expect(stderr.toLowerCase()).toContain('invalid');
 	});
 });
-
-// ─── Daemon Hardening ────────────────────────────────────────────────────────
 
 describe('Daemon hardening patterns', () => {
 	test('CC_PID_VALID pattern rejects NaN from undefined env var', () => {

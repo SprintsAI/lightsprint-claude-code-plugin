@@ -78,7 +78,6 @@ describe('reportError', () => {
 			repoId: 'test-repo',
 		});
 
-		// Should not throw
 		await reportError(sessionId, new Error('test'), 'cc-end');
 	});
 

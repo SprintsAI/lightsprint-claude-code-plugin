@@ -2,7 +2,6 @@
 
 set -e
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -13,12 +12,10 @@ REPO="SprintsAI/lightsprint-claude-code-plugin"
 
 echo -e "${BLUE}=== Lightsprint Claude Code Plugin Release ===${NC}\n"
 
-# Function to compare versions
 version_gt() {
   printf '%s\n%s' "$2" "$1" | sort -V | head -n1 | grep -q "^$2$"
 }
 
-# Get the latest tag
 LATEST_TAG=$(git tag --sort=-version:refname | head -1 2>/dev/null || echo "")
 
 if [ -z "$LATEST_TAG" ]; then
@@ -41,7 +38,6 @@ fi
 
 echo ""
 
-# Show recent tags
 echo -e "${BLUE}Recent tags:${NC}"
 git tag --sort=-version:refname | head -5 | while read tag; do
   echo "  • $tag"
@@ -54,10 +50,8 @@ echo "  • Minor (new feature): v0.3.1 → v0.4.0"
 echo "  • Major (breaking):    v0.3.1 → v1.0.0"
 echo ""
 
-# Get new version from user
 read -p "Enter new version tag (e.g., v0.3.2): " NEW_VERSION
 
-# Validate format
 if ! [[ "$NEW_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo -e "${RED}✗ Invalid version format. Use semantic versioning (e.g., v0.3.2)${NC}"
   exit 1
@@ -65,13 +59,11 @@ fi
 
 echo ""
 
-# Check if tag already exists
 if git rev-parse "$NEW_VERSION" >/dev/null 2>&1; then
   echo -e "${RED}✗ Tag $NEW_VERSION already exists${NC}"
   exit 1
 fi
 
-# Validate version is higher than current
 if [ "$CURRENT_VERSION" != "none" ]; then
   if ! version_gt "$NEW_VERSION" "$CURRENT_VERSION"; then
     echo -e "${RED}✗ Error: New version $NEW_VERSION must be higher than current version $CURRENT_VERSION${NC}"
@@ -83,7 +75,6 @@ fi
 echo -e "${GREEN}✓ Version validation passed${NC}"
 echo ""
 
-# Show what will be tagged
 CURRENT_COMMIT=$(git rev-parse --short HEAD)
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
@@ -93,7 +84,6 @@ echo "  Commit: $CURRENT_COMMIT"
 echo "  Tag: $NEW_VERSION"
 echo ""
 
-# Confirm
 read -p "Ready to tag and release? (yes/no): " CONFIRM
 
 if ! [[ "$CONFIRM" =~ ^[Yy]([Ee][Ss])?$ ]]; then
@@ -101,10 +91,8 @@ if ! [[ "$CONFIRM" =~ ^[Yy]([Ee][Ss])?$ ]]; then
   exit 0
 fi
 
-# Strip leading 'v' for package.json version
 SEMVER="${NEW_VERSION#v}"
 
-# Bump version in plugin.json and package.json
 echo -e "${BLUE}Bumping version to $SEMVER...${NC}"
 node -e "
 const fs = require('fs');

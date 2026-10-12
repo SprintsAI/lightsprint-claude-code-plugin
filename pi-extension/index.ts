@@ -25,15 +25,11 @@ import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 
-// ─── Constants ───────────────────────────────────────────────────────────
-
 const LS_CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), ".lightsprint");
 const VALID_STATUSES = ["backlog", "todo", "in_progress", "in_review", "done"] as const;
 const VALID_COMPLEXITIES = ["low", "medium", "high"] as const;
 const VALID_SORT_FIELDS = ["position", "updated_at", "created_at"] as const;
 const VALID_DEPS_FILTERS = ["has-dependencies", "has-no-dependencies", "has-dependents", "unblocked"] as const;
-
-// ─── Helpers ─────────────────────────────────────────────────────────────
 
 /**
  * Run the lightsprint CLI and return parsed JSON output.
@@ -128,14 +124,10 @@ async function sendDaemonEvent(
   }
 }
 
-// ─── Extension Entry Point ──────────────────────────────────────────────
-
 export default function lightsprintExtension(pi: ExtensionAPI) {
   // Track the pi session → lightsprint session mapping
   let piSessionId: string | null = null;
   let daemonState: { port: number; daemonToken?: string; lsSessionId?: string } | null = null;
-
-  // ─── Session Lifecycle ───────────────────────────────────────────────
 
   pi.on("session_start", async (_event, ctx) => {
     // Generate a stable session ID for this pi session
@@ -156,13 +148,10 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (_event, _ctx) => {
-    // Tell daemon to shut down
     if (daemonState) {
       await sendDaemonEvent(daemonState, "/session-end", {});
     }
   });
-
-  // ─── Activity Event Forwarding ───────────────────────────────────────
 
   // Forward tool execution events to daemon
   pi.on("tool_execution_end", async (event, _ctx) => {
@@ -194,9 +183,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     });
   });
 
-  // ─── Custom Tools ────────────────────────────────────────────────────
-
-  // --- lightsprint_tasks ---
   pi.registerTool({
     name: "lightsprint_tasks",
     label: "Lightsprint Tasks",
@@ -250,7 +236,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- lightsprint_get ---
   pi.registerTool({
     name: "lightsprint_get",
     label: "Lightsprint Get Task",
@@ -274,7 +259,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- lightsprint_create ---
   pi.registerTool({
     name: "lightsprint_create",
     label: "Lightsprint Create Task",
@@ -312,7 +296,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- lightsprint_update ---
   pi.registerTool({
     name: "lightsprint_update",
     label: "Lightsprint Update Task",
@@ -359,7 +342,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- lightsprint_claim ---
   pi.registerTool({
     name: "lightsprint_claim",
     label: "Lightsprint Claim Task",
@@ -378,7 +360,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- lightsprint_comment ---
   pi.registerTool({
     name: "lightsprint_comment",
     label: "Lightsprint Comment",
@@ -396,7 +377,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- lightsprint_current_task ---
   pi.registerTool({
     name: "lightsprint_current_task",
     label: "Lightsprint Current Task",
@@ -409,7 +389,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- lightsprint_link_pr ---
   pi.registerTool({
     name: "lightsprint_link_pr",
     label: "Lightsprint Link PR",
@@ -441,7 +420,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- lightsprint_unlink_pr ---
   pi.registerTool({
     name: "lightsprint_unlink_pr",
     label: "Lightsprint Unlink PR",
@@ -455,7 +433,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- lightsprint_whoami ---
   pi.registerTool({
     name: "lightsprint_whoami",
     label: "Lightsprint Whoami",
@@ -467,7 +444,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- lightsprint_config ---
   pi.registerTool({
     name: "lightsprint_config",
     label: "Lightsprint Config",
@@ -487,8 +463,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
       return toolResult(runLsCli(args, { cwd: ctx.cwd }));
     },
   });
-
-  // ─── Commands ────────────────────────────────────────────────────────
 
   // /lightsprint-status — quick connection check
   pi.registerCommand("lightsprint-status", {
@@ -551,8 +525,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
     },
   });
 
-  // ─── PR Detection (tool_result hook) ─────────────────────────────────
-
   const PR_URL_RE = /https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/;
 
   pi.on("tool_result", async (event, ctx) => {
@@ -586,8 +558,6 @@ export default function lightsprintExtension(pi: ExtensionAPI) {
       ],
     };
   });
-
-  // ─── Keyboard Shortcut ───────────────────────────────────────────────
 
   pi.registerShortcut("ctrl+shift+l", {
     description: "Open Lightsprint board in browser",

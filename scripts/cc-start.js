@@ -77,7 +77,6 @@ export async function main(args) {
 			outputConnectedMessage(cfg);
 			return;
 		}
-		// Stale session file → clean up
 		deleteSessionState(ccSessionId);
 	}
 
@@ -166,7 +165,6 @@ export async function main(args) {
 				}
 			}
 		} catch {
-			// Not ready yet
 		}
 		await new Promise(r => setTimeout(r, pollIntervalMs));
 	}
@@ -177,6 +175,5 @@ export async function main(args) {
 		}
 	}
 
-	// Output connection message to the user
 	outputConnectedMessage(cfg);
 }

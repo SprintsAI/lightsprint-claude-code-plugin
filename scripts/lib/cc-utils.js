@@ -281,7 +281,6 @@ export function readHookInput(args) {
 			if (raw.trim()) return JSON.parse(raw);
 		}
 	} catch {
-		// No input available
 	}
 
 	return null;

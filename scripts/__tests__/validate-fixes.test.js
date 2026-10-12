@@ -1,4 +1,3 @@
-// scripts/__tests__/validate-fixes.test.js
 import { describe, test, expect } from 'bun:test';
 import {
 	validateEnum,

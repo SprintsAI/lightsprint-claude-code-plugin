@@ -38,7 +38,6 @@ export function readPluginConfig() {
 			return JSON.parse(readFileSync(PLUGIN_CONFIG_FILE, 'utf-8'));
 		}
 	} catch {
-		// Corrupted file, ignore
 	}
 	return {};
 }
@@ -115,15 +114,12 @@ export async function requireConfig() {
 	return result;
 }
 
-// ─── User preferences ────────────────────────────────────────────────
-
 export function readPreferences() {
 	try {
 		if (existsSync(PREFERENCES_FILE)) {
 			return JSON.parse(readFileSync(PREFERENCES_FILE, 'utf-8'));
 		}
 	} catch {
-		// Corrupted file, ignore
 	}
 	return {};
 }

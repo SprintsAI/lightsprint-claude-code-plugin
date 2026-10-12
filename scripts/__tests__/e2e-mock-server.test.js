@@ -19,8 +19,6 @@ import { randomBytes } from 'crypto';
 import { spawn } from 'child_process';
 import { writeConnection } from '../lib/connection.js';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
 const CLI_PATH = join(import.meta.dir, '../lightsprint.js');
 const REPO_KEY = 'SprintsAI/lightsprint-claude-code-plugin'; // matches git remote
 
@@ -33,8 +31,6 @@ const SESSIONS_DIR = join(TEST_CONFIG_DIR, 'cc-sessions');
 const ORIG_CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR;
 process.env.LIGHTSPRINT_CONFIG_DIR = TEST_CONFIG_DIR;
 
-// ─── Mock Server ─────────────────────────────────────────────────────────────
-
 /**
  * Creates a mock Lightsprint HTTP server that records all requests.
  * Returns the server, port, and request log.
@@ -45,7 +41,6 @@ function createMockServer() {
 	const repoId = 'mock-repo-id';
 	let sessionCounter = 0;
 
-	// Seed some tasks
 	tasks.set('task-1', {
 		id: 'task-1',
 		displayId: 'MOCK-1',
@@ -88,9 +83,6 @@ function createMockServer() {
 
 			requests.push({ method, path, body, query: Object.fromEntries(url.searchParams) });
 
-			// ─── Route matching ──────────────────────────────────────
-
-			// Token refresh
 			if (path === '/oauth/token' && method === 'POST') {
 				return Response.json({
 					access_token: 'refreshed-token-' + Date.now(),
@@ -99,7 +91,6 @@ function createMockServer() {
 				});
 			}
 
-			// Repo info
 			if (path === '/api/repo-key/info' && method === 'GET') {
 				return Response.json({
 					user: { name: 'test-user', email: 'test@example.com', id: 'user-1' },
@@ -113,10 +104,8 @@ function createMockServer() {
 			const resolveMatch = path.match(/^\/api\/workspaces\/[^/]+\/tasks\/resolve$/);
 			if (resolveMatch && method === 'GET') {
 				const ref = url.searchParams.get('ref');
-				// If ref is already a raw task ID, return it directly
 				const task = tasks.get(ref);
 				if (task) return Response.json({ taskId: task.id });
-				// Try matching by displayId
 				for (const t of tasks.values()) {
 					if (t.displayId === ref) return Response.json({ taskId: t.id });
 				}
@@ -147,7 +136,6 @@ function createMockServer() {
 				});
 			}
 
-			// List stacks (workspace-scoped)
 			if (path.match(/^\/api\/workspaces\/[^/]+\/stacks$/) && method === 'GET') {
 				return Response.json({
 					stacks: [
@@ -156,7 +144,6 @@ function createMockServer() {
 				});
 			}
 
-			// Get a single stack + member repos (workspace-scoped)
 			const stackGetMatch = path.match(/^\/api\/workspaces\/[^/]+\/stacks\/([^/]+)$/);
 			if (stackGetMatch && method === 'GET') {
 				const stackId = stackGetMatch[1];
@@ -171,7 +158,6 @@ function createMockServer() {
 				});
 			}
 
-			// Create default-stack task
 			if (path === '/api/tasks' && method === 'POST') {
 				const newId = 'task-' + randomBytes(4).toString('hex');
 				const newTask = {
@@ -193,7 +179,6 @@ function createMockServer() {
 				return Response.json({ task: newTask, taskPrefix: 'MOCK' }, { status: 201 });
 			}
 
-			// Get task
 			const getTaskMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
 			if (getTaskMatch && method === 'GET') {
 				const task = tasks.get(getTaskMatch[1]);
@@ -201,7 +186,6 @@ function createMockServer() {
 				return Response.json({ task });
 			}
 
-			// Update task
 			if (getTaskMatch && method === 'PATCH') {
 				const task = tasks.get(getTaskMatch[1]);
 				if (!task) return Response.json({ error: 'Not found' }, { status: 404 });
@@ -213,7 +197,6 @@ function createMockServer() {
 				return Response.json({ task });
 			}
 
-			// Claim task
 			const claimMatch = path.match(/^\/api\/tasks\/([^/]+)\/claim$/);
 			if (claimMatch && method === 'POST') {
 				const task = tasks.get(claimMatch[1]);
@@ -223,7 +206,6 @@ function createMockServer() {
 				return Response.json({ task, ccSessionLinked: !!body?.ccSessionId });
 			}
 
-			// Add dependency
 			const depMatch = path.match(/^\/api\/tasks\/([^/]+)\/dependencies$/);
 			if (depMatch && method === 'POST') {
 				return Response.json({ ok: true });
@@ -235,7 +217,6 @@ function createMockServer() {
 				return Response.json({ dependencies: [] });
 			}
 
-			// Comment (handles both /comment and /comments)
 			const commentMatch = path.match(/^\/api\/tasks\/([^/]+)\/comments?$/);
 			if (commentMatch && method === 'POST') {
 				return Response.json({
@@ -247,13 +228,11 @@ function createMockServer() {
 				});
 			}
 
-			// Session task lookup
 			const sessionTaskMatch = path.match(/^\/api\/cc-sessions\/([^/]+)\/task$/);
 			if (sessionTaskMatch && method === 'GET') {
 				return Response.json({ task: null });
 			}
 
-			// Workspace details (for whoami)
 			const wsGetMatch = path.match(/^\/api\/workspaces\/([^/]+)$/);
 			if (wsGetMatch && method === 'GET') {
 				return Response.json({
@@ -261,7 +240,6 @@ function createMockServer() {
 				});
 			}
 
-			// User profile (for whoami)
 			if (path === '/api/user/profile' && method === 'GET') {
 				return Response.json({ name: 'test-user', email: 'test@example.com', id: 'user-1' });
 			}
@@ -272,8 +250,6 @@ function createMockServer() {
 
 	return { server, port: server.port, requests, tasks, repoId };
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 let mockServer;
 
@@ -338,8 +314,6 @@ function cleanupTestSessions(prefix) {
 	} catch {}
 }
 
-// ─── Test Suite ──────────────────────────────────────────────────────────────
-
 describe('E2E: Mock Server', () => {
 	beforeAll(() => {
 		mockServer = createMockServer();
@@ -359,8 +333,6 @@ describe('E2E: Mock Server', () => {
 	beforeEach(() => {
 		mockServer.requests.length = 0;
 	});
-
-	// ─── CLI: tasks ──────────────────────────────────────────────────────
 
 	describe('CLI: tasks', () => {
 		test('lists tasks from mock server', async () => {
@@ -393,8 +365,6 @@ describe('E2E: Mock Server', () => {
 			expect(tasksReq).toBeDefined();
 		});
 	});
-
-	// ─── CLI: create ─────────────────────────────────────────────────────
 
 	describe('CLI: create', () => {
 		test('creates a task via mock server', async () => {
@@ -429,8 +399,6 @@ describe('E2E: Mock Server', () => {
 			expect(result.exitCode).not.toBe(0);
 		});
 	});
-
-	// ─── CLI: get ────────────────────────────────────────────────────────
 
 	describe('CLI: stacks', () => {
 		test('lists stacks from mock server', async () => {
@@ -488,8 +456,6 @@ describe('E2E: Mock Server', () => {
 		});
 	});
 
-	// ─── CLI: update ─────────────────────────────────────────────────────
-
 	describe('CLI: update', () => {
 		test('updates task status', async () => {
 			const result = await runCliJson(['update', '--task', 'task-1', '--status', 'in_progress']);
@@ -535,8 +501,6 @@ describe('E2E: Mock Server', () => {
 		});
 	});
 
-	// ─── CLI: claim ──────────────────────────────────────────────────────
-
 	describe('CLI: claim', () => {
 		test('claims a task', async () => {
 			const result = await runCliJson(['claim', '--task', 'task-1']);
@@ -564,8 +528,6 @@ describe('E2E: Mock Server', () => {
 		});
 	});
 
-	// ─── CLI: comment ────────────────────────────────────────────────────
-
 	describe('CLI: comment', () => {
 		test('adds a comment to a task', async () => {
 			const result = await runCliJson(['comment', '--task', 'task-1', '--body', 'Test comment body']);
@@ -582,8 +544,6 @@ describe('E2E: Mock Server', () => {
 			expect(commentReq).toBeUndefined();
 		});
 	});
-
-	// ─── CLI: whoami ─────────────────────────────────────────────────────
 
 	describe('CLI: whoami', () => {
 		test('shows connection info', async () => {
@@ -606,7 +566,6 @@ describe('E2E: Session Lifecycle', () => {
 	let wsConnections;
 
 	beforeAll(() => {
-		// Create mock server with WebSocket support
 		mockWsMessages = [];
 		wsConnections = [];
 
@@ -615,14 +574,12 @@ describe('E2E: Session Lifecycle', () => {
 			async fetch(req, server) {
 				const url = new URL(req.url);
 
-				// WebSocket upgrade for /cc-ws
 				if (url.pathname === '/cc-ws') {
 					const upgraded = server.upgrade(req, { data: { token: url.searchParams.get('token') } });
 					if (upgraded) return undefined;
 					return new Response('WebSocket upgrade failed', { status: 400 });
 				}
 
-				// Token refresh
 				if (url.pathname === '/oauth/token') {
 					return Response.json({
 						access_token: 'refreshed-token',
@@ -631,7 +588,6 @@ describe('E2E: Session Lifecycle', () => {
 					});
 				}
 
-				// Session task lookup
 				if (url.pathname.match(/\/api\/cc-sessions\/.*\/task/)) {
 					return Response.json({ task: null });
 				}
@@ -657,7 +613,6 @@ describe('E2E: Session Lifecycle', () => {
 					return Response.json({ task: { id: 'patched', status: 'done' } });
 				}
 
-				// Repo info
 				if (url.pathname === '/api/repo-key/info' && req.method === 'GET') {
 					return Response.json({
 						repo: { id: 'mock-repo-id', name: 'test-repo' },
@@ -676,7 +631,6 @@ describe('E2E: Session Lifecycle', () => {
 					const msg = JSON.parse(message);
 					mockWsMessages.push(msg);
 
-					// Respond to session:start
 					if (msg.type === 'session:start') {
 						ws.send(JSON.stringify({
 							type: 'ack',
@@ -686,7 +640,6 @@ describe('E2E: Session Lifecycle', () => {
 						}));
 					}
 
-					// Respond to session:end
 					if (msg.type === 'session:end') {
 						ws.send(JSON.stringify({
 							type: 'ack',
@@ -823,8 +776,6 @@ describe('E2E: Session Lifecycle', () => {
 		throw new Error(`Daemon did not become ready for session ${sessionId} after 2 attempts`);
 	}
 
-	// ─── Session Start ───────────────────────────────────────────────────
-
 	describe('Session Start', () => {
 		test('daemon connects to mock WS and sends session:start', async () => {
 			const testSessionId = `e2e-start-${randomBytes(8).toString('hex')}`;
@@ -837,7 +788,6 @@ describe('E2E: Session Lifecycle', () => {
 
 				expect(sessionStart.data.ccSessionId).toBe(testSessionId);
 
-				// Verify session state file was created
 				expect(state.port).toBeGreaterThan(0);
 				expect(state.daemonPid).toBeGreaterThan(0);
 				expect(state.ccSessionId).toBe(testSessionId);
@@ -928,8 +878,6 @@ describe('E2E: Session Lifecycle', () => {
 		}, 15000);
 	});
 
-	// ─── Session End ─────────────────────────────────────────────────────
-
 	describe('Session End', () => {
 		/** Poll until a process is no longer alive (max 5s). */
 		async function waitForProcessExit(pid, timeoutMs = 5000) {
@@ -961,18 +909,14 @@ describe('E2E: Session Lifecycle', () => {
 					signal: AbortSignal.timeout(3000),
 				});
 
-				// Wait for session:end on WS
 				const sessionEnd = await waitForWsMessage(m => m.type === 'session:end', 5000);
 				expect(sessionEnd).not.toBeNull();
 
-				// Wait for daemon to exit
 				await waitForProcessExit(state.daemonPid);
 
-				// Verify session state file was cleaned up
 				const stateFile = join(SESSIONS_DIR, `${testSessionId}.json`);
 				expect(existsSync(stateFile)).toBe(false);
 
-				// Verify daemon process is dead
 				expect(() => process.kill(state.daemonPid, 0)).toThrow();
 			} finally {
 				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
@@ -1026,20 +970,16 @@ describe('E2E: Session Lifecycle', () => {
 
 				mockWsMessages.length = 0;
 
-				// Send SIGTERM directly to daemon process
 				process.kill(state.daemonPid, 'SIGTERM');
 
 				// Should send session:end before exiting
 				const sessionEnd = await waitForWsMessage(m => m.type === 'session:end', 5000);
 				expect(sessionEnd).not.toBeNull();
 
-				// Wait for cleanup
 				await waitForProcessExit(state.daemonPid);
 
-				// Verify daemon is dead
 				expect(() => process.kill(state.daemonPid, 0)).toThrow();
 
-				// Verify session state cleaned up
 				const stateFile = join(SESSIONS_DIR, `${testSessionId}.json`);
 				expect(existsSync(stateFile)).toBe(false);
 			} finally {
@@ -1050,8 +990,6 @@ describe('E2E: Session Lifecycle', () => {
 			}
 		}, 15000);
 	});
-
-	// ─── HTTP Auth & Error Handling ─────────────────────────────────────
 
 	describe('HTTP Auth & Error Handling', () => {
 		test('mutating endpoints reject requests without auth token', async () => {
@@ -1126,7 +1064,6 @@ describe('E2E: Session Lifecycle', () => {
 				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
 
-				// No Authorization header
 				const resp = await fetch(`http://127.0.0.1:${state.port}/health`, {
 					signal: AbortSignal.timeout(2000),
 				});
@@ -1194,8 +1131,6 @@ describe('E2E: Session Lifecycle', () => {
 		}, 15000);
 	});
 
-	// ─── Event Forwarding ────────────────────────────────────────────────
-
 	describe('Event Forwarding', () => {
 		test('events posted to daemon are forwarded to WS', async () => {
 			const testSessionId = `e2e-event-${randomBytes(8).toString('hex')}`;
@@ -1206,7 +1141,6 @@ describe('E2E: Session Lifecycle', () => {
 				const { daemonProc, state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 				daemonPid = daemonProc.pid;
 
-				// Clear messages after session:start
 				mockWsMessages.length = 0;
 
 				// Send an event directly to daemon HTTP (same as cc-event.js does)
@@ -1226,7 +1160,6 @@ describe('E2E: Session Lifecycle', () => {
 					signal: AbortSignal.timeout(3000),
 				});
 
-				// Wait for event to be forwarded to WS
 				const eventsMsg = await waitForWsMessage(m => m.type === 'events', 3000);
 				expect(eventsMsg).not.toBeNull();
 			} finally {
@@ -1253,7 +1186,6 @@ describe('E2E: Session Lifecycle', () => {
 					...(state.daemonToken ? { 'Authorization': `Bearer ${state.daemonToken}` } : {}),
 				};
 
-				// Send three distinct events
 				for (const eventType of ['PreToolUse', 'PostToolUse', 'UserPromptSubmit']) {
 					await fetch(`http://127.0.0.1:${state.port}/event`, {
 						method: 'POST',
@@ -1266,7 +1198,6 @@ describe('E2E: Session Lifecycle', () => {
 					});
 				}
 
-				// Wait for all three to arrive
 				const deadline = Date.now() + 5000;
 				while (Date.now() < deadline) {
 					const eventsMsgs = mockWsMessages.filter(m => m.type === 'events');
@@ -1317,20 +1248,16 @@ describe('E2E: Session Lifecycle', () => {
 		}, 15000);
 	});
 
-	// ─── Daemon Survives CC Kill ─────────────────────────────────────────
-
 	describe('CC Process Death', () => {
 		test('daemon detects dead CC PID and shuts down gracefully', async () => {
 			const testSessionId = `e2e-cckill-${randomBytes(8).toString('hex')}`;
 
-			// Spawn a dummy "CC process" that we can kill
 			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
 			const dummyPid = dummyProc.pid;
 
 			try {
 				const { state } = await startReadyDaemon(testSessionId, dummyPid);
 
-				// Kill the "CC process"
 				mockWsMessages.length = 0;
 				dummyProc.kill();
 				await dummyProc.exited;
@@ -1340,10 +1267,8 @@ describe('E2E: Session Lifecycle', () => {
 				expect(sessionEnd).toBeDefined();
 				expect(sessionEnd.data.status).toBe('errored');
 
-				// Wait for cleanup
 				await new Promise(r => setTimeout(r, 1000));
 
-				// Verify daemon is dead
 				let isAlive = true;
 				try { process.kill(state.daemonPid, 0); } catch { isAlive = false; }
 				expect(isAlive).toBe(false);
@@ -1353,8 +1278,6 @@ describe('E2E: Session Lifecycle', () => {
 			}
 		}, 25000);
 	});
-
-	// ─── Stale Session Recovery ──────────────────────────────────────────
 
 	describe('Stale Session Recovery', () => {
 		test('new daemon starts successfully despite stale session files', async () => {
@@ -1382,7 +1305,6 @@ describe('E2E: Session Lifecycle', () => {
 				const { state: freshState } = await startReadyDaemon(freshSessionId, dummyProc.pid);
 				expect(freshState.port).toBeGreaterThan(0);
 
-				// Clean up
 				try { process.kill(freshState.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
 				dummyProc.kill();
@@ -1393,8 +1315,6 @@ describe('E2E: Session Lifecycle', () => {
 		}, 15000);
 	});
 
-	// ─── Daemon Health Check ─────────────────────────────────────────────
-
 	describe('Daemon Health', () => {
 		test('daemon health endpoint responds', async () => {
 			const testSessionId = `e2e-health-${randomBytes(8).toString('hex')}`;
@@ -1403,7 +1323,6 @@ describe('E2E: Session Lifecycle', () => {
 			try {
 				const { state } = await startReadyDaemon(testSessionId, dummyProc.pid);
 
-				// Hit health endpoint
 				const resp = await fetch(`http://127.0.0.1:${state.port}/health`, {
 					signal: AbortSignal.timeout(2000),
 				});
@@ -1411,7 +1330,6 @@ describe('E2E: Session Lifecycle', () => {
 				const health = await resp.json();
 				expect(health.ok).toBe(true);
 
-				// Clean up
 				try { process.kill(state.daemonPid, 'SIGTERM'); } catch {}
 			} finally {
 				dummyProc.kill();

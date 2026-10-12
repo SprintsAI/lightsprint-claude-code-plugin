@@ -24,7 +24,6 @@ LIGHTSPRINT_CONFIG_DIR="$HOME/.lightsprint"
 mkdir -p "$LIGHTSPRINT_CONFIG_DIR"
 printf '{"baseUrl":"%s"}\n' "$LIGHTSPRINT_BASE_URL" > "$LIGHTSPRINT_CONFIG_DIR/config.json"
 
-# Check prerequisites
 if ! command -v claude &>/dev/null; then
   echo "Error: claude CLI not found. Install it first: https://docs.anthropic.com/en/docs/claude-code" >&2
   exit 1
@@ -34,7 +33,6 @@ fi
 claude plugin uninstall "$PLUGIN_NAME" 2>/dev/null || true
 claude plugin marketplace remove "$MARKETPLACE_NAME" 2>/dev/null || true
 
-# ─── Install CLI binary ──────────────────────────────────────────────────
 install_binary() {
   if [[ -n "${LIGHTSPRINT_LOCAL_PATH:-}" ]]; then
     # Local dev mode: compile from source with Bun into plugin's bin/ dir
@@ -74,7 +72,6 @@ install_binary() {
     # Binary goes into the plugin cache bin/ directory
     echo "Downloading CLI binary..."
 
-    # Detect platform
     local OS ARCH PLATFORM
     case "$(uname -s)" in
       Darwin) OS="darwin" ;;
@@ -201,16 +198,12 @@ if [[ "$LIGHTSPRINT_BASE_URL" != "https://app.lightsprint.ai" ]]; then
   echo "Base URL: $LIGHTSPRINT_BASE_URL"
 fi
 
-
-# Check if INSTALL_DIR is in PATH
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
   echo ""
   echo "Note: $INSTALL_DIR is not in your PATH."
   echo "  Add it with: export PATH=\"$INSTALL_DIR:\$PATH\""
 fi
 echo ""
-
-# ─── Interactive repo connection ──────────────────────────────────────────
 
 CURRENT_DIR="$(pwd)"
 

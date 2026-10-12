@@ -22,7 +22,6 @@ export async function withFileLock(lockPath, fn, opts = {}) {
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const deadline = Date.now() + timeoutMs;
 
-	// Try to acquire lock
 	while (true) {
 		try {
 			mkdirSync(lockPath);

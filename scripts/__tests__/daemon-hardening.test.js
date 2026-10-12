@@ -1,4 +1,3 @@
-// scripts/__tests__/daemon-hardening.test.js
 import { describe, test, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -28,8 +27,6 @@ afterAll(() => {
 	}
 	try { rmSync(TEST_CONFIG_DIR, { recursive: true, force: true }); } catch {}
 });
-
-// ─── File Locking ────────────────────────────────────────────────────────────
 
 describe('withFileLock', () => {
 	const lockPath = join(TEST_CONFIG_DIR, 'test-lock.lock');
@@ -86,8 +83,6 @@ describe('withFileLock', () => {
 	});
 });
 
-// ─── Stale Session Cleanup ───────────────────────────────────────────────────
-
 describe('cleanupStaleSessions', () => {
 	const staleSessionId = `test-stale-${randomBytes(8).toString('hex')}`;
 
@@ -128,8 +123,6 @@ describe('cleanupStaleSessions', () => {
 	});
 });
 
-// ─── EADDRINUSE Port Retry ───────────────────────────────────────────────────
-
 describe('startHttpServer port retry', () => {
 	test('createServer error event is catchable for EADDRINUSE', () => {
 		const { createServer } = require('http');
@@ -146,8 +139,6 @@ describe('startHttpServer port retry', () => {
 		server.close();
 	});
 });
-
-// ─── Event Queue ─────────────────────────────────────────────────────────────
 
 describe('Event queue buffering', () => {
 	test('enqueue and flush cycle works correctly', () => {
@@ -189,8 +180,6 @@ describe('Event queue buffering', () => {
 		expect(queue[0].id).toBe(2); // oldest kept
 	});
 });
-
-// ─── SIGHUP handling ─────────────────────────────────────────────────────────
 
 describe('Signal handling', () => {
 	test('SIGHUP is a valid signal', () => {

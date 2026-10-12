@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach, mock } from 'bun:test';
 
-// Track calls to Sentry SDK methods
 const sentryMock = {
 	init: mock(() => {}),
 	setTag: mock(() => {}),
