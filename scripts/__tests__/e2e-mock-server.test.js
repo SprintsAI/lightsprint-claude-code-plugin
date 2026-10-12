@@ -247,6 +247,30 @@ function createMockServer() {
 				});
 			}
 
+			// Lightsprint Agent settings and lifecycle
+			if (path === '/api/lightsprint-agents/settings' && method === 'GET') {
+				return Response.json({
+					engines: {
+						claude: { configured: true, defaultModel: 'claude-sonnet-4-5', authMode: 'subscription' },
+						codex: { configured: true, defaultModel: 'gpt-5-codex', authMode: 'subscription' },
+					},
+				});
+			}
+			if (path === '/api/lightsprint-agents/settings/environments' && method === 'GET') {
+				return Response.json({ environments: [{ id: 'env-1', name: 'Default' }] });
+			}
+			const agentRouteMatch = path.match(/^\/api\/tasks\/([^/]+)\/lightsprint-agents\/([^/]+)$/);
+			if (agentRouteMatch && method === 'POST') {
+				return Response.json({ status: 'RUNNING', agentId: 'agent-1' });
+			}
+			if (agentRouteMatch && method === 'DELETE') {
+				return Response.json({ status: 'STOPPED' });
+			}
+			const createPrMatch = path.match(/^\/api\/tasks\/([^/]+)\/lightsprint-agents\/([^/]+)\/([^/]+)\/create-pr$/);
+			if (createPrMatch && method === 'POST') {
+				return Response.json({ prUrl: 'https://github.com/SprintsAI/example/pull/1', prNumber: 1 });
+			}
+
 			// Session task lookup
 			const sessionTaskMatch = path.match(/^\/api\/cc-sessions\/([^/]+)\/task$/);
 			if (sessionTaskMatch && method === 'GET') {
@@ -591,6 +615,44 @@ describe('E2E: Mock Server', () => {
 			expect(result.exitCode).toBe(0);
 			expect(result.stdout).toContain('mock-workspace-id');
 			expect(result.stdout).toContain('Mock Workspace');
+		});
+	});
+
+	describe('CLI: Lightsprint agents', () => {
+		test('reads settings and codex environments from live routes', async () => {
+			const result = await runCliJson(['agent', 'settings', '--provider', 'codex']);
+			expect(result.exitCode).toBe(0);
+			expect(result.json.engines.claude.configured).toBe(true);
+			expect(result.json.environments).toEqual({
+				provider: 'codex',
+				items: [{ id: 'env-1', name: 'Default' }],
+			});
+			expect(mockServer.requests).toContainEqual(expect.objectContaining({
+				method: 'GET',
+				path: '/api/lightsprint-agents/settings/environments',
+				query: { engine: 'codex' },
+			}));
+		});
+
+		test('launches, stops, and creates a PR through live task routes', async () => {
+			const launch = await runCliJson(['agent', 'launch', '--task', 'MOCK-1', '--provider', 'claude']);
+			const stop = await runCliJson(['agent', 'stop', '--task', 'MOCK-1', '--provider', 'claude']);
+			const createPr = await runCliJson([
+				'agent', 'create-pr', '--task', 'MOCK-1', '--provider', 'claude', '--agent-id', 'agent-1'
+			]);
+
+			expect(launch.exitCode).toBe(0);
+			expect(stop.exitCode).toBe(0);
+			expect(createPr.exitCode).toBe(0);
+			expect(mockServer.requests).toContainEqual(expect.objectContaining({
+				method: 'POST', path: '/api/tasks/task-1/lightsprint-agents/claude'
+			}));
+			expect(mockServer.requests).toContainEqual(expect.objectContaining({
+				method: 'DELETE', path: '/api/tasks/task-1/lightsprint-agents/claude'
+			}));
+			expect(mockServer.requests).toContainEqual(expect.objectContaining({
+				method: 'POST', path: '/api/tasks/task-1/lightsprint-agents/claude/agent-1/create-pr'
+			}));
 		});
 	});
 });

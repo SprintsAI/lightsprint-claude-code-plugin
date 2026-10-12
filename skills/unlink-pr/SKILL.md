@@ -15,6 +15,6 @@ Both positional and flag syntax work: `lightsprint unlink-pr LIG-024` is the sam
 
 Task ID supports display IDs (e.g. `LIG-024`), bare task numbers (e.g. `24`), or raw IDs.
 
-This removes the linked PR from the task and clears the PR URL from any associated cloud agents.
+This removes the linked PR from the task and clears the PR URL from any associated Lightsprint agents.
 
 **When to use**: When a PR was linked to the wrong task, or you need to replace it with a different PR.

@@ -60,9 +60,39 @@ describe('CLI routing', () => {
 });
 
 describe('agent launch --auto-merge', () => {
+	test('uses the live Lightsprint agent routes for launch, stop, and create-pr', async () => {
+		const launch = JSON.parse(await runCli(
+			'agent', 'launch', '--task', 'LS-1', '--provider', 'claude',
+			'--dry-run', '--output', 'json'
+		));
+		const stop = JSON.parse(await runCli(
+			'agent', 'stop', '--task', 'LS-1', '--provider', 'codex',
+			'--dry-run', '--output', 'json'
+		));
+		const createPr = JSON.parse(await runCli(
+			'agent', 'create-pr', '--task', 'LS-1', '--provider', 'claude',
+			'--agent-id', 'agent-1', '--dry-run', '--output', 'json'
+		));
+
+		expect(launch.endpoint).toBe('POST /api/tasks/LS-1/lightsprint-agents/claude');
+		expect(stop.endpoint).toBe('DELETE /api/tasks/LS-1/lightsprint-agents/codex');
+		expect(createPr.endpoint).toBe('POST /api/tasks/LS-1/lightsprint-agents/claude/agent-1/create-pr');
+	});
+
+	test('rejects retired providers', async () => {
+		for (const provider of ['anthropic', 'cursor']) {
+			const { stderr, exitCode } = await runCliFull(
+				'agent', 'launch', '--task', 'LS-1', '--provider', provider,
+				'--dry-run', '--output', 'json'
+			);
+			expect(exitCode).not.toBe(0);
+			expect(stderr).toContain('Allowed values: claude, codex');
+		}
+	});
+
 	test('sends autoMerge in the launch body', async () => {
 		const stdout = await runCli(
-			'agent', 'launch', '--task', 'LS-1', '--provider', 'anthropic',
+			'agent', 'launch', '--task', 'LS-1', '--provider', 'claude',
 			'--auto-merge', '--dry-run', '--output', 'json'
 		);
 		const result = JSON.parse(stdout);
@@ -72,7 +102,7 @@ describe('agent launch --auto-merge', () => {
 
 	test('omits autoMerge when neither flag is passed — the server then inherits', async () => {
 		const stdout = await runCli(
-			'agent', 'launch', '--task', 'LS-1', '--provider', 'anthropic',
+			'agent', 'launch', '--task', 'LS-1', '--provider', 'claude',
 			'--dry-run', '--output', 'json'
 		);
 		expect(JSON.parse(stdout).requestBody).not.toHaveProperty('autoMerge');
@@ -80,7 +110,7 @@ describe('agent launch --auto-merge', () => {
 
 	test('--no-auto-merge sends false, to override a task already armed', async () => {
 		const stdout = await runCli(
-			'agent', 'launch', '--task', 'LS-1', '--provider', 'anthropic',
+			'agent', 'launch', '--task', 'LS-1', '--provider', 'claude',
 			'--no-auto-merge', '--dry-run', '--output', 'json'
 		);
 		expect(JSON.parse(stdout).requestBody.autoMerge).toBe(false);
@@ -91,7 +121,7 @@ describe('agent launch --auto-merge', () => {
 		// validateId accepts it, so LS-1 launched armed while a task named "true"
 		// failed, all with exit 0.
 		const { stdout, stderr, exitCode } = await runCliFull(
-			'agent', 'launch', '--task', 'LS-1', '--provider', 'anthropic',
+			'agent', 'launch', '--task', 'LS-1', '--provider', 'claude',
 			'--auto-merge', 'true', '--dry-run', '--output', 'json'
 		);
 		expect(exitCode).not.toBe(0);
@@ -102,7 +132,7 @@ describe('agent launch --auto-merge', () => {
 	test('refuses to arm auto-merge across several tasks without --yes', async () => {
 		const { stdout, stderr, exitCode } = await runCliFull(
 			'agent', 'launch', '--task', 'LS-1', '--task', 'LS-2',
-			'--provider', 'anthropic', '--auto-merge', '--dry-run', '--output', 'json'
+			'--provider', 'claude', '--auto-merge', '--dry-run', '--output', 'json'
 		);
 		expect(exitCode).not.toBe(0);
 		expect(stderr + stdout).toContain('--yes');
@@ -110,23 +140,23 @@ describe('agent launch --auto-merge', () => {
 
 	test('--yes allows the multi-task fan-out, arming every task', async () => {
 		const stdout = await runCli(
-			'agent', 'launch', '--task', 'LS-1', '--task', 'LS-2', '--provider', 'anthropic',
+			'agent', 'launch', '--task', 'LS-1', '--task', 'LS-2', '--provider', 'claude',
 			'--auto-merge', '--yes', '--dry-run', '--output', 'json'
 		);
 		const result = JSON.parse(stdout);
 		expect(result.requestBody.autoMerge).toBe(true);
-		expect(result.endpoint).toContain('/api/tasks/LS-1/cloud-agents/anthropic');
-		expect(result.endpoint).toContain('/api/tasks/LS-2/cloud-agents/anthropic');
+		expect(result.endpoint).toContain('/api/tasks/LS-1/lightsprint-agents/claude');
+		expect(result.endpoint).toContain('/api/tasks/LS-2/lightsprint-agents/claude');
 	});
 
 	test('is a bare flag — the following positional stays a task ID', async () => {
 		const stdout = await runCli(
-			'agent', 'launch', '--provider', 'anthropic', '--auto-merge', 'LS-2',
+			'agent', 'launch', '--provider', 'claude', '--auto-merge', 'LS-2',
 			'--dry-run', '--output', 'json'
 		);
 		const result = JSON.parse(stdout);
 		expect(result.requestBody.autoMerge).toBe(true);
-		expect(result.endpoint).toContain('/api/tasks/LS-2/cloud-agents/anthropic');
+		expect(result.endpoint).toContain('/api/tasks/LS-2/lightsprint-agents/claude');
 	});
 
 	test('describe agent-launch documents the flags and its trigger words', async () => {

@@ -486,7 +486,7 @@ async function cmdAgentCreatePr(args, opts) {
 	}
 
 	if (!taskIdInput) throw new Error('Usage: lightsprint agent create-pr --task <taskId> --provider <provider> --agent-id <agentId>');
-	if (!provider) throw new Error('--provider is required. Allowed values: anthropic, cursor, codex');
+	if (!provider) throw new Error('--provider is required. Allowed values: claude, codex');
 	if (!agentId) throw new Error('--agent-id is required.');
 
 	validateId(taskIdInput, 'Task ID');
@@ -494,11 +494,11 @@ async function cmdAgentCreatePr(args, opts) {
 	validateId(agentId, 'Agent ID');
 
 	if (opts.dryRun) {
-		return outputDryRun('agent create-pr', { taskId: taskIdInput, provider, agentId }, `POST /api/tasks/${taskIdInput}/cloud-agents/${provider}/${agentId}/create-pr`, opts);
+		return outputDryRun('agent create-pr', { taskId: taskIdInput, provider, agentId }, `POST /api/tasks/${taskIdInput}/lightsprint-agents/${provider}/${agentId}/create-pr`, opts);
 	}
 
 	const taskId = await resolveTaskId(taskIdInput);
-	const result = await apiRequest(`/api/tasks/${taskId}/cloud-agents/${provider}/${agentId}/create-pr`, {
+	const result = await apiRequest(`/api/tasks/${taskId}/lightsprint-agents/${provider}/${agentId}/create-pr`, {
 		method: 'POST'
 	});
 
@@ -540,13 +540,13 @@ Add after the existing `agent settings` help entry:
 ```javascript
 
   agent create-pr [options]
-    Create a GitHub PR from a cloud agent's working branch
+    Create a GitHub PR from a Lightsprint agent's working branch
     Options:
       --task <taskId>         Task ID (required)
-      --provider <provider>   Provider: anthropic, cursor, codex (required)
+      --provider <provider>   Provider: claude, codex (required)
       --agent-id <id>         Agent ID (required)
     Example:
-      lightsprint agent create-pr --task LIG-024 --provider anthropic --agent-id abc123
+      lightsprint agent create-pr --task LIG-024 --provider claude --agent-id abc123
 ```
 
 - [ ] **Step 4: Verify syntax**
@@ -577,10 +577,10 @@ Add the following entries to the `COMMAND_SCHEMAS` object in `scripts/lib/schema
 
 ```javascript
 	'agent-create-pr': {
-		description: 'Create a GitHub PR from a cloud agent working branch',
+		description: 'Create a GitHub PR from a Lightsprint agent working branch',
 		params: {
 			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
-			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Cloud agent provider' },
+			provider: { type: 'enum', required: true, flag: '--provider', values: VALID_PROVIDERS, description: 'Lightsprint agent provider' },
 			agentId: { type: 'string', required: true, flag: '--agent-id', description: 'Agent ID' }
 		},
 		supportsDryRun: true,
@@ -665,7 +665,7 @@ Usage: `review-hub signals <taskId> [--refresh]`
 |-------|-------------|
 | signals | Array of signal objects (category, status, title, body, URL, actor) |
 | lastViewedAt | When the review hub was last viewed (for unread detection) |
-| ownerAgentType | Cloud agent provider that owns this PR (`anthropic`, `cursor`, `codex`, or null) |
+| ownerAgentType | Lightsprint agent provider that owns this PR (`claude`, `codex`, or null) |
 | additions / deletions / changedFiles | PR diff stats |
 
 Each signal has: `id`, `category` (ci/review/deployment/bot_comment/human_comment/custom), `status` (success/failure/pending/running/neutral/warning), `title`, `signalBody`, `url`, `actorLogin`, `scoreValue`, `scoreLabel`.
@@ -740,31 +740,31 @@ lightsprint review-hub scores 24 --fields readinessScore,readinessLabel
 ```markdown
 ---
 name: agent-create-pr
-description: Create a GitHub PR from a cloud agent's working branch. Use after an agent finishes work to open a PR for review.
+description: Create a GitHub PR from a Lightsprint agent's working branch. Use after an agent finishes work to open a PR for review.
 ---
 
-Run this command to create a PR from a cloud agent's branch:
+Run this command to create a PR from a Lightsprint agent's branch:
 
 ` ` `bash
 lightsprint agent create-pr $ARGUMENTS
 ` ` `
 
-Usage: `agent create-pr --task <taskId> --provider <anthropic|cursor|codex> --agent-id <agentId>`
+Usage: `agent create-pr --task <taskId> --provider <claude|codex> --agent-id <agentId>`
 
 - `--task <taskId>` — Task ID (required)
-- `--provider <provider>` — Cloud agent provider (required): `anthropic`, `cursor`, `codex`
+- `--provider <provider>` — Lightsprint agent provider (required): `claude`, `codex`
 - `--agent-id <id>` — Agent ID (required). Found in the task's agent details via `lightsprint get <taskId>`.
 
 ## Examples
 
 ```bash
-lightsprint agent create-pr --task LIG-024 --provider anthropic --agent-id abc123 --output json
+lightsprint agent create-pr --task LIG-024 --provider claude --agent-id abc123 --output json
 ```
 
 ## Invariants
 
 - Only works for agents that have completed their work (FINISHED status). Check agent status with `lightsprint get <taskId>` first.
-- The `--agent-id` can be found in the task details under the cloud agent entries for the relevant provider.
+- The `--agent-id` can be found in the task details under the Lightsprint agent entries for the relevant provider.
 - After PR creation, use `lightsprint link-pr` if the PR isn't automatically linked.
 - All three flags (`--task`, `--provider`, `--agent-id`) are required.
 ```
@@ -774,16 +774,16 @@ lightsprint agent create-pr --task LIG-024 --provider anthropic --agent-id abc12
 ```markdown
 ---
 name: agent-settings
-description: Check which cloud agent providers (anthropic, cursor, codex) are configured and their default models. Use before launching agents.
+description: Check which Lightsprint agent providers (claude, codex) are configured and their default models. Use before launching agents.
 ---
 
-Run this command to check cloud agent provider configuration:
+Run this command to check Lightsprint agent provider configuration:
 
 ` ` `bash
 lightsprint agent settings $ARGUMENTS
 ` ` `
 
-Usage: `agent settings [--provider <anthropic|cursor|codex>]`
+Usage: `agent settings [--provider <claude|codex>]`
 
 - `--provider <provider>` — Also fetch available environments for this provider. Required for codex (needs `--environment-id` to launch).
 
@@ -893,7 +893,7 @@ Expected: Lines for `merge`, `review-hub signals`, `review-hub scores`, `agent c
 Run:
 ```bash
 lightsprint merge --task TEST-1 --dry-run --output json
-lightsprint agent create-pr --task TEST-1 --provider anthropic --agent-id test --dry-run --output json
+lightsprint agent create-pr --task TEST-1 --provider claude --agent-id test --dry-run --output json
 ```
 
 Each should output a dry-run JSON with `validationPassed: true`.

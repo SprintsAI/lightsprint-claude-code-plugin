@@ -1,6 +1,6 @@
 ---
 name: agent
-description: Launch, stop, or check settings for cloud agents on Lightsprint tasks. Supports anthropic, cursor, and codex providers.
+description: Launch, stop, or check settings for Lightsprint agents on tasks. Supports claude and codex providers.
 ---
 
 This skill has three subcommands: `launch`, `stop`, and `settings`.
@@ -13,36 +13,36 @@ Before launching, always check which providers are configured:
 lightsprint agent settings --output json
 ```
 
-If you need environment IDs (required for codex, optional for anthropic):
+If you need environment IDs for codex:
 
 ```bash
 lightsprint agent settings --provider codex --output json
 ```
 
-## Launch a cloud agent
+## Launch a Lightsprint agent
 
 Launch one or more agents. Use multiple `--task` flags to launch in parallel:
 
 ```bash
-lightsprint agent launch --task <taskId> [--task <taskId> ...] --provider <anthropic|cursor|codex> --output json
+lightsprint agent launch --task <taskId> [--task <taskId> ...] --provider <claude|codex> --output json
 ```
 
 **Examples:**
 
 Single task:
 ```bash
-lightsprint agent launch --task LS-100 --provider anthropic --output json
+lightsprint agent launch --task LS-100 --provider claude --output json
 ```
 
 Multiple tasks (launched concurrently):
 ```bash
-lightsprint agent launch --task LS-100 --task LS-101 --task LS-102 --provider anthropic --output json
+lightsprint agent launch --task LS-100 --task LS-101 --task LS-102 --provider claude --output json
 ```
 
 Optional flags:
 - `--model <model>` — override the provider's default model
 - `--base-ref <branch>` — base branch (defaults to repo's default branch)
-- `--environment-id <id>` — environment for codex (required) or anthropic (optional)
+- `--environment-id <id>` — environment for codex
 - `--auto-merge` / `--no-auto-merge` — arm or explicitly disable auto-merge (bare flags,
   take no value)
 - `--yes` — confirm arming auto-merge across more than one `--task`
@@ -54,7 +54,7 @@ one", "start an automerge task", "launch it with auto-merge" — they mean: laun
 with auto-merge armed. Pass `--auto-merge`:
 
 ```bash
-lightsprint agent launch --task LS-100 --provider anthropic --auto-merge --output json
+lightsprint agent launch --task LS-100 --provider claude --auto-merge --output json
 ```
 
 The autopilot then merges the task's PR on its own once it reaches 100/100 readiness **with
@@ -88,7 +88,7 @@ green CI** (zero checks does not count as green). Nobody clicks merge.
 ## Stop an active agent
 
 ```bash
-lightsprint agent stop --task $ARGUMENTS --provider <anthropic|cursor|codex> --output json
+lightsprint agent stop --task $ARGUMENTS --provider <claude|codex> --output json
 ```
 
 This interrupts the currently running agent for the task. The agent record is preserved for audit.

@@ -189,7 +189,7 @@ The error message is clear, but agents don't anticipate this restriction.
 **Severity**: Medium
 
 - `lightsprint merge --task ...` -> `API 401: {"message":"Unauthorized"}` (x2)
-- `lightsprint agent launch --task ... --provider anthropic` -> `API 403: {"message":"API key missing required scope: agents:write"}`
+- `lightsprint agent launch --task ... --provider claude` -> `API 403: {"message":"API key missing required scope: agents:write"}`
 
 **Remediation**: Better error messages -- e.g., "You need the `agents:write` scope. Run `lightsprint auth refresh` to update permissions."
 

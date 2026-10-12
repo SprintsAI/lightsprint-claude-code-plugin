@@ -16,6 +16,7 @@ export { readConnection, writeConnection, clearConnection };
 export const CONFIG_DIR = process.env.LIGHTSPRINT_CONFIG_DIR || join(homedir(), '.lightsprint');
 const PLUGIN_CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 const PREFERENCES_FILE = join(CONFIG_DIR, 'preferences.json');
+let didWarnBaseUrlMismatch = false;
 
 // Known preference keys and their valid values
 const KNOWN_PREFERENCES = {
@@ -71,6 +72,25 @@ export function getDefaultBaseUrl() {
 	return url;
 }
 
+function normalizedBaseUrl(url) {
+	return typeof url === 'string' ? url.replace(/\/+$/, '') : null;
+}
+
+/**
+ * Describe a disagreement between the installer config and active connection.
+ * An explicit environment override wins both files and makes their mismatch
+ * irrelevant to the current command.
+ */
+export function getBaseUrlMismatch(pluginBaseUrl, connectionBaseUrl, envBaseUrl = process.env.LIGHTSPRINT_BASE_URL) {
+	if (envBaseUrl || !pluginBaseUrl || !connectionBaseUrl) return null;
+	if (normalizedBaseUrl(pluginBaseUrl) === normalizedBaseUrl(connectionBaseUrl)) return null;
+	return {
+		pluginBaseUrl,
+		connectionBaseUrl,
+		effectiveBaseUrl: connectionBaseUrl,
+	};
+}
+
 /**
  * Try to extract the GitHub owner/repo from the git remote URL.
  * @param {string} [cwd] - Working directory to run git in
@@ -96,7 +116,16 @@ export function getGitRepoFullName(cwd) {
 export function getConfig() {
 	const conn = readConnection();
 	if (!conn || !conn.workspaceId) return null;
+	const pluginConfig = readPluginConfig();
 	const baseUrl = process.env.LIGHTSPRINT_BASE_URL || conn.baseUrl || getDefaultBaseUrl();
+	const mismatch = getBaseUrlMismatch(pluginConfig.baseUrl, conn.baseUrl);
+	if (mismatch && !didWarnBaseUrlMismatch) {
+		didWarnBaseUrlMismatch = true;
+		console.error(
+			`Warning: Lightsprint baseUrl mismatch: config.json uses ${mismatch.pluginBaseUrl}, ` +
+				`connection.json uses ${mismatch.connectionBaseUrl}. Using ${mismatch.effectiveBaseUrl}.`
+		);
+	}
 	return { ...conn, baseUrl };
 }
 
