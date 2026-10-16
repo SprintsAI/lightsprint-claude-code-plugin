@@ -107,8 +107,8 @@ export function validateProvider(provider) {
 export function validateBoolean(value, fieldName = 'value') {
 	if (typeof value === 'boolean') return value;
 	const normalized = String(value).trim().toLowerCase();
-	if (['true', '1', 'yes'].includes(normalized)) return true;
-	if (['false', '0', 'no'].includes(normalized)) return false;
+	if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+	if (['false', '0', 'no', 'off'].includes(normalized)) return false;
 	emitBreadcrumb(`Invalid ${fieldName}: "${value}"`, { fieldName, value });
 	throw new Error(`Invalid ${fieldName}: "${value}". Allowed values: true, false`);
 }

@@ -105,13 +105,13 @@ describe('validateBoolean', () => {
 	});
 
 	test('parses truthy string forms', () => {
-		for (const v of ['true', 'TRUE', '1', 'yes', ' True ']) {
+		for (const v of ['true', 'TRUE', '1', 'yes', ' True ', 'on', 'ON']) {
 			expect(validateBoolean(v, 'requires-schema-change')).toBe(true);
 		}
 	});
 
 	test('parses falsy string forms', () => {
-		for (const v of ['false', 'FALSE', '0', 'no', ' False ']) {
+		for (const v of ['false', 'FALSE', '0', 'no', ' False ', 'off', ' Off ']) {
 			expect(validateBoolean(v, 'requires-schema-change')).toBe(false);
 		}
 	});
