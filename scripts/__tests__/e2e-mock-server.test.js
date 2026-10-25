@@ -604,6 +604,8 @@ describe('E2E: Session Lifecycle', () => {
 	let mockWsMessages;
 	let mockHttpServer;
 	let wsConnections;
+	// Optional per-test HTTP handler; return a Response to override, or null to fall through.
+	let httpOverride = null;
 
 	beforeAll(() => {
 		// Create mock server with WebSocket support
@@ -620,6 +622,11 @@ describe('E2E: Session Lifecycle', () => {
 					const upgraded = server.upgrade(req, { data: { token: url.searchParams.get('token') } });
 					if (upgraded) return undefined;
 					return new Response('WebSocket upgrade failed', { status: 400 });
+				}
+
+				if (httpOverride) {
+					const overridden = await httpOverride(req, url);
+					if (overridden) return overridden;
 				}
 
 				// Token refresh
@@ -731,7 +738,7 @@ describe('E2E: Session Lifecycle', () => {
 		writeFileSync(credsPath, JSON.stringify({
 			accessToken: 'mock-access-token',
 			refreshToken: 'mock-refresh-token',
-			expiresAt: String(Date.now() + 3600000),
+			expiresAt: String(opts.expiresAt ?? Date.now() + 3600000),
 		}), { mode: 0o600 });
 
 		const daemonProc = spawn(process.execPath, [CLI_PATH, 'cc-daemon'], {
@@ -1419,6 +1426,92 @@ describe('E2E: Session Lifecycle', () => {
 				cleanupTestSessions('e2e-health-');
 			}
 		}, 15000);
+	});
+
+	// ─── Token Refresh ───────────────────────────────────────────────────
+
+	describe('Token Refresh', () => {
+		// client.js writes refreshed tokens back onto the config object the daemon passes to
+		// setConfig(). If the daemon ignores that write, its API calls keep using stale tokens.
+		test('daemon task sync survives client-side refreshes with rotating refresh tokens', async () => {
+			const testSessionId = `e2e-refresh-${randomBytes(8).toString('hex')}`;
+			const dummyProc = Bun.spawn(['sleep', '300'], { stdout: 'ignore', stderr: 'ignore' });
+			let daemonPid;
+
+			// Single-use refresh tokens; only the latest access token is accepted. The first two
+			// grants expire inside the 5-minute refresh window, forcing back-to-back refreshes.
+			let issued = 0;
+			let validRefresh = 'mock-refresh-token';
+			let validAccess = 'mock-access-token';
+			const refreshTokensSeen = [];
+			const apiCalls = [];
+			httpOverride = async (req, url) => {
+				if (url.pathname === '/oauth/token') {
+					const presented = new URLSearchParams(await req.text()).get('refresh_token');
+					refreshTokensSeen.push(presented);
+					if (presented !== validRefresh) return Response.json({ error: 'invalid_grant' }, { status: 400 });
+					issued++;
+					validAccess = `access-${issued}`;
+					validRefresh = `refresh-${issued}`;
+					return Response.json({ access_token: validAccess, refresh_token: validRefresh, expires_in: issued < 3 ? 60 : 3600 });
+				}
+				if (!url.pathname.startsWith('/api/')) return null;
+				const auth = req.headers.get('authorization');
+				apiCalls.push(`${req.method} ${url.pathname.replace(/cc-sessions\/[^/]+/, 'cc-sessions/:id')} ${auth}`);
+				if (auth !== `Bearer ${validAccess}`) return Response.json({ error: 'unauthorized' }, { status: 401 });
+				if (url.pathname.startsWith('/api/cc-sessions/')) return Response.json({ task: { id: 'parent-task-1' } });
+				return null;
+			};
+
+			const waitUntil = async (predicate) => {
+				const deadline = Date.now() + 8000;
+				while (!predicate() && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
+			};
+			const sendTaskCreate = (state, ccTaskId) => fetch(`http://127.0.0.1:${state.port}/event`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.daemonToken}` },
+				body: JSON.stringify({
+					eventType: 'PostToolUse',
+					payload: { hook_event_name: 'PostToolUse', tool_name: 'TaskCreate', tool_input: { subject: ccTaskId }, tool_response: { task: { id: ccTaskId } } },
+				}),
+				signal: AbortSignal.timeout(2000),
+			});
+
+			try {
+				// Starts expired, so the daemon's own refresh runs before the WS connects.
+				const { daemonProc } = await startReadyDaemon(testSessionId, dummyProc.pid, { expiresAt: Date.now() - 1000 });
+				daemonPid = daemonProc.pid;
+
+				// Task sync starts only after the session:start ack sets lsSessionId.
+				let state = null;
+				await waitUntil(() => {
+					try { state = JSON.parse(readFileSync(join(SESSIONS_DIR, `${testSessionId}.json`), 'utf-8')); } catch {}
+					return Boolean(state?.lsSessionId);
+				});
+
+				await sendTaskCreate(state, 'cc-task-1');
+				await waitUntil(() => apiCalls.length >= 3);
+				await sendTaskCreate(state, 'cc-task-2');
+				await waitUntil(() => apiCalls.length >= 5);
+
+				// Each refresh presents the token issued by the one before it.
+				expect(refreshTokensSeen).toEqual(['mock-refresh-token', 'refresh-1', 'refresh-2']);
+				// Every call carries the newest access token; the second task needs no refresh.
+				expect(apiCalls).toEqual([
+					'GET /api/cc-sessions/:id/task Bearer access-2',
+					'POST /api/tasks Bearer access-3',
+					'POST /api/tasks/parent-task-1/dependencies Bearer access-3',
+					'POST /api/tasks Bearer access-3',
+					'POST /api/tasks/parent-task-1/dependencies Bearer access-3',
+				]);
+			} finally {
+				httpOverride = null;
+				try { process.kill(daemonPid, 'SIGTERM'); } catch {}
+				dummyProc.kill();
+				await dummyProc.exited;
+				cleanupTestSessions('e2e-refresh-');
+			}
+		}, 25000);
 	});
 
 });
