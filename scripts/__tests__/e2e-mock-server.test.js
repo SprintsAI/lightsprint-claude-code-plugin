@@ -88,6 +88,32 @@ function createMockServer() {
 
 			requests.push({ method, path, body, query: Object.fromEntries(url.searchParams) });
 
+			const askRoot = '/api/workspaces/mock-workspace-id/ask/threads';
+			const thread = { id: 'thread-1', title: 'Release review', visibility: 'workspace', archivedAt: null };
+			if (path === askRoot && method === 'GET') {
+				return Response.json({ threads: [{ ...thread, _count: { events: 3 } }], total: 12 });
+			}
+			if (path === askRoot && method === 'POST') {
+				return Response.json({ thread: { ...thread, title: body.title || null, executionStackId: body.executionStackId } });
+			}
+			if (path === `${askRoot}/thread-1/events`) {
+				return Response.json({ events: [
+					{ role: 'user', content: 'Review the release' },
+					{ role: 'assistant', content: 'Ready to ship' }
+				] });
+			}
+			if (path === `${askRoot}/thread-1/messages` && method === 'POST') {
+				return new Response('data: {"type":"progress"}\n\ndata: {"type":"complete","payload":{"answer":"Reviewed"}}\n\n', {
+					headers: { 'content-type': 'text/event-stream' }
+				});
+			}
+			if (path === `${askRoot}/thread-1/cancel` && method === 'POST') {
+				return Response.json({ cancelled: true });
+			}
+			if (path === `${askRoot}/thread-1`) {
+				return Response.json(method === 'DELETE' ? { success: true } : { thread });
+			}
+
 			// ─── Route matching ──────────────────────────────────────
 
 			// Token refresh
@@ -358,6 +384,76 @@ describe('E2E: Mock Server', () => {
 
 	beforeEach(() => {
 		mockServer.requests.length = 0;
+	});
+
+	describe('CLI: ask', () => {
+		test('lists threads with pagination and normalizes event counts', async () => {
+			const result = await runCliJson(['ask', 'list', '--limit', '5', '--offset', '2']);
+			expect(result.exitCode).toBe(0);
+			expect(result.json).toEqual({ threads: [{
+				id: 'thread-1', title: 'Release review', visibility: 'workspace', archivedAt: null, eventCount: 3
+			}], total: 12 });
+			expect(mockServer.requests.at(-1).query).toEqual({ limit: '5', offset: '2' });
+		});
+
+		test('creates a thread using a case-insensitive stack prefix', async () => {
+			const result = await runCliJson(['ask', 'create', '--stack', 'eng', '--title', 'Review']);
+			expect(result.exitCode).toBe(0);
+			expect(result.json.thread.title).toBe('Review');
+			expect(mockServer.requests.at(-1)).toMatchObject({
+				method: 'POST', body: { executionStackId: 'stk_1', title: 'Review' }
+			});
+		});
+
+		test('creates on the default stack when only a positional title is given', async () => {
+			const result = await runCliJson(['ask', 'create', 'Review']);
+			expect(result.exitCode).toBe(0);
+			expect(mockServer.requests.at(-1).body).toEqual({ executionStackId: null, title: 'Review' });
+		});
+
+		test('gets a thread in JSON and text modes with either reference syntax', async () => {
+			const json = await runCliJson(['ask', 'get', '--thread', 'thread-1']);
+			expect(json.exitCode).toBe(0);
+			expect(json.json.thread.id).toBe('thread-1');
+			const text = await runCli(['ask', 'get', 'thread-1', '--output', 'text']);
+			expect(text.exitCode).toBe(0);
+			expect(text.stdout).toBe('Thread: thread-1\nTitle: Release review\nVisibility: workspace\nArchived: no\nCreated: undefined\nUpdated: undefined\n');
+		});
+
+		test('reads the last events without posting a message', async () => {
+			const result = await runCliJson(['ask', 'messages', 'thread-1', '--last', '1']);
+			expect(result.exitCode).toBe(0);
+			expect(result.json).toEqual({ events: [{ role: 'assistant', content: 'Ready to ship' }] });
+			expect(mockServer.requests.at(-1)).toMatchObject({ method: 'GET', path: '/api/workspaces/mock-workspace-id/ask/threads/thread-1/events' });
+		});
+
+		test.each(['messages', 'send'])('%s sends content and returns the SSE completion', async (subcommand) => {
+			const result = await runCliJson(['ask', subcommand, 'thread-1', '--content', 'Check it']);
+			expect(result.exitCode).toBe(0);
+			expect(result.json).toEqual({ result: { answer: 'Reviewed' } });
+			expect(mockServer.requests.at(-1)).toMatchObject({ method: 'POST', body: { content: 'Check it' } });
+		});
+
+		test('cancels an active turn and deletes a thread', async () => {
+			const cancel = await runCliJson(['ask', 'cancel', '--thread', 'thread-1']);
+			expect(cancel.exitCode).toBe(0);
+			expect(cancel.json).toEqual({ cancelled: true });
+			expect(mockServer.requests.at(-1)).toMatchObject({ method: 'POST', path: '/api/workspaces/mock-workspace-id/ask/threads/thread-1/cancel' });
+			const deleted = await runCliJson(['ask', 'delete', 'thread-1']);
+			expect(deleted.exitCode).toBe(0);
+			expect(deleted.json).toEqual({ success: true, threadId: 'thread-1' });
+			expect(mockServer.requests.at(-1).method).toBe('DELETE');
+		});
+
+		test.each(['get', 'cancel', 'delete'])('%s preserves usage errors and rejects surplus arguments before any request', async (subcommand) => {
+			const missing = await runCliJson(['ask', subcommand]);
+			expect(missing.exitCode).toBe(1);
+			expect(missing.stderr).toContain(`Usage: lightsprint ask ${subcommand} <threadId>`);
+			const extra = await runCliJson(['ask', subcommand, 'thread-1', 'extra']);
+			expect(extra.exitCode).toBe(1);
+			expect(extra.stderr).toContain(`Unknown argument: extra. Use: lightsprint ask ${subcommand} <threadId>`);
+			expect(mockServer.requests).toHaveLength(0);
+		});
 	});
 
 	// ─── CLI: tasks ──────────────────────────────────────────────────────
