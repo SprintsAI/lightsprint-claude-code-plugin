@@ -37,7 +37,7 @@ lightsprint session create [--stack <ref>] [--title <text>]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--stack <ref>` | default stack | Target stack (stack ID, task prefix, or name). Use `lightsprint stacks` to list. |
-| `--title <text>` | — | Session title. Positional can also be used. |
+| `--title <text>` | — | Your name for the session (sent as `name`). Positional can also be used. Shows up right away in `session get`/`list`, unlike the agent-written title, which fills in once the agent has read enough of the conversation to summarize it. |
 
 ### `session get`
 

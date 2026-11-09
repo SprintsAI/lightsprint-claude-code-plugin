@@ -400,7 +400,9 @@ Commands:
     Create a new read-only session
     Options:
       --stack <ref>         Target stack (stack ID, task prefix, or name)
-      --title <text>        Session title
+      --title <text>        Your name for the session (sent as 'name'; shows
+                             up right away in 'session get'/'list', unlike
+                             the agent-written title, which fills in later)
     Example:
       lightsprint session create --stack ENG --title "Review authentication"
       lightsprint session create "Review authentication"
@@ -2309,11 +2311,20 @@ async function cmdSession(args, opts) {
 	}
 }
 
-/** Normalize a session DTO into the fields the CLI displays. */
+/**
+ * Normalize a session DTO into the fields the CLI displays.
+ *
+ * The server tracks two different names: `title` is agent-written, filled in
+ * once the agent has read enough of the conversation to summarize it, and
+ * stays null until then. `personalName` is the caller's own name for the
+ * session — set via `--title` on `create`, and what the CLI actually sends
+ * as `name` (ADR 0027). Prefer the personal name, since it's what the
+ * caller set and is populated immediately; fall back to the agent title.
+ */
 function sessionSummary(session) {
 	return {
 		id: session.id,
-		title: session.title || null,
+		title: session.personalName || session.title || null,
 		visibility: session.visibility,
 		stackId: session.executionStackId ?? session.stackId ?? null,
 		agentProvider: session.agentProvider ?? null,
@@ -2408,7 +2419,11 @@ async function cmdSessionCreate(args, opts) {
 		method: 'POST',
 		body: JSON.stringify(body)
 	});
-	const session = sessionSummary(data.session);
+	// `create`'s response carries the personal name at the top level (`data.name`),
+	// not nested under `session.personalName` like `get`/`list` do — the session
+	// object it returns isn't enriched with personalization. Merge it in so
+	// sessionSummary sees it either way.
+	const session = sessionSummary({ ...data.session, personalName: data.session?.personalName ?? data.name ?? null });
 
 	outputResult({ session, url: data.url ?? null }, opts, () => {
 		console.log(`Created session: ${session.id}`);

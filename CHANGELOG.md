@@ -7,6 +7,7 @@
 - `session send <sessionId> <content>` posts a message and returns the turn's dispatch status right away; read the reply with `session get`.
 - `session events <sessionId>` fetches the session's stored message history by default (`--last N` for only the last N), matching the old `ask messages` fetch. Pass `--follow` for a live tail instead, bounded by `--timeout-ms` (default 5000ms) or `--last N` events.
 - `session messages` is a deprecated alias that dispatches to `send` or `events` depending on whether content is given, matching the old combined command.
+- `session create --title <text>` now shows up right away in `create`/`get`/`list` output. It previously printed `"title": null`, since `--title` sets the caller's own name for the session (`name` on the server), not the agent-written title that fills in later.
 - A `410` response from the server now tells the user to run `lightsprint upgrade` instead of surfacing a raw status code.
 - This version must be installed before the Lightsprint server retires the old Ask thread routes, or the old CLI calls will start failing.
 
