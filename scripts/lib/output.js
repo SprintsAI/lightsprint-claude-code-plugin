@@ -42,6 +42,9 @@ export function outputError(code, message, details = {}, opts) {
  */
 export function classifyError(err) {
 	const msg = err.message || '';
+	if (msg.includes('API 410') || msg.includes('has been retired')) {
+		return 'gone';
+	}
 	if (msg.includes('Invalid') || msg.includes('required') || msg.includes('exceeds maximum')) {
 		return 'validation_error';
 	}
