@@ -221,7 +221,7 @@ const COMMAND_SCHEMAS = {
 		description: 'Create a new read-only session',
 		params: {
 			stack: { type: 'string', flag: '--stack', description: 'Target stack (stack ID, task prefix, or name)' },
-			title: { type: 'string', flag: '--title', description: 'Session title' }
+			title: { type: 'string', flag: '--title', description: "Your name for the session (sent as 'name'); shown right away, unlike the agent-written title which fills in later" }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
