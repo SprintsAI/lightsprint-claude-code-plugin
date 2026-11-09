@@ -208,8 +208,8 @@ const COMMAND_SCHEMAS = {
 		supportsDryRun: true,
 		supportsJsonBody: false
 	},
-	'ask-list': {
-		description: 'List Codebase Ask threads in the active workspace',
+	'session-list': {
+		description: 'List your read-only sessions (Codebase Ask) in the active workspace',
 		params: {
 			limit: { type: 'integer', flag: '--limit', description: 'Max results' },
 			offset: { type: 'integer', flag: '--offset', default: 0, description: 'Skip first N results' }
@@ -217,45 +217,54 @@ const COMMAND_SCHEMAS = {
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
-	'ask-create': {
-		description: 'Create a new Codebase Ask thread',
+	'session-create': {
+		description: 'Create a new read-only session',
 		params: {
 			stack: { type: 'string', flag: '--stack', description: 'Target stack (stack ID, task prefix, or name)' },
-			title: { type: 'string', flag: '--title', description: 'Thread title' }
+			title: { type: 'string', flag: '--title', description: 'Session title' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
-	'ask-get': {
-		description: 'Show details of a Codebase Ask thread',
+	'session-get': {
+		description: 'Show details of a session',
 		params: {
-			threadId: { type: 'string', required: true, flag: '--thread', description: 'Thread ID' }
+			sessionId: { type: 'string', required: true, flag: '--session', description: 'Session ID' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
-	'ask-messages': {
-		description: 'List or send messages in a Codebase Ask thread. Send via --content flag.',
+	'session-send': {
+		description: "Send a message to a session as its next turn. Answers right away with the turn's dispatch status — read the reply with 'session get'.",
 		params: {
-			threadId: { type: 'string', required: true, flag: '--thread', description: 'Thread ID' },
-			content: { type: 'string', flag: '--content', description: 'Message content to send. Omit to list messages.' },
-			last: { type: 'integer', flag: '--last', description: 'Return only the last N messages (ignored when sending)' }
+			sessionId: { type: 'string', required: true, flag: '--session', description: 'Session ID' },
+			content: { type: 'string', required: true, flag: '--content', description: 'Message to send' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
-	'ask-cancel': {
-		description: 'Cancel the currently running turn in an Ask thread',
+	'session-events': {
+		description: "Watch a session's live event stream for a bounded window. This is a live tail, not a history replay.",
 		params: {
-			threadId: { type: 'string', required: true, flag: '--thread', description: 'Thread ID' }
+			sessionId: { type: 'string', required: true, flag: '--session', description: 'Session ID' },
+			last: { type: 'integer', flag: '--last', description: 'Stop once this many events arrive' },
+			timeoutMs: { type: 'integer', flag: '--timeout-ms', default: 5000, description: 'How long to listen before giving up' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false
 	},
-	'ask-delete': {
-		description: 'Delete a Codebase Ask thread permanently',
+	'session-cancel': {
+		description: 'Cancel the currently running turn on a session',
 		params: {
-			threadId: { type: 'string', required: true, flag: '--thread', description: 'Thread ID' }
+			sessionId: { type: 'string', required: true, flag: '--session', description: 'Session ID' }
+		},
+		supportsDryRun: false,
+		supportsJsonBody: false
+	},
+	'session-delete': {
+		description: 'Delete a session permanently',
+		params: {
+			sessionId: { type: 'string', required: true, flag: '--session', description: 'Session ID' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false

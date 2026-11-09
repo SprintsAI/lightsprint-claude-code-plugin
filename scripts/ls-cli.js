@@ -23,12 +23,14 @@
  *   agent stop --task <taskId> --provider <provider>
  *   agent settings [--provider <provider>]
  *   agent create-pr --task <taskId> --provider <provider> --agent-id <id>
- *   ask list [--limit N] [--offset N]
- *   ask create [--stack <ref>]
- *   ask get <threadId>
- *   ask messages <threadId> [--content <text>] [--last N]
- *   ask cancel <threadId>
- *   ask delete <threadId>
+ *   session list [--limit N] [--offset N]
+ *   session create [--stack <ref>] [--title <text>]
+ *   session get <sessionId>
+ *   session send <sessionId> <content>
+ *   session events <sessionId> [--last N] [--timeout-ms N]
+ *   session cancel <sessionId>
+ *   session delete <sessionId>
+ *   (ask is a deprecated alias for session; session messages is a deprecated alias for send/events)
  */
 
 import { createHash } from 'crypto';
@@ -36,7 +38,7 @@ import { execFileSync, execSync } from 'child_process';
 import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
-import { apiRequest, apiRequestSSE, getWorkspaceId } from './lib/client.js';
+import { apiRequest, apiRequestSSE, collectSSEEvents, getWorkspaceId } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readConnection, clearConnection, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider, validateBoolean } from './lib/validate.js';
@@ -59,6 +61,8 @@ const COMMAND_ALIASES = {
 	'rm': 'delete',
 	'link': 'link-pr',
 	'unlink': 'unlink-pr',
+	// `ask` is the pre-rename name for `session` (ADR 0027: Ask is a read-only session).
+	'ask': 'session',
 	// Hyphenated compound commands -> space-separated routing
 	'review-hub-signals': '_review-hub-signals',
 	'review-hub-scores': '_review-hub-scores',
@@ -69,7 +73,7 @@ const VALID_COMMANDS = [
 	'tasks', 'projects', 'stacks', 'create', 'update', 'get', 'claim', 'current-task',
 	'link-pr', 'unlink-pr', 'delete', 'comment', 'whoami',
 	'open', 'status', 'connect', 'disconnect', 'upgrade', 'config', 'describe',
-	'agent', 'merge', 'review-hub', 'ask'
+	'agent', 'merge', 'review-hub', 'session'
 ];
 
 function suggestCommand(input) {
@@ -110,7 +114,7 @@ function showSubcommandHelp(commandName) {
 	const schema = getCommandSchema(commandName);
 	if (schema) {
 		// For compound schemas like "review-hub-signals", display as "review-hub signals"
-		const displayName = commandName.replace(/^(review-hub|agent)-/, '$1 ');
+		const displayName = commandName.replace(/^(review-hub|agent|session)-/, '$1 ');
 		console.log(`lightsprint ${displayName}\n`);
 		console.log(`  ${schema.description}\n`);
 		const params = Object.entries(schema.params || {});
@@ -191,7 +195,7 @@ export async function cliMain(command, args, context = {}) {
 			case 'agent': return await cmdAgent(remainingArgs, opts);
 			case 'merge': return await cmdMerge(remainingArgs, opts);
 			case 'review-hub': return await cmdReviewHub(remainingArgs, opts);
-			case 'ask': return await cmdAsk(remainingArgs, opts);
+			case 'session': return await cmdSession(remainingArgs, opts);
 			default: {
 				const suggestion = suggestCommand(command);
 				const hint = suggestion ? ` Did you mean '${suggestion}'?` : '';
@@ -386,42 +390,54 @@ Commands:
       lightsprint review-hub scores LIG-024
       lightsprint review-hub scores LIG-024 --refresh
 
-  ask list [--limit N] [--offset N]
-    List Codebase Ask threads in the active workspace
+  session list [--limit N] [--offset N]
+    List your read-only sessions (Codebase Ask) in the active workspace
     Example:
-      lightsprint ask list
-      lightsprint ask list --limit 10
+      lightsprint session list
+      lightsprint session list --limit 10
 
-  ask create [--stack <ref>] [--title <text>]
-    Create a new Codebase Ask thread
+  session create [--stack <ref>] [--title <text>]
+    Create a new read-only session
     Options:
       --stack <ref>         Target stack (stack ID, task prefix, or name)
-      --title <text>        Thread title
+      --title <text>        Session title
     Example:
-      lightsprint ask create --stack ENG --title "Review authentication"
-      lightsprint ask create "Review authentication"
+      lightsprint session create --stack ENG --title "Review authentication"
+      lightsprint session create "Review authentication"
 
-  ask get <threadId>
-    Show details of a Codebase Ask thread
+  session get <sessionId>
+    Show details of a session
     Example:
-      lightsprint ask get abc123
+      lightsprint session get abc123
 
-  ask messages <threadId> [--content <text>] [--last N]
-    List messages in a thread or send a new message
+  session send <sessionId> <content>
+    Send a message to a session as its next turn. Answers right away;
+    read the reply with 'session get' once the turn finishes.
     Example:
-      lightsprint ask messages abc123
-      lightsprint ask messages abc123 --last 10
-      lightsprint ask messages abc123 --content "How does auth work?"
+      lightsprint session send abc123 "How does auth work?"
 
-  ask cancel <threadId>
-    Cancel the currently running turn on an Ask thread
+  session events <sessionId> [--last N] [--timeout-ms N]
+    Watch a session's live event stream for up to --timeout-ms (default
+    5000) or until --last events arrive. This is a live tail, not a
+    history replay — it only reports activity that happens while it's
+    connected.
     Example:
-      lightsprint ask cancel abc123
+      lightsprint session events abc123
+      lightsprint session events abc123 --last 5 --timeout-ms 10000
 
-  ask delete <threadId>
-    Delete a Codebase Ask thread permanently
+  session cancel <sessionId>
+    Cancel the currently running turn on a session
     Example:
-      lightsprint ask delete abc123
+      lightsprint session cancel abc123
+
+  session delete <sessionId>
+    Delete a session permanently
+    Example:
+      lightsprint session delete abc123
+
+  'ask' is a deprecated alias for 'session'. 'session messages' is a
+  deprecated alias that dispatches to 'send' (when content is given) or
+  'events' (otherwise).
 
   config <subcommand> [key] [value]
     Manage user preferences (stored in ~/.lightsprint/preferences.json)
@@ -2266,26 +2282,61 @@ async function cmdReviewHubScores(args, opts) {
 	});
 }
 
-// ─── ask ──────────────────────────────────────────────────────────────
+// ─── session (formerly ask) ─────────────────────────────────────────────
+//
+// A Codebase Ask is a read-only agent session (ADR 0027). These commands
+// call the session endpoints directly — the retired Ask thread routes
+// answer 410 Gone and are never called here. `ask` is kept as a
+// deprecated top-level alias for `session` (see COMMAND_ALIASES).
 
-async function cmdAsk(args, opts) {
+async function cmdSession(args, opts) {
 	const sub = args[0];
 	const subArgs = args.slice(1);
 
 	switch (sub) {
-		case 'list': return await cmdAskList(subArgs, opts);
-		case 'create': return await cmdAskCreate(subArgs, opts);
-		case 'get': return await cmdAskGet(subArgs, opts);
-		case 'messages':
-		case 'send': return await cmdAskMessages(subArgs, opts);
-		case 'cancel': return await cmdAskCancel(subArgs, opts);
-		case 'delete': return await cmdAskDelete(subArgs, opts);
+		case 'list': return await cmdSessionList(subArgs, opts);
+		case 'create': return await cmdSessionCreate(subArgs, opts);
+		case 'get': return await cmdSessionGet(subArgs, opts);
+		case 'send': return await cmdSessionSend(subArgs, opts);
+		case 'events': return await cmdSessionEvents(subArgs, opts);
+		case 'messages': return await cmdSessionMessages(subArgs, opts); // deprecated: dispatches to send/events
+		case 'cancel': return await cmdSessionCancel(subArgs, opts);
+		case 'delete': return await cmdSessionDelete(subArgs, opts);
 		default:
-			throw new Error(`Unknown ask subcommand: ${sub || '(none)'}. Valid: list, create, get, messages, cancel, delete`);
+			throw new Error(`Unknown session subcommand: ${sub || '(none)'}. Valid: list, create, get, send, events, cancel, delete`);
 	}
 }
 
-async function cmdAskList(args, opts) {
+/** Normalize a session DTO into the fields the CLI displays. */
+function sessionSummary(session) {
+	return {
+		id: session.id,
+		title: session.title || null,
+		visibility: session.visibility,
+		stackId: session.executionStackId ?? session.stackId ?? null,
+		agentProvider: session.agentProvider ?? null,
+		agentModel: session.agentModel ?? null,
+		createdAt: session.createdAt,
+		updatedAt: session.updatedAt,
+		lastMessageAt: session.lastMessageAt ?? null
+	};
+}
+
+/**
+ * A session ID that no longer resolves is most often an old Ask thread ID —
+ * thread IDs were never session IDs and the server now 404s them. Point the
+ * user at the command that lists real session IDs instead of a bare 404.
+ */
+function rewriteSessionNotFound(err, sessionIdInput) {
+	if (err instanceof Error && /\bAPI 404\b/.test(err.message)) {
+		return new Error(
+			`Session ${sessionIdInput} not found. If this is an old Ask thread ID, thread IDs are no longer accepted directly — run "lightsprint session list" to find the session.`
+		);
+	}
+	return err;
+}
+
+async function cmdSessionList(args, opts) {
 	let limit = null;
 	let offset = null;
 
@@ -2297,44 +2348,38 @@ async function cmdAskList(args, opts) {
 		} else if (!args[i].startsWith('-')) {
 			// ignore stray positionals
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask list [--limit N] [--offset N]`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint session list [--limit N] [--offset N]`);
 		}
 	}
 
 	const workspaceId = await getWorkspaceId();
-	let path = `/api/workspaces/${workspaceId}/ask/threads`;
+	let path = `/api/workspaces/${workspaceId}/sessions`;
 	const params = [];
 	if (limit != null) params.push(`limit=${limit}`);
 	if (offset != null) params.push(`offset=${offset}`);
 	if (params.length > 0) path += '?' + params.join('&');
 
 	const data = await apiRequest(path);
-	const threads = (data.threads || []).map(t => ({
-		id: t.id,
-		title: t.title || null,
-		visibility: t.visibility,
-		archivedAt: t.archivedAt || null,
-		eventCount: t.eventCount ?? t._count?.events ?? null,
-		createdAt: t.createdAt,
-		updatedAt: t.updatedAt
-	}));
+	const sessions = (data.sessions || []).map(sessionSummary);
+	const hasMore = data.hasMore ?? false;
+	const nextOffset = data.nextOffset ?? null;
 
-	outputResult({ threads, total: data.total ?? threads.length }, opts, () => {
-		if (threads.length === 0) {
-			console.log('No ask threads found.');
+	outputResult({ sessions, hasMore, nextOffset }, opts, () => {
+		if (sessions.length === 0) {
+			console.log('No sessions found.');
 			return;
 		}
-		console.log(`Found ${threads.length} thread(s):\n`);
-		for (const t of threads) {
-			const title = t.title || '(untitled)';
-			const archived = t.archivedAt ? ' [archived]' : '';
-			const vis = t.visibility === 'workspace' ? ' [shared]' : '';
-			console.log(`  ${t.id}  ${title}${archived}${vis}`);
+		console.log(`Found ${sessions.length} session(s):\n`);
+		for (const s of sessions) {
+			const title = s.title || '(untitled)';
+			const vis = s.visibility === 'workspace' ? ' [shared]' : '';
+			console.log(`  ${s.id}  ${title}${vis}`);
 		}
+		if (hasMore) console.log(`\n(more available — use --offset ${nextOffset})`);
 	});
 }
 
-async function cmdAskCreate(args, opts) {
+async function cmdSessionCreate(args, opts) {
 	let stackRef = null;
 	let title = null;
 
@@ -2344,170 +2389,224 @@ async function cmdAskCreate(args, opts) {
 		} else if (args[i] === '--title' && args[i + 1]) {
 			title = args[++i];
 		} else if (!args[i].startsWith('-')) {
-			// positional: treat as title or stack hint
+			// positional: treat as title
 			if (title == null) { title = args[i]; }
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask create [--stack <ref>] [--title <text>]`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint session create [--stack <ref>] [--title <text>]`);
 		}
 	}
 
 	const workspaceId = await getWorkspaceId();
-	const executionStackId = stackRef ? await resolveStackId(workspaceId, stackRef) : null;
-	const body = { executionStackId };
-	if (title) body.title = title;
+	const stackId = stackRef ? await resolveStackId(workspaceId, stackRef) : null;
+	const body = {};
+	if (stackId) body.stackId = stackId;
+	if (title) body.name = title;
 
-	const data = await apiRequest(`/api/workspaces/${workspaceId}/ask/threads`, {
+	const data = await apiRequest(`/api/workspaces/${workspaceId}/sessions`, {
 		method: 'POST',
 		body: JSON.stringify(body)
 	});
-	const thread = data.thread;
+	const session = sessionSummary(data.session);
 
-	outputResult({ thread }, opts, () => {
-		console.log(`Created ask thread: ${thread.id}`);
-		if (thread.title) console.log(`Title: ${thread.title}`);
-		console.log(`Visibility: ${thread.visibility}`);
+	outputResult({ session, url: data.url ?? null }, opts, () => {
+		console.log(`Created session: ${session.id}`);
+		if (session.title) console.log(`Title: ${session.title}`);
+		console.log(`Visibility: ${session.visibility}`);
+		if (data.url) console.log(`URL: ${data.url}`);
 	});
 }
 
-async function cmdAskGet(args, opts) {
-	let threadIdInput = null;
+async function cmdSessionGet(args, opts) {
+	let sessionIdInput = null;
 
 	for (let i = 0; i < args.length; i++) {
-		if (args[i] === '--thread' && args[i + 1]) {
-			threadIdInput = args[++i];
-		} else if (!threadIdInput && !args[i].startsWith('-')) {
-			threadIdInput = args[i];
+		if (args[i] === '--session' && args[i + 1]) {
+			sessionIdInput = args[++i];
+		} else if (!sessionIdInput && !args[i].startsWith('-')) {
+			sessionIdInput = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask get <threadId>`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint session get <sessionId>`);
 		}
 	}
 
-	if (!threadIdInput) throw new Error('Usage: lightsprint ask get <threadId>');
+	if (!sessionIdInput) throw new Error('Usage: lightsprint session get <sessionId>');
 
 	const workspaceId = await getWorkspaceId();
-	const data = await apiRequest(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}`);
-	const thread = data.thread;
+	let data;
+	try {
+		data = await apiRequest(`/api/workspaces/${workspaceId}/sessions/${sessionIdInput}`);
+	} catch (err) {
+		throw rewriteSessionNotFound(err, sessionIdInput);
+	}
+	const session = sessionSummary(data.session);
 
-	outputResult({ thread }, opts, () => {
-		console.log(`Thread: ${thread.id}`);
-		console.log(`Title: ${thread.title || '(untitled)'}`);
-		console.log(`Visibility: ${thread.visibility}`);
-		console.log(`Archived: ${thread.archivedAt ? 'yes' : 'no'}`);
-		console.log(`Created: ${thread.createdAt}`);
-		console.log(`Updated: ${thread.updatedAt}`);
+	outputResult({ session }, opts, () => {
+		console.log(`Session: ${session.id}`);
+		console.log(`Title: ${session.title || '(untitled)'}`);
+		console.log(`Visibility: ${session.visibility}`);
+		console.log(`Created: ${session.createdAt}`);
+		console.log(`Updated: ${session.updatedAt}`);
 	});
 }
 
-async function cmdAskMessages(args, opts) {
-	let threadIdInput = null;
+async function cmdSessionSend(args, opts) {
+	let sessionIdInput = null;
 	let content = null;
-	let last = null;
 
 	for (let i = 0; i < args.length; i++) {
-		if (args[i] === '--thread' && args[i + 1]) {
-			threadIdInput = args[++i];
+		if (args[i] === '--session' && args[i + 1]) {
+			sessionIdInput = args[++i];
 		} else if (args[i] === '--content' && args[i + 1]) {
 			content = args[++i];
-		} else if (args[i] === '--last' && args[i + 1]) {
-			last = parseInt(args[++i], 10);
-		} else if (!threadIdInput && !args[i].startsWith('-')) {
-			threadIdInput = args[i];
-		} else if (!content && threadIdInput && !args[i].startsWith('-')) {
+		} else if (!sessionIdInput && !args[i].startsWith('-')) {
+			sessionIdInput = args[i];
+		} else if (content == null && sessionIdInput && !args[i].startsWith('-')) {
 			content = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask messages <threadId> [--content <text>] [--last N]`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint session send <sessionId> <content>`);
 		}
 	}
 
-	if (!threadIdInput) throw new Error('Usage: lightsprint ask messages <threadId> [--content <text>] [--last N]');
+	if (!sessionIdInput) throw new Error('Usage: lightsprint session send <sessionId> <content>');
+	if (!content) throw new Error('Usage: lightsprint session send <sessionId> <content>. Message content is required.');
 
 	const workspaceId = await getWorkspaceId();
-
-	if (content) {
-		// Send a message (SSE endpoint — use apiRequestSSE for streaming support)
-		const body = JSON.stringify({ content });
-		const result = await apiRequestSSE(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}/messages`, {
-			body,
-			method: 'POST'
+	let data;
+	try {
+		data = await apiRequest(`/api/workspaces/${workspaceId}/sessions/${sessionIdInput}/messages`, {
+			method: 'POST',
+			body: JSON.stringify({ prompt: content })
 		});
-		outputResult({ result }, opts, () => {
-			console.log(`Message sent to thread ${threadIdInput}`);
-			if (result) console.log(JSON.stringify(result, null, 2));
-		});
-	} else {
-		// Fetch conversation history (events endpoint)
-		const data = await apiRequest(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}/events`);
-		let events = data.events || [];
-		if (last != null && last > 0) {
-			events = events.slice(-last);
-		}
-		outputResult({ events }, opts, () => {
-			if (events.length === 0) {
-				console.log(`No messages in thread ${threadIdInput}.`);
-				return;
-			}
-			console.log(`Messages in thread ${threadIdInput} (${events.length}${last != null ? ` of ${last} requested` : ''}):\n`);
-			for (const evt of events) {
-				const role = evt.role || 'unknown';
-				const text = typeof evt.content === 'string' ? evt.content : JSON.stringify(evt.content);
-				const preview = text.slice(0, 280).replace(/\n/g, ' ');
-				console.log(`  [${role}] ${preview}${text.length > 280 ? '...' : ''}`);
-			}
-		});
+	} catch (err) {
+		throw rewriteSessionNotFound(err, sessionIdInput);
 	}
+
+	const turn = data.turn || {};
+	if (turn.status === 'refused') {
+		throw new Error(`Message refused: ${turn.message || turn.code || 'unknown reason'}`);
+	}
+
+	outputResult({ turn, url: data.url ?? null, transcriptPath: data.transcriptPath ?? null }, opts, () => {
+		console.log(`Message sent to session ${sessionIdInput} (${turn.status || 'unknown'}).`);
+		console.log(`Read the reply with: lightsprint session get ${sessionIdInput}`);
+	});
 }
 
-async function cmdAskCancel(args, opts) {
-	let threadIdInput = null;
+async function cmdSessionEvents(args, opts) {
+	let sessionIdInput = null;
+	let last = null;
+	let timeoutMs = null;
 
 	for (let i = 0; i < args.length; i++) {
-		if (args[i] === '--thread' && args[i + 1]) {
-			threadIdInput = args[++i];
-		} else if (!threadIdInput && !args[i].startsWith('-')) {
-			threadIdInput = args[i];
+		if (args[i] === '--session' && args[i + 1]) {
+			sessionIdInput = args[++i];
+		} else if (args[i] === '--last' && args[i + 1]) {
+			last = parseInt(args[++i], 10);
+		} else if (args[i] === '--timeout-ms' && args[i + 1]) {
+			timeoutMs = parseInt(args[++i], 10);
+		} else if (!sessionIdInput && !args[i].startsWith('-')) {
+			sessionIdInput = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask cancel <threadId>`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint session events <sessionId> [--last N] [--timeout-ms N]`);
 		}
 	}
 
-	if (!threadIdInput) throw new Error('Usage: lightsprint ask cancel <threadId>');
+	if (!sessionIdInput) throw new Error('Usage: lightsprint session events <sessionId> [--last N] [--timeout-ms N]');
 
-	const workspaceId = await getWorkspaceId();
-	const data = await apiRequest(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}/cancel`, {
-		method: 'POST'
+	let events;
+	try {
+		events = await collectSSEEvents(`/api/agent-sessions/${sessionIdInput}/events`, {
+			timeoutMs: timeoutMs ?? 5000,
+			maxEvents: last ?? null
+		});
+	} catch (err) {
+		throw rewriteSessionNotFound(err, sessionIdInput);
+	}
+
+	outputResult({ events }, opts, () => {
+		if (events.length === 0) {
+			console.log(`No live events observed on session ${sessionIdInput}. This watches activity as it happens and does not replay history — try again while a turn is running, or use "lightsprint session get ${sessionIdInput}" for session metadata.`);
+			return;
+		}
+		console.log(`Observed ${events.length} live event(s) on session ${sessionIdInput}:\n`);
+		for (const evt of events) {
+			const text = typeof evt.data === 'string' ? evt.data : JSON.stringify(evt.data);
+			const preview = text.slice(0, 280).replace(/\n/g, ' ');
+			console.log(`  [${evt.type || 'message'}] ${preview}${text.length > 280 ? '...' : ''}`);
+		}
 	});
+}
+
+/**
+ * Deprecated alias for the old combined `ask messages` command: dispatches
+ * to `send` when content is given (flag or second positional), else `events`.
+ */
+async function cmdSessionMessages(args, opts) {
+	const hasContent = args.includes('--content') ||
+		(args.length >= 2 && !String(args[0]).startsWith('-') && !String(args[1]).startsWith('-'));
+	return hasContent ? await cmdSessionSend(args, opts) : await cmdSessionEvents(args, opts);
+}
+
+async function cmdSessionCancel(args, opts) {
+	let sessionIdInput = null;
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === '--session' && args[i + 1]) {
+			sessionIdInput = args[++i];
+		} else if (!sessionIdInput && !args[i].startsWith('-')) {
+			sessionIdInput = args[i];
+		} else {
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint session cancel <sessionId>`);
+		}
+	}
+
+	if (!sessionIdInput) throw new Error('Usage: lightsprint session cancel <sessionId>');
+
+	let data;
+	try {
+		data = await apiRequest(`/api/agent-sessions/${sessionIdInput}/cancel`, {
+			method: 'POST'
+		});
+	} catch (err) {
+		throw rewriteSessionNotFound(err, sessionIdInput);
+	}
 
 	outputResult(data, opts, () => {
 		if (data.cancelled) {
-			console.log(`Cancelled active turn on thread ${threadIdInput}.`);
+			console.log(`Cancelled active turn on session ${sessionIdInput}.`);
 		} else {
-			console.log(`No active turn to cancel on thread ${threadIdInput} (${data.reason || 'unknown'}).`);
+			console.log(`No active turn to cancel on session ${sessionIdInput} (${data.reason || 'unknown'}).`);
 		}
 	});
 }
 
-async function cmdAskDelete(args, opts) {
-	let threadIdInput = null;
+async function cmdSessionDelete(args, opts) {
+	let sessionIdInput = null;
 
 	for (let i = 0; i < args.length; i++) {
-		if (args[i] === '--thread' && args[i + 1]) {
-			threadIdInput = args[++i];
-		} else if (!threadIdInput && !args[i].startsWith('-')) {
-			threadIdInput = args[i];
+		if (args[i] === '--session' && args[i + 1]) {
+			sessionIdInput = args[++i];
+		} else if (!sessionIdInput && !args[i].startsWith('-')) {
+			sessionIdInput = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint ask delete <threadId>`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint session delete <sessionId>`);
 		}
 	}
 
-	if (!threadIdInput) throw new Error('Usage: lightsprint ask delete <threadId>');
+	if (!sessionIdInput) throw new Error('Usage: lightsprint session delete <sessionId>');
 
 	const workspaceId = await getWorkspaceId();
-	await apiRequest(`/api/workspaces/${workspaceId}/ask/threads/${threadIdInput}`, {
-		method: 'DELETE'
-	});
+	let data;
+	try {
+		data = await apiRequest(`/api/workspaces/${workspaceId}/sessions/${sessionIdInput}`, {
+			method: 'DELETE'
+		});
+	} catch (err) {
+		throw rewriteSessionNotFound(err, sessionIdInput);
+	}
 
-	outputResult({ success: true, threadId: threadIdInput }, opts, () => {
-		console.log(`Deleted thread ${threadIdInput}.`);
+	outputResult({ success: data?.deleted === true, sessionId: sessionIdInput }, opts, () => {
+		console.log(`Deleted session ${sessionIdInput}.`);
 	});
 }
 

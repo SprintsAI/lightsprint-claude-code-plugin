@@ -1,82 +1,98 @@
 ---
 name: ask
-description: Interact with Lightsprint Codebase Ask threads. Use when you need to create, list, or send messages to Ask threads.
+description: Interact with Lightsprint read-only agent sessions (Codebase Ask). Use when you need to create, list, or send messages to a session.
 ---
 
-Run this command to interact with Lightsprint Codebase Ask — a read‑only Q&A over every repository in a stack.
+Run this command to interact with Lightsprint Codebase Ask — a read‑only Q&A session over every repository in a stack.
 
 ```bash
-lightsprint ask $ARGUMENTS
+lightsprint session $ARGUMENTS
 ```
+
+A Codebase Ask is a read‑only agent session. `lightsprint ask` is a deprecated alias for `lightsprint session` kept for compatibility — prefer `session`.
 
 ## Subcommands
 
-### `ask list`
+### `session list`
 
-List ask threads in the active workspace.
+List your sessions in the active workspace.
 
 ```
-lightsprint ask list [--limit N] [--offset N]
+lightsprint session list [--limit N] [--offset N]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--limit N` | server default | Maximum threads to return |
-| `--offset N` | `0` | Skip first N threads |
+| `--limit N` | server default | Maximum sessions to return |
+| `--offset N` | `0` | Skip first N sessions |
 
-### `ask create`
+### `session create`
 
-Create a new Codebase Ask thread.
+Create a new read‑only session.
 
 ```
-lightsprint ask create [--stack <ref>] [--title <text>]
+lightsprint session create [--stack <ref>] [--title <text>]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--stack <ref>` | default stack | Target stack (stack ID, task prefix, or name). Use `lightsprint stacks` to list. |
-| `--title <text>` | — | Thread title. Positional can also be used. |
+| `--title <text>` | — | Session title. Positional can also be used. |
 
-### `ask get`
+### `session get`
 
-Show details of an Ask thread.
-
-```
-lightsprint ask get <threadId>
-```
-
-### `ask messages`
-
-List messages in a thread or send a new message.
+Show details of a session.
 
 ```
-lightsprint ask messages <threadId> [--content <text>] [--last N]
+lightsprint session get <sessionId>
+```
+
+### `session send`
+
+Send a message to a session as its next turn.
+
+```
+lightsprint session send <sessionId> <content>
+```
+
+Answers right away with the turn's dispatch status (`dispatched`, `queued`, or `refused`) — it does not wait for the agent's reply. Read the reply with `lightsprint session get <sessionId>` once the turn finishes.
+
+### `session events`
+
+Watch a session's live event stream for a bounded window.
+
+```
+lightsprint session events <sessionId> [--last N] [--timeout-ms N]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--content <text>` | — | Message to send. Omit to list existing messages. |
-| `--last N` | — | Return only the last N messages. Ignored when sending. |
+| `--last N` | — | Stop once this many events arrive |
+| `--timeout-ms N` | `5000` | How long to listen before giving up |
 
-Sending a message dispatches an agent turn and blocks until the agent responds (SSE). The response is streamed.
+This is a live tail, not a history replay — it only reports activity that happens while it is connected. An empty result means nothing happened in the window, not a failure.
 
-### `ask cancel`
+### `session cancel`
 
-Cancel the currently running agent turn on a thread.
+Cancel the currently running agent turn on a session.
 
 ```
-lightsprint ask cancel <threadId>
+lightsprint session cancel <sessionId>
 ```
 
 Idempotent — returns `cancelled: false` when there is no active turn.
 
-### `ask delete`
+### `session delete`
 
-Delete an Ask thread permanently.
+Delete a session permanently.
 
 ```
-lightsprint ask delete <threadId>
+lightsprint session delete <sessionId>
 ```
+
+### `session messages` (deprecated)
+
+Deprecated alias for the combined old `ask messages` command. Dispatches to `send` when content is given, or `events` otherwise.
 
 ## Output
 
@@ -84,8 +100,11 @@ All subcommands support `--output json` for machine-readable output. Errors incl
 
 ## Invariants
 
-- Ask threads are workspace‑scoped — no repo context is needed
-- Use `lightsprint ask list` first to discover threads before `get` or `messages`
-- `ask create` with `--stack` targets a specific stack; omit to use the default
-- Messages sent via `ask messages --content` dispatch an agent turn — this is a read‑only operation that does not modify code
-- Always cancel an unwanted running turn with `ask cancel` before deleting a thread
+- Sessions are workspace‑scoped — no repo context is needed
+- Use `lightsprint session list` first to discover sessions before `get`, `send`, or `events`
+- `session create` with `--stack` targets a specific stack; omit to use the default
+- `session send` dispatches an agent turn — this is a read‑only operation that does not modify code
+- `session send` is fire-and-forget: check the reply with `session get`, not from the send response
+- `session events` only sees live activity — it cannot recover a conversation's past messages
+- Always cancel an unwanted running turn with `session cancel` before deleting a session
+- An old Ask thread ID is not a valid session ID — run `lightsprint session list` to find the session

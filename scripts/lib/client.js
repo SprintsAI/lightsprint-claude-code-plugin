@@ -143,6 +143,30 @@ async function readBodyCapped(response) {
 }
 
 /**
+ * Build a clear error for a non-OK HTTP response. A 410 means the server
+ * retired the route this plugin version called — the install is too old
+ * for this server, not a transient failure — so point the user at the
+ * fix (`lightsprint upgrade`) instead of surfacing a raw status code.
+ * @param {Response} response
+ * @param {string} text - Response body text
+ * @returns {Error}
+ */
+export function describeHttpError(response, text) {
+	const safeText = text.length > 500 ? text.slice(0, 500) + '...' : text;
+	if (response.status === 410) {
+		let hint = '';
+		try {
+			const parsed = JSON.parse(text);
+			if (parsed && typeof parsed.use === 'string') hint = ` The server suggests: ${parsed.use}.`;
+		} catch {
+			// body wasn't JSON — no hint to add
+		}
+		return new Error(`Lightsprint API 410: this endpoint has been retired.${hint} Run "lightsprint upgrade" to update the plugin.`);
+	}
+	return new Error(`Lightsprint API ${response.status}: ${safeText}`);
+}
+
+/**
  * Parse JSON with descriptive errors for non-JSON responses.
  * @param {string} body - Response body text
  * @returns {any} Parsed JSON
@@ -267,9 +291,7 @@ export async function apiRequest(path, options = {}) {
 
 	if (!response.ok) {
 		const text = await readBodyCapped(response).catch(() => '');
-		// Truncate error body to avoid leaking verbose server internals
-		const safeText = text.length > 500 ? text.slice(0, 500) + '...' : text;
-		throw new Error(`Lightsprint API ${response.status}: ${safeText}`);
+		throw describeHttpError(response, text);
 	}
 
 	if (response.status === 204) return null;
@@ -319,8 +341,7 @@ export async function apiRequestSSE(path, options = {}) {
 
 	if (!response.ok) {
 		const text = await readBodyCapped(response).catch(() => '');
-		const safeText = text.length > 500 ? text.slice(0, 500) + '...' : text;
-		throw new Error(`Lightsprint API ${response.status}: ${safeText}`);
+		throw describeHttpError(response, text);
 	}
 
 	// Empty 200 response (no signals / no content)
@@ -372,4 +393,105 @@ export async function apiRequestSSE(path, options = {}) {
 
 	// Stream ended without a complete event
 	return null;
+}
+
+/**
+ * Open an authenticated SSE connection and collect whatever events arrive
+ * within a bounded window, then close it.
+ *
+ * Some Lightsprint SSE endpoints (e.g. a session's live `/events` stream)
+ * push activity as it happens and never replay history or send a terminal
+ * event, so `apiRequestSSE`'s "wait for `complete`" contract doesn't fit.
+ * This instead reads for `timeoutMs` (or until `maxEvents` arrive) and
+ * returns whatever it saw — an empty array means nothing happened in that
+ * window, not a failure.
+ *
+ * Uses the plain `fetch` global (not `retryableFetch`) because the bounded
+ * read is implemented by cancelling the stream reader on a timer; retrying
+ * that as a transient network failure would multiply the wait instead of
+ * ending it.
+ *
+ * @param {string} path - API path
+ * @param {{ timeoutMs?: number, maxEvents?: number|null }} [options]
+ * @returns {Promise<Array<{ type: string|null, data: any }>>}
+ */
+export async function collectSSEEvents(path, options = {}) {
+	const timeoutMs = options.timeoutMs ?? 5000;
+	const maxEvents = options.maxEvents ?? null;
+	const cfg = await config();
+
+	const refreshed = await refreshTokenIfNeeded();
+	if (!refreshed) {
+		throw new Error('Lightsprint: unable to authenticate. Please re-run install.sh.');
+	}
+
+	const url = `${cfg.baseUrl}${path}`;
+	const response = await fetch(url, {
+		method: 'GET',
+		headers: {
+			'Authorization': `Bearer ${cfg.accessToken}`,
+			'Accept': 'text/event-stream'
+		}
+	});
+
+	if (!response.ok) {
+		const text = await readBodyCapped(response).catch(() => '');
+		throw describeHttpError(response, text);
+	}
+
+	const events = [];
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = '';
+	let currentType = null;
+	let currentData = [];
+	const timer = setTimeout(() => {
+		reader.cancel('timeout').catch(() => {});
+	}, timeoutMs);
+
+	try {
+		while (true) {
+			let result;
+			try {
+				result = await reader.read();
+			} catch {
+				break; // reader cancelled (timeout) or the stream errored
+			}
+			const { done, value } = result;
+			if (done) break;
+
+			buffer += decoder.decode(value, { stream: true });
+			const lines = buffer.split('\n');
+			buffer = lines.pop();
+
+			for (const line of lines) {
+				if (line === '') {
+					if (currentData.length > 0) {
+						const raw = currentData.join('\n');
+						let parsed;
+						try {
+							parsed = JSON.parse(raw);
+						} catch {
+							parsed = raw;
+						}
+						events.push({ type: currentType, data: parsed });
+					}
+					currentType = null;
+					currentData = [];
+					continue;
+				}
+				if (line.startsWith(':')) continue; // SSE comment (e.g. keepalive)
+				if (line.startsWith('event:')) { currentType = line.slice(6).trim(); continue; }
+				if (line.startsWith('data:')) { currentData.push(line.slice(5).trim()); continue; }
+				// ignore 'id:' and any other field
+			}
+
+			if (maxEvents != null && events.length >= maxEvents) break;
+		}
+	} finally {
+		clearTimeout(timer);
+		reader.releaseLock();
+	}
+
+	return events;
 }
