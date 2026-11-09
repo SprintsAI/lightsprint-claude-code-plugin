@@ -109,7 +109,7 @@ Stacks group tasks within a workspace. List them with `lightsprint stacks`, insp
 lightsprint session list
 lightsprint session create --title "Review authentication"
 lightsprint session send <sessionId> "How does auth work?"
-lightsprint session events <sessionId>   # live tail, not a history replay
+lightsprint session events <sessionId>   # stored history; pass --follow for a live tail
 lightsprint session get <sessionId>
 ```
 

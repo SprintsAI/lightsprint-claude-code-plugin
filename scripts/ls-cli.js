@@ -27,7 +27,7 @@
  *   session create [--stack <ref>] [--title <text>]
  *   session get <sessionId>
  *   session send <sessionId> <content>
- *   session events <sessionId> [--last N] [--timeout-ms N]
+ *   session events <sessionId> [--last N] [--follow [--timeout-ms N]]
  *   session cancel <sessionId>
  *   session delete <sessionId>
  *   (ask is a deprecated alias for session; session messages is a deprecated alias for send/events)
@@ -416,14 +416,16 @@ Commands:
     Example:
       lightsprint session send abc123 "How does auth work?"
 
-  session events <sessionId> [--last N] [--timeout-ms N]
-    Watch a session's live event stream for up to --timeout-ms (default
-    5000) or until --last events arrive. This is a live tail, not a
-    history replay — it only reports activity that happens while it's
-    connected.
+  session events <sessionId> [--last N] [--follow [--timeout-ms N]]
+    Show the session's stored message history, oldest first (--last N
+    for only the last N). Pass --follow to watch live activity instead,
+    for up to --timeout-ms (default 5000) or until --last events arrive
+    — a live tail, not history, that only reports activity that happens
+    while it's connected.
     Example:
       lightsprint session events abc123
-      lightsprint session events abc123 --last 5 --timeout-ms 10000
+      lightsprint session events abc123 --last 10
+      lightsprint session events abc123 --follow --timeout-ms 10000
 
   session cancel <sessionId>
     Cancel the currently running turn on a session
@@ -2496,6 +2498,7 @@ async function cmdSessionEvents(args, opts) {
 	let sessionIdInput = null;
 	let last = null;
 	let timeoutMs = null;
+	let follow = false;
 
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--session' && args[i + 1]) {
@@ -2504,15 +2507,53 @@ async function cmdSessionEvents(args, opts) {
 			last = parseInt(args[++i], 10);
 		} else if (args[i] === '--timeout-ms' && args[i + 1]) {
 			timeoutMs = parseInt(args[++i], 10);
+		} else if (args[i] === '--follow') {
+			follow = true;
 		} else if (!sessionIdInput && !args[i].startsWith('-')) {
 			sessionIdInput = args[i];
 		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint session events <sessionId> [--last N] [--timeout-ms N]`);
+			throw new Error(`Unknown argument: ${args[i]}. Use: lightsprint session events <sessionId> [--last N] [--follow] [--timeout-ms N]`);
 		}
 	}
 
-	if (!sessionIdInput) throw new Error('Usage: lightsprint session events <sessionId> [--last N] [--timeout-ms N]');
+	if (!sessionIdInput) throw new Error('Usage: lightsprint session events <sessionId> [--last N] [--follow] [--timeout-ms N]');
 
+	if (follow) return cmdSessionEventsFollow(sessionIdInput, { last, timeoutMs }, opts);
+	return cmdSessionEventsHistory(sessionIdInput, { last }, opts);
+}
+
+/** Default mode: the session's stored transcript, oldest first. */
+async function cmdSessionEventsHistory(sessionIdInput, { last }, opts) {
+	const workspaceId = await getWorkspaceId();
+	let data;
+	try {
+		data = await apiRequest(`/api/workspaces/${workspaceId}/agent-sessions/${sessionIdInput}/transcript`);
+	} catch (err) {
+		throw rewriteSessionNotFound(err, sessionIdInput);
+	}
+
+	let messages = data.messages || [];
+	if (last != null && last > 0) {
+		messages = messages.slice(-last);
+	}
+
+	outputResult({ messages }, opts, () => {
+		if (messages.length === 0) {
+			console.log(`No messages in session ${sessionIdInput}.`);
+			return;
+		}
+		console.log(`Messages in session ${sessionIdInput} (${messages.length}${last != null ? ` of ${last} requested` : ''}):\n`);
+		for (const m of messages) {
+			const role = m.role || 'unknown';
+			const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+			const preview = text.slice(0, 280).replace(/\n/g, ' ');
+			console.log(`  [${role}] ${preview}${text.length > 280 ? '...' : ''}`);
+		}
+	});
+}
+
+/** --follow mode: a bounded live tail of the session's event stream. */
+async function cmdSessionEventsFollow(sessionIdInput, { last, timeoutMs }, opts) {
 	let events;
 	try {
 		events = await collectSSEEvents(`/api/agent-sessions/${sessionIdInput}/events`, {
@@ -2525,7 +2566,7 @@ async function cmdSessionEvents(args, opts) {
 
 	outputResult({ events }, opts, () => {
 		if (events.length === 0) {
-			console.log(`No live events observed on session ${sessionIdInput}. This watches activity as it happens and does not replay history — try again while a turn is running, or use "lightsprint session get ${sessionIdInput}" for session metadata.`);
+			console.log(`No live events observed on session ${sessionIdInput}. This watches activity as it happens — try again while a turn is running, or drop --follow to see stored history instead.`);
 			return;
 		}
 		console.log(`Observed ${events.length} live event(s) on session ${sessionIdInput}:\n`);

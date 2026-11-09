@@ -244,11 +244,12 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	'session-events': {
-		description: "Watch a session's live event stream for a bounded window. This is a live tail, not a history replay.",
+		description: "Show the session's stored message history. Pass --follow to watch live activity for a bounded window instead.",
 		params: {
 			sessionId: { type: 'string', required: true, flag: '--session', description: 'Session ID' },
-			last: { type: 'integer', flag: '--last', description: 'Stop once this many events arrive' },
-			timeoutMs: { type: 'integer', flag: '--timeout-ms', default: 5000, description: 'How long to listen before giving up' }
+			last: { type: 'integer', flag: '--last', description: 'In history mode, only the last N messages; in --follow mode, stop once this many events arrive' },
+			follow: { type: 'boolean', flag: '--follow', description: 'Watch live activity instead of fetching stored history' },
+			timeoutMs: { type: 'integer', flag: '--timeout-ms', default: 5000, description: '--follow mode only: how long to listen before giving up' }
 		},
 		supportsDryRun: false,
 		supportsJsonBody: false

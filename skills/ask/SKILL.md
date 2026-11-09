@@ -59,18 +59,19 @@ Answers right away with the turn's dispatch status (`dispatched`, `queued`, or `
 
 ### `session events`
 
-Watch a session's live event stream for a bounded window.
+Show a session's stored message history, or watch it live.
 
 ```
-lightsprint session events <sessionId> [--last N] [--timeout-ms N]
+lightsprint session events <sessionId> [--last N] [--follow [--timeout-ms N]]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--last N` | — | Stop once this many events arrive |
-| `--timeout-ms N` | `5000` | How long to listen before giving up |
+| `--last N` | — | History mode: only the last N messages. Follow mode: stop once this many events arrive. |
+| `--follow` | off | Watch live activity instead of fetching stored history |
+| `--timeout-ms N` | `5000` | `--follow` only: how long to listen before giving up |
 
-This is a live tail, not a history replay — it only reports activity that happens while it is connected. An empty result means nothing happened in the window, not a failure.
+Without `--follow`, this fetches the session's stored transcript (oldest first) — the same thing the old `ask messages` fetch returned. With `--follow`, it is a live tail instead: it only reports activity that happens while connected, and an empty result means nothing happened in the window, not a failure.
 
 ### `session cancel`
 
@@ -105,6 +106,6 @@ All subcommands support `--output json` for machine-readable output. Errors incl
 - `session create` with `--stack` targets a specific stack; omit to use the default
 - `session send` dispatches an agent turn — this is a read‑only operation that does not modify code
 - `session send` is fire-and-forget: check the reply with `session get`, not from the send response
-- `session events` only sees live activity — it cannot recover a conversation's past messages
+- `session events` shows stored history by default; pass `--follow` for a live tail instead
 - Always cancel an unwanted running turn with `session cancel` before deleting a session
 - An old Ask thread ID is not a valid session ID — run `lightsprint session list` to find the session
