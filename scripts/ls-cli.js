@@ -2525,31 +2525,51 @@ async function cmdSessionEvents(args, opts) {
 /** Default mode: the session's stored transcript, oldest first. */
 async function cmdSessionEventsHistory(sessionIdInput, { last }, opts) {
 	const workspaceId = await getWorkspaceId();
+	let path = `/api/workspaces/${workspaceId}/agent-sessions/${sessionIdInput}/transcript`;
+	// A bearer-token caller (every call this CLI makes) always gets the paged
+	// transcript shape — `{ sessionId, items, nextCursor, prevCursor, hasMore }`,
+	// most recent page first — never the unpaged `{ messages }` shape a browser
+	// session gets. `limit` asks the server for more or fewer items directly,
+	// instead of slicing a page that may already be smaller than requested.
+	if (last != null && last > 0) path += `?limit=${last}`;
+
 	let data;
 	try {
-		data = await apiRequest(`/api/workspaces/${workspaceId}/agent-sessions/${sessionIdInput}/transcript`);
+		data = await apiRequest(path);
 	} catch (err) {
 		throw rewriteSessionNotFound(err, sessionIdInput);
 	}
 
-	let messages = data.messages || [];
-	if (last != null && last > 0) {
-		messages = messages.slice(-last);
-	}
+	const items = data.items || [];
 
-	outputResult({ messages }, opts, () => {
-		if (messages.length === 0) {
+	outputResult({ items, hasMore: data.hasMore ?? false, nextCursor: data.nextCursor ?? null, prevCursor: data.prevCursor ?? null }, opts, () => {
+		if (items.length === 0) {
 			console.log(`No messages in session ${sessionIdInput}.`);
 			return;
 		}
-		console.log(`Messages in session ${sessionIdInput} (${messages.length}${last != null ? ` of ${last} requested` : ''}):\n`);
-		for (const m of messages) {
-			const role = m.role || 'unknown';
-			const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-			const preview = text.slice(0, 280).replace(/\n/g, ' ');
-			console.log(`  [${role}] ${preview}${text.length > 280 ? '...' : ''}`);
+		console.log(`Messages in session ${sessionIdInput} (${items.length}${last != null ? ` of ${last} requested` : ''}):\n`);
+		for (const item of items) {
+			console.log(`  [${item.type}] ${transcriptItemPreview(item)}`);
 		}
+		if (data.hasMore) console.log(`\n(older messages exist — use --last with a higher number to fetch more)`);
 	});
+}
+
+/** A one-line, human-readable summary of a transcript page item's payload. */
+function transcriptItemPreview(item) {
+	const payload = item.payload || {};
+	let text;
+	if (typeof payload.content === 'string') {
+		text = payload.content;
+	} else if (payload.content !== undefined && payload.content !== null) {
+		text = JSON.stringify(payload.content);
+	} else if (payload.name !== undefined) {
+		text = `tool: ${payload.name}${payload.inputSummary ? ` ${payload.inputSummary}` : ''}`;
+	} else {
+		text = JSON.stringify(payload);
+	}
+	const preview = text.slice(0, 280).replace(/\n/g, ' ');
+	return `${preview}${text.length > 280 ? '...' : ''}`;
 }
 
 /** --follow mode: a bounded live tail of the session's event stream. */
