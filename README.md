@@ -1,6 +1,6 @@
 # Lightsprint Claude Code Plugin
 
-Claude Code plugin for Lightsprint — task management skills and workspace board integration.
+Claude Code plugin for Lightsprint: task management skills and workspace board integration.
 
 ## Prerequisites
 
