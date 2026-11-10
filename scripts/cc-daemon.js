@@ -695,11 +695,15 @@ export async function main() {
 	if (cleaned > 0) log('Cleaned stale sessions', { count: cleaned });
 	if (cleaned > 0) addBreadcrumb('session', 'Cleaned stale sessions', 'info', { count: cleaned });
 
-	// Inject config for API requests — use getters so client.js always sees refreshed tokens
+	// Inject config for API requests — getters let client.js see tokens the daemon refreshes;
+	// setters keep the daemon in sync when client.js refreshes them.
 	setConfig({
 		get accessToken() { return ACCESS_TOKEN; },
+		set accessToken(v) { ACCESS_TOKEN = v; },
 		get refreshToken() { return REFRESH_TOKEN; },
+		set refreshToken(v) { REFRESH_TOKEN = v; },
 		get expiresAt() { return EXPIRES_AT; },
+		set expiresAt(v) { EXPIRES_AT = v; },
 		baseUrl: BASE_URL,
 		workspaceId: WORKSPACE_ID,
 	});
