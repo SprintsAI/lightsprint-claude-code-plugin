@@ -1,15 +1,15 @@
 ---
 name: ask
-description: Interact with Lightsprint read-only agent sessions (Codebase Ask). Use when you need to create, list, or send messages to a session.
+description: Interact with Lightsprint read-only agent sessions. Use when you need to create, list, or send messages to a session.
 ---
 
-Run this command to interact with Lightsprint Codebase Ask — a read‑only Q&A session over every repository in a stack.
+Run this command to manage Lightsprint read-only sessions across every repository in a stack.
 
 ```bash
 lightsprint session $ARGUMENTS
 ```
 
-A Codebase Ask is a read‑only agent session. `lightsprint ask` is a deprecated alias for `lightsprint session` kept for compatibility — prefer `session`.
+`lightsprint ask` is a deprecated alias for `lightsprint session` kept for compatibility — prefer `session`.
 
 ## Subcommands
 

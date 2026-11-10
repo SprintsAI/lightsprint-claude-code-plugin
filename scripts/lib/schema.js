@@ -209,7 +209,7 @@ const COMMAND_SCHEMAS = {
 		supportsJsonBody: false
 	},
 	'session-list': {
-		description: 'List your read-only sessions (Codebase Ask) in the active workspace',
+		description: 'List your read-only sessions in the active workspace',
 		params: {
 			limit: { type: 'integer', flag: '--limit', description: 'Max results' },
 			offset: { type: 'integer', flag: '--offset', default: 0, description: 'Skip first N results' }

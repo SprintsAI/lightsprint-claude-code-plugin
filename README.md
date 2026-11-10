@@ -97,13 +97,13 @@ All skills operate on the connected workspace.
 | `/lightsprint:get <id>` | Get full details of a task — title, status, description, todo list, related files, complexity |
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
-| `/lightsprint:ask` | Interact with Lightsprint read-only agent sessions (Codebase Ask). See `lightsprint session --help`. |
+| `/lightsprint:ask` | Interact with Lightsprint read-only agent sessions. See `lightsprint session --help`. |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
-### Sessions (Codebase Ask)
+### Sessions
 
-`lightsprint session` manages read-only agent sessions — a Codebase Ask is a read-only session (ADR 0027). It replaces the retired Ask thread API routes with `/sessions` and `/agent-sessions` endpoints; `lightsprint ask` remains as a deprecated alias for `lightsprint session`.
+`lightsprint session` manages read-only agent sessions (ADR 0027). It replaces the retired Ask thread API routes with `/sessions` and `/agent-sessions` endpoints; `lightsprint ask` remains as a deprecated alias for `lightsprint session`.
 
 ```bash
 lightsprint session list
