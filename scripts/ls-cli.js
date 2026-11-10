@@ -391,7 +391,7 @@ Commands:
       lightsprint review-hub scores LIG-024 --refresh
 
   session list [--limit N] [--offset N]
-    List your read-only sessions (Codebase Ask) in the active workspace
+    List your read-only sessions in the active workspace
     Example:
       lightsprint session list
       lightsprint session list --limit 10
@@ -2288,7 +2288,7 @@ async function cmdReviewHubScores(args, opts) {
 
 // ─── session (formerly ask) ─────────────────────────────────────────────
 //
-// A Codebase Ask is a read-only agent session (ADR 0027). These commands
+// Read-only sessions use the session API (ADR 0027). These commands
 // call the session endpoints directly — the retired Ask thread routes
 // answer 410 Gone and are never called here. `ask` is kept as a
 // deprecated top-level alias for `session` (see COMMAND_ALIASES).
