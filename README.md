@@ -98,6 +98,16 @@ All skills operate on the connected workspace.
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
 | `/lightsprint:ask` | Interact with Lightsprint read-only agent sessions. See `lightsprint session --help`. |
+| `/lightsprint:delete <id>` | Delete a task permanently from the workspace board |
+| `/lightsprint:current-task` | Get the task linked to the current Claude Code session (found by session PID) |
+| `/lightsprint:link-pr --task <id> --pr-url <url>` | Link a GitHub PR to a task. Options: `--force`. Sets the task to `in_review` and starts an automated PR review |
+| `/lightsprint:unlink-pr <id>` | Remove a linked GitHub PR from a task |
+| `/lightsprint:merge <id>` | Merge the GitHub PR linked to a task. Supports direct merge and the GitHub merge queue. Options: `--dry-run` |
+| `/lightsprint:review-hub-scores <id>` | Get the AI readiness analysis (score, summaries, callouts, suggested actions) for a task's linked PR. Options: `--refresh`, `--fields` |
+| `/lightsprint:review-hub-signals <id>` | Get PR signals (CI checks, reviews, comments, deployments) for a task's linked PR. Options: `--refresh`, `--fields` |
+| `/lightsprint:agent` | Launch, stop, or check settings for cloud agents on tasks. Providers: `anthropic`, `cursor`, `codex` |
+| `/lightsprint:agent-settings` | Show which cloud agent providers are configured and their default models |
+| `/lightsprint:agent-create-pr` | Create a GitHub PR from a cloud agent's working branch. Options: `--task`, `--provider`, `--agent-id` |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -136,20 +146,27 @@ lightsprint-claude-code-plugin/
 ├── scripts/
 │   ├── lightsprint.js          # Unified CLI entry point (compiled to `lightsprint` binary)
 │   ├── ls-cli.js               # Task management commands (exports cliMain)
+│   ├── cc-start.js / cc-end.js # SessionStart / SessionEnd hooks
+│   ├── cc-event.js             # Prompt and tool event hooks
+│   ├── cc-pr-created.js        # Detects `gh pr create` and prompts the link-pr flow
+│   ├── cc-daemon.js            # Per-session daemon that streams events to Lightsprint
 │   ├── compile.sh              # Build script for lightsprint binary
 │   └── lib/
 │       ├── auth.js             # On-demand OAuth flow (browser → callback → save)
 │       ├── config.js           # Per-folder token resolution + on-demand auth trigger
+│       ├── connection.js       # Workspace connection file (~/.lightsprint/connection.json)
 │       ├── client.js           # HTTP client with automatic token refresh
+│       ├── validate.js         # Input validation (task IDs, enums, control characters)
+│       ├── output.js           # Human and JSON output formatting
 │       ├── task-map.js         # CC↔LS task ID mapping
 │       └── status-mapper.js    # Status mapping logic
-├── skills/
-│   ├── tasks/SKILL.md          # /lightsprint:tasks
-│   ├── create/SKILL.md         # /lightsprint:create
-│   ├── update/SKILL.md         # /lightsprint:update
-│   ├── get/SKILL.md            # /lightsprint:get
-│   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+├── skills/                     # One SKILL.md per /lightsprint:<name> command
+│   ├── tasks/  projects/  create/  update/  get/  delete/
+│   ├── claim/  comment/  current-task/  ask/
+│   ├── link-pr/  unlink-pr/  merge/
+│   ├── review-hub-scores/  review-hub-signals/
+│   └── agent/  agent-settings/  agent-create-pr/
+├── pi-extension/               # Same integration for the pi coding agent
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
