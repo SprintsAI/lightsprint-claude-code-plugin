@@ -41,6 +41,8 @@ export function initSentry({ baseUrl }) {
 		release: `lightsprint-plugin@${BUILD_VERSION}+${BUILD_HASH}`,
 		tracesSampleRate: 0,
 		attachStacktrace: true,
+		// Sentry is a PII-scrubbed subprocessor: no IP, cookies or request data.
+		sendDefaultPii: false,
 	});
 
 	Sentry.setTag('nodeVersion', process.version);
@@ -50,13 +52,14 @@ export function initSentry({ baseUrl }) {
 }
 
 /**
- * Set Sentry user and session context.
+ * Set Sentry user and session context. Only a hash of the email is sent as
+ * the user id — never the email itself.
  * @param {{ email?: string, workspaceId?: string, repoId?: string, sessionId?: string, machineId?: string }} ctx
  */
 export function setSentryContext({ email, workspaceId, repoId, sessionId, machineId }) {
 	if (email) {
 		const hashedId = createHash('sha256').update(email).digest('hex').slice(0, 16);
-		Sentry.setUser({ id: hashedId, email });
+		Sentry.setUser({ id: hashedId });
 	}
 	if (workspaceId) Sentry.setTag('workspaceId', workspaceId);
 	if (repoId) Sentry.setTag('repoId', repoId);

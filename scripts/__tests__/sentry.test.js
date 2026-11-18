@@ -34,6 +34,7 @@ describe('sentry module', () => {
 		expect(initArg).toHaveProperty('dsn');
 		expect(initArg.environment).toBe('production');
 		expect(initArg.tracesSampleRate).toBe(0);
+		expect(initArg.sendDefaultPii).toBe(false);
 	});
 
 	test('initSentry detects staging environment for localhost', () => {
@@ -49,7 +50,7 @@ describe('sentry module', () => {
 		expect(sentryMock.init).toHaveBeenCalledTimes(1);
 	});
 
-	test('setSentryContext calls setUser with hashed email and setTag for each field', () => {
+	test('setSentryContext calls setUser with only the hashed email id and setTag for each field', () => {
 		setSentryContext({
 			email: 'test@example.com',
 			workspaceId: 'ws-123',
@@ -58,7 +59,7 @@ describe('sentry module', () => {
 		});
 		expect(sentryMock.setUser).toHaveBeenCalledTimes(1);
 		const userArg = sentryMock.setUser.mock.calls[0][0];
-		expect(userArg.email).toBe('test@example.com');
+		expect(userArg).not.toHaveProperty('email');
 		expect(userArg.id).not.toBe('test@example.com');
 		expect(userArg.id.length).toBe(16);
 
