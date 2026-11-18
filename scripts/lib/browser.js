@@ -174,8 +174,35 @@ export function findBrowserProfileForEmail(email, appSupportPath) {
 }
 
 /**
+ * True when this process runs inside an SSH session.
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {boolean}
+ */
+export function isSshSession(env = process.env) {
+	return Boolean(env.SSH_CONNECTION || env.SSH_TTY);
+}
+
+/**
+ * Whether a browser launched from this process would show up in front of the user.
+ *
+ * On Linux, xdg-open needs a display server; without one it either fails quietly
+ * or falls back to a text browser with no terminal. On macOS and Windows an SSH
+ * session would open the browser on the remote machine's desktop instead of the
+ * user's. In those cases the caller should print the URL instead.
+ *
+ * @param {Record<string, string|undefined>} [env]
+ * @param {string} [platform]
+ * @returns {boolean}
+ */
+export function canOpenBrowser(env = process.env, platform = process.platform) {
+	if (platform === 'linux') return Boolean(env.DISPLAY || env.WAYLAND_DISPLAY);
+	return !isSshSession(env);
+}
+
+/**
  * Open a URL in the browser.
  * If browser profile info is provided on macOS, targets that specific profile.
+ * Returns false without launching anything when no browser can be shown here.
  *
  * @param {string} url
  * @param {{ browserApp?: string, profileFlag?: string, profileValue?: string }} [options]
@@ -184,6 +211,7 @@ export function findBrowserProfileForEmail(email, appSupportPath) {
 export function openBrowser(url, options = {}) {
 	// Allow tests / CI to suppress browser launches
 	if (process.env.LIGHTSPRINT_NO_BROWSER === '1') return false;
+	if (!canOpenBrowser()) return false;
 
 	const { browserApp, profileFlag, profileValue } = options;
 	const platform = process.platform;
