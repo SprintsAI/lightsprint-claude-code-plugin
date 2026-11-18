@@ -341,7 +341,7 @@ Commands:
       --model <model>         Override default model
       --base-ref <ref>        Base branch
       --environment-id <id>   Environment for codex/anthropic
-      --auto-merge            Arm auto-merge: the autopilot merges the PR once it
+      --auto-merge            Arm auto-merge: it merges the PR once it
                               reaches 100/100 readiness with green CI. Needs merge
                               permission (any role but member_no_merge)
       --no-auto-merge         Launch with auto-merge off. Omitting both flags

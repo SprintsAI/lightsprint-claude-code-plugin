@@ -57,7 +57,7 @@ with auto-merge armed. Pass `--auto-merge`:
 lightsprint agent launch --task LS-100 --provider anthropic --auto-merge --output json
 ```
 
-The autopilot then merges the task's PR on its own once it reaches 100/100 readiness **with
+Auto-merge then merges the task's PR on its own once it reaches 100/100 readiness **with
 green CI** (zero checks does not count as green). Nobody clicks merge.
 
 - **Needs merge permission** — every role except `member_no_merge`. Without it the launch
