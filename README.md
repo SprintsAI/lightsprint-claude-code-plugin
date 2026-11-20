@@ -22,7 +22,7 @@ Then use any `/lightsprint:` command — the plugin opens your browser to connec
 /lightsprint:tasks
 ```
 
-That's it. The first command auto-prompts for authorization and connects you to a Lightsprint workspace.
+That's it. The first command auto-prompts for authorization and connects you to a Lightsprint workspace. You do not need an API key.
 
 ---
 
