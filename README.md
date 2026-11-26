@@ -98,6 +98,16 @@ All skills operate on the connected workspace.
 | `/lightsprint:claim <id>` | Claim a task — sets it to in_progress and shows full details |
 | `/lightsprint:comment <id> <text>` | Add a comment to a task |
 | `/lightsprint:ask` | Interact with Lightsprint read-only agent sessions. See `lightsprint session --help`. |
+| `/lightsprint:delete <id>` | Delete a task permanently from the workspace board |
+| `/lightsprint:current-task` | Get the task linked to the current Claude Code session, without a task ID |
+| `/lightsprint:link-pr` | Link a GitHub pull request to a task. Options: `--task <id>`, `--pr-url <url>`, `--force` |
+| `/lightsprint:unlink-pr <id>` | Remove a linked GitHub pull request from a task |
+| `/lightsprint:merge <id>` | Merge the GitHub PR linked to a task. Supports direct merge and the GitHub merge queue. |
+| `/lightsprint:review-hub-scores <id>` | Get the AI readiness analysis (score, summaries, callouts, suggested actions) for a task's linked PR. Option: `--refresh` |
+| `/lightsprint:review-hub-signals <id>` | Get PR signals (CI checks, reviews, comments, deployments) for a task's linked PR. Option: `--refresh` |
+| `/lightsprint:agent` | Launch, stop, or check settings for cloud agents on tasks (`anthropic`, `cursor`, `codex` providers) |
+| `/lightsprint:agent-settings` | Show which cloud agent providers are configured and their default models. Option: `--provider <name>` |
+| `/lightsprint:agent-create-pr` | Create a GitHub PR from a cloud agent's working branch. Options: `--task <id>`, `--provider <name>`, `--agent-id <id>` |
 
 Stacks group tasks within a workspace. List them with `lightsprint stacks`, inspect one with `lightsprint stacks get <stackId|prefix|name>`, and target a stack on `tasks`/`create` via `--stack <ref>`.
 
@@ -149,7 +159,8 @@ lightsprint-claude-code-plugin/
 │   ├── update/SKILL.md         # /lightsprint:update
 │   ├── get/SKILL.md            # /lightsprint:get
 │   ├── claim/SKILL.md          # /lightsprint:claim
-│   └── comment/SKILL.md        # /lightsprint:comment
+│   ├── comment/SKILL.md        # /lightsprint:comment
+│   └── …                       # one folder per skill in the table above
 ├── install.sh                  # One-line plugin installer
 ├── uninstall.sh                # Clean removal
 ├── package.json
