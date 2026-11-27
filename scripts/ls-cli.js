@@ -66,6 +66,8 @@ const COMMAND_ALIASES = {
 	'review-hub-signals': '_review-hub-signals',
 };
 
+const REVIEW_HUB_SCORES_RETIRED = '"review-hub scores" has been retired: the server removed the AI readiness overlay endpoint (/api/review-hub/{prId}/ai-overlay). To check merge readiness, read CI, review and comment status with "lightsprint review-hub signals <taskId>".';
+
 // All valid command names for "did you mean?" suggestions
 const VALID_COMMANDS = [
 	'tasks', 'projects', 'stacks', 'create', 'update', 'get', 'claim', 'current-task',
@@ -148,6 +150,14 @@ export async function cliMain(command, args, context = {}) {
 	}
 
 	const { globalOptions: opts, remainingArgs } = parseGlobalOptions(args);
+
+	// `review-hub scores` (and its old `review-hub-scores` alias) called the retired
+	// AI readiness overlay endpoint. Fail locally, before --help and before error
+	// reporting, so old callers get a pointer to `signals` and no Sentry event.
+	if (command === 'review-hub-scores' || (resolvedCommand === 'review-hub' && remainingArgs[0] === 'scores')) {
+		outputError('gone', REVIEW_HUB_SCORES_RETIRED, { command: 'review-hub scores' }, opts);
+		process.exit(1);
+	}
 
 	// Handle --help on any subcommand: lightsprint <command> --help
 	if (remainingArgs.includes('--help') || remainingArgs.includes('-h')) {
@@ -2135,9 +2145,6 @@ async function cmdReviewHub(args, opts) {
 
 	switch (subcommand) {
 		case 'signals': return await cmdReviewHubSignals(subArgs, opts);
-		case 'scores':
-			// The server retired the AI readiness overlay route, so this command has no backend.
-			throw new Error('"review-hub scores" was removed: the Lightsprint server no longer serves AI readiness scores. Use "lightsprint review-hub signals <taskId>" instead.');
 		default:
 			throw new Error(`Unknown review-hub subcommand: "${subcommand || ''}". Use: signals`);
 	}
