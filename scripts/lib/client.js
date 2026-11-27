@@ -310,99 +310,12 @@ export async function getWorkspaceId() {
 }
 
 /**
- * Make an authenticated SSE request to the Lightsprint API.
- * Consumes the event stream and returns the final 'complete' event payload.
- * @param {string} path - API path
- * @param {{ timeout?: number }} [options]
- * @returns {Promise<object|null>} Parsed payload from the 'complete' event, or null if stream was empty
- */
-export async function apiRequestSSE(path, options = {}) {
-	const timeout = options.timeout || 120_000;
-	const cfg = await config();
-
-	const refreshed = await refreshTokenIfNeeded();
-	if (!refreshed) {
-		throw new Error('Lightsprint: unable to authenticate. Please re-run install.sh.');
-	}
-
-	const url = `${cfg.baseUrl}${path}`;
-	const response = await retryableFetch(url, {
-		method: options.method || 'GET',
-		body: options.body || undefined,
-		redirect: options.redirect || 'follow',
-		signal: AbortSignal.timeout(timeout),
-		headers: {
-			'Authorization': `Bearer ${cfg.accessToken}`,
-			'Accept': 'text/event-stream',
-			'Content-Type': options.body ? 'application/json' : undefined,
-			...(options.headers || {})
-		}
-	});
-
-	if (!response.ok) {
-		const text = await readBodyCapped(response).catch(() => '');
-		throw describeHttpError(response, text);
-	}
-
-	// Empty 200 response (no signals / no content)
-	const contentType = response.headers.get('content-type') || '';
-	if (!contentType.includes('text/event-stream')) {
-		// Server returned a non-SSE response (e.g. empty JSON for no signals)
-		const body = await readBodyCapped(response);
-		if (!body || body.trim() === '') return null;
-		return safeJsonParse(body);
-	}
-
-	const reader = response.body.getReader();
-	const decoder = new TextDecoder();
-	let buffer = '';
-
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-
-			buffer += decoder.decode(value, { stream: true });
-			const lines = buffer.split('\n');
-			buffer = lines.pop(); // keep incomplete line in buffer
-
-			for (const line of lines) {
-				if (!line.startsWith('data: ')) continue;
-				const raw = line.slice(6).trim();
-				if (!raw) continue;
-
-				let data;
-				try {
-					data = JSON.parse(raw);
-				} catch {
-					continue; // skip malformed SSE data lines
-				}
-
-				if (data.type === 'complete') {
-					return data.payload !== undefined ? data.payload : data;
-				}
-				if (data.type === 'error') {
-					throw new Error(data.message || 'AI analysis failed');
-				}
-				// 'progress' events: silently continue
-			}
-		}
-	} finally {
-		reader.releaseLock();
-	}
-
-	// Stream ended without a complete event
-	return null;
-}
-
-/**
  * Open an authenticated SSE connection and collect whatever events arrive
  * within a bounded window, then close it.
  *
  * Some Lightsprint SSE endpoints (e.g. a session's live `/events` stream)
  * push activity as it happens and never replay history or send a terminal
- * event, so `apiRequestSSE`'s "wait for `complete`" contract doesn't fit.
- * This instead reads for `timeoutMs` (or until `maxEvents` arrive) and
+ * event. This reads for `timeoutMs` (or until `maxEvents` arrive) and
  * returns whatever it saw — an empty array means nothing happened in that
  * window, not a failure.
  *

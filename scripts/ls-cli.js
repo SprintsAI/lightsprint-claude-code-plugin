@@ -18,7 +18,6 @@
  *   whoami
  *   merge <taskId>
  *   review-hub signals <taskId> [--refresh]
- *   review-hub scores <taskId> [--refresh]
  *   agent launch --task <taskId> --provider <provider>
  *   agent stop --task <taskId> --provider <provider>
  *   agent settings [--provider <provider>]
@@ -38,7 +37,7 @@ import { execFileSync, execSync } from 'child_process';
 import { mkdirSync, mkdtempSync, chmodSync, copyFileSync, unlinkSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
-import { apiRequest, apiRequestSSE, collectSSEEvents, getWorkspaceId } from './lib/client.js';
+import { apiRequest, collectSSEEvents, getWorkspaceId } from './lib/client.js';
 import { authenticate } from './lib/auth.js';
 import { getConfig, getDefaultBaseUrl, readConnection, clearConnection, getGitRepoFullName, readPreferences, getPreference, setPreference, deletePreference, KNOWN_PREFERENCES } from './lib/config.js';
 import { validateId, validateStatus, validateComplexity, validatePosition, validateEnum, VALID_DEPS_FILTERS, validateTitle, validateDescription, validateCommentBody, validateBaseUrl, validateVersion, validatePositiveInt, validateAssignee, validatePid, validateProjectFilter, validateProvider, validateBoolean } from './lib/validate.js';
@@ -65,7 +64,6 @@ const COMMAND_ALIASES = {
 	'ask': 'session',
 	// Hyphenated compound commands -> space-separated routing
 	'review-hub-signals': '_review-hub-signals',
-	'review-hub-scores': '_review-hub-scores',
 };
 
 // All valid command names for "did you mean?" suggestions
@@ -147,9 +145,6 @@ export async function cliMain(command, args, context = {}) {
 	// Handle hyphenated compound command aliases (review-hub-signals -> review-hub signals)
 	if (resolvedCommand === '_review-hub-signals') {
 		return cliMain('review-hub', ['signals', ...args], context);
-	}
-	if (resolvedCommand === '_review-hub-scores') {
-		return cliMain('review-hub', ['scores', ...args], context);
 	}
 
 	const { globalOptions: opts, remainingArgs } = parseGlobalOptions(args);
@@ -381,14 +376,6 @@ Commands:
     Example:
       lightsprint review-hub signals LIG-024
       lightsprint review-hub signals LIG-024 --refresh
-
-  review-hub scores <taskId> [--refresh]
-    Get AI readiness analysis for a task's linked PR
-    Options:
-      --refresh             Refresh signals from GitHub and trigger fresh AI analysis (consumes credits)
-    Example:
-      lightsprint review-hub scores LIG-024
-      lightsprint review-hub scores LIG-024 --refresh
 
   session list [--limit N] [--offset N]
     List your read-only sessions in the active workspace
@@ -2148,9 +2135,11 @@ async function cmdReviewHub(args, opts) {
 
 	switch (subcommand) {
 		case 'signals': return await cmdReviewHubSignals(subArgs, opts);
-		case 'scores': return await cmdReviewHubScores(subArgs, opts);
+		case 'scores':
+			// The server retired the AI readiness overlay route, so this command has no backend.
+			throw new Error('"review-hub scores" was removed: the Lightsprint server no longer serves AI readiness scores. Use "lightsprint review-hub signals <taskId>" instead.');
 		default:
-			throw new Error(`Unknown review-hub subcommand: "${subcommand || ''}". Use: signals, scores`);
+			throw new Error(`Unknown review-hub subcommand: "${subcommand || ''}". Use: signals`);
 	}
 }
 
@@ -2198,91 +2187,6 @@ async function cmdReviewHubSignals(args, opts) {
 			console.log(`  ${cat} ${statusIcon} ${title}${detail}`);
 		}
 		console.log(`\n${signals.length} signal(s)${result.lastViewedAt ? ` | Last viewed: ${result.lastViewedAt}` : ''}`);
-	});
-}
-
-async function cmdReviewHubScores(args, opts) {
-	let taskIdInput = null;
-	let refresh = false;
-
-	for (let i = 0; i < args.length; i++) {
-		if (args[i] === '--task' && args[i + 1]) {
-			taskIdInput = args[++i];
-		} else if (args[i] === '--refresh') {
-			refresh = true;
-		} else if (!taskIdInput && !args[i].startsWith('-')) {
-			taskIdInput = args[i];
-		} else {
-			throw new Error(`Unknown argument: ${args[i]}. Use --task <taskId> [--refresh].`);
-		}
-	}
-
-	if (!taskIdInput) throw new Error('Usage: lightsprint review-hub scores <taskId> [--refresh]');
-	validateId(taskIdInput, 'Task ID');
-
-	if (opts.dryRun) {
-		const endpoint = refresh
-			? 'POST /api/review-hub/{prId}/signals + GET /api/review-hub/{prId}/ai-overlay'
-			: 'GET /api/review-hub/{prId}/ai-overlay';
-		return outputDryRun('review-hub scores', { taskId: taskIdInput, refresh }, endpoint, opts);
-	}
-
-	const { prId, prNumber } = await resolveTaskPrId(taskIdInput);
-
-	// If --refresh, force-refresh signals first (clears AI cache)
-	if (refresh) {
-		await apiRequest(`/api/review-hub/${prId}/signals`, { method: 'POST' });
-	}
-
-	// Consume the SSE stream (returns cached or triggers fresh analysis)
-	const result = await apiRequestSSE(`/api/review-hub/${prId}/ai-overlay`, { timeout: 120_000 });
-
-	if (!result || (result.readiness_score === undefined && result.readinessScore === undefined)) {
-		const data = { readinessScore: null, message: 'No scores available. Use --refresh to trigger AI analysis (consumes credits).' };
-		outputResult(data, opts, () => {
-			console.log(`AI Readiness for task ${taskIdInput} (PR #${prNumber}):`);
-			console.log('  No cached scores available.');
-			console.log('  Use --refresh to trigger AI analysis (consumes credits).');
-		});
-		return;
-	}
-
-	// Normalize field names (API uses snake_case)
-	const data = {
-		readinessScore: result.readiness_score ?? result.readinessScore,
-		readinessLabel: result.readiness_label ?? result.readinessLabel,
-		sectionSummaries: result.section_summaries ?? result.sectionSummaries ?? {},
-		changeCallouts: result.change_callouts ?? result.changeCallouts ?? [],
-		suggestedActions: result.suggested_actions ?? result.suggestedActions ?? [],
-		addressal: result.addressal ?? null,
-		updatedAt: result.updated_at ?? result.updatedAt ?? null
-	};
-
-	outputResult(data, opts, () => {
-		console.log(`AI Readiness for task ${taskIdInput} (PR #${prNumber}):`);
-		console.log(`  Score: ${data.readinessScore}/100 (${data.readinessLabel})`);
-
-		const sections = Object.entries(data.sectionSummaries);
-		if (sections.length > 0) {
-			console.log('\n  Sections:');
-			for (const [key, val] of sections) {
-				console.log(`    ${key}: ${val}`);
-			}
-		}
-
-		if (data.changeCallouts.length > 0) {
-			console.log('\n  Callouts:');
-			for (const c of data.changeCallouts) {
-				console.log(`    - ${typeof c === 'string' ? c : c.message || JSON.stringify(c)}`);
-			}
-		}
-
-		if (data.suggestedActions.length > 0) {
-			console.log('\n  Suggested Actions:');
-			for (const a of data.suggestedActions) {
-				console.log(`    - ${typeof a === 'string' ? a : a.message || JSON.stringify(a)}`);
-			}
-		}
 	});
 }
 

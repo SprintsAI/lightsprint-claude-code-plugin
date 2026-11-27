@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Removed the `review-hub scores` command and its `review-hub-scores` skill. The Lightsprint server retired the AI readiness overlay route (`/api/review-hub/{prId}/ai-overlay`), so every call returned 404. `lightsprint review-hub scores` now fails locally with a message that points to `review-hub signals`, and sends no request.
+
 ## 0.7.0
 
 - Moved the `ask` command off the retired Ask thread API routes onto the new session endpoints (`/sessions`, `/agent-sessions`). The old routes answer `410 Gone` on an updated Lightsprint server.
