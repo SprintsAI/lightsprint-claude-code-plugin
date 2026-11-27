@@ -36,6 +36,5 @@ lightsprint review-hub signals 24 --fields signals
 ## Invariants
 
 - Use `--refresh` sparingly — it re-fetches all signals from GitHub API. The default cached read is usually sufficient.
-- Check signals before checking scores — signals are what the AI readiness analysis is based on.
 - Task must have a linked PR. If not, you'll get an error suggesting `lightsprint link-pr`.
 - The first call to signals for a PR may auto-trigger backfill from GitHub (even without `--refresh`).

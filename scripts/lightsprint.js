@@ -80,7 +80,6 @@ Commands:
   agent create-pr [opts]  Create a GitHub PR from a cloud agent working branch
   merge [opts]            Merge the GitHub PR linked to a task
   review-hub signals [opts] Get PR signals (CI, reviews, comments) for a task
-  review-hub scores [opts]  Get AI readiness analysis for a task linked PR
   describe [command]      Show accepted parameters/types as JSON
   open                    Open the repo board in your browser
   status                  Show connection status for this repository

@@ -287,15 +287,6 @@ const COMMAND_SCHEMAS = {
 		supportsDryRun: true,
 		supportsJsonBody: false
 	},
-	'review-hub-scores': {
-		description: 'Get AI readiness analysis for a task linked PR',
-		params: {
-			taskId: { type: 'string', required: true, flag: '--task', description: 'Task ID (raw or display ID)' },
-			refresh: { type: 'boolean', flag: '--refresh', description: 'Refresh signals and trigger fresh AI analysis' }
-		},
-		supportsDryRun: true,
-		supportsJsonBody: false
-	},
 	delete: {
 		description: 'Delete a task permanently',
 		params: {

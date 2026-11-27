@@ -57,6 +57,20 @@ describe('CLI routing', () => {
 		expect(stdout).toContain('Usage:');
 	});
 
+	// The server retired /api/review-hub/{prId}/ai-overlay. Every spelling of the
+	// old command must fail locally, with the `gone` code and a pointer to signals.
+	test.each([
+		[['review-hub', 'scores', 'LIG-1']],
+		[['review-hub-scores', 'LIG-1']],
+		[['review-hub', 'scores', '--help']]
+	])('retired review-hub scores fails locally: %p', async (args) => {
+		const { stderr, exitCode } = await runCliFull(...args, '--output', 'json');
+		expect(exitCode).toBe(1);
+		const err = JSON.parse(stderr.trim());
+		expect(err.error).toBe('gone');
+		expect(err.message).toContain('review-hub signals');
+	});
+
 });
 
 describe('agent launch --auto-merge', () => {

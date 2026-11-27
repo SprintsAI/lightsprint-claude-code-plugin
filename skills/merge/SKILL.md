@@ -35,7 +35,7 @@ lightsprint merge 24 --dry-run
 ## Invariants
 
 - Task must have a linked PR. If not, error will suggest using `lightsprint link-pr`.
-- Check review-hub signals/scores before merging to ensure the PR is ready.
+- Check review-hub signals before merging to ensure the PR is ready.
 - If the response status is `queued`, the repo uses GitHub merge queue — the PR will merge automatically when required checks pass.
 - Common errors: PR already merged/closed, merge conflict (409), required checks not passing (422), insufficient permissions.
 - This is a destructive action — once merged, it cannot be undone from the CLI.
